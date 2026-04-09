@@ -175,7 +175,7 @@ def build_progress_json(progress: CrawlProgress) -> dict:
 # 타임아웃 자동 재시작
 # ══════════════════════════════════════════════
 
-GITHUB_PAT = os.environ.get("GITHUB_PAT", "")
+GITHUB_PAT = os.environ.get("GH_PAT", "")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
 
 def auto_continue(job: dict, checkpoint: dict):
