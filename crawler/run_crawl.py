@@ -172,6 +172,73 @@ def build_progress_json(progress: CrawlProgress) -> dict:
 
 
 # ══════════════════════════════════════════════
+# 타임아웃 자동 재시작
+# ══════════════════════════════════════════════
+
+GITHUB_PAT = os.environ.get("GITHUB_PAT", "")
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
+
+def auto_continue(job: dict, checkpoint: dict):
+    """타임아웃 시 새 Job 생성 + GitHub Actions 자동 트리거"""
+    logger.info("타임아웃 자동 재시작: 새 Job 생성 중...")
+
+    try:
+        # 1. 새 crawl_jobs row 생성
+        new_job = {
+            "sido": job["sido"],
+            "si": job.get("si"),
+            "gu": job.get("gu"),
+            "dong": job.get("dong"),
+            "li": job.get("li"),
+            "options": job.get("options") or {},
+            "checkpoint": checkpoint,
+            "requested_by": job.get("requested_by"),
+        }
+        resp = requests.post(
+            f"{SUPABASE_URL}/rest/v1/crawl_jobs",
+            json=new_job,
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation",
+            },
+            timeout=30,
+        )
+        if resp.status_code not in (200, 201):
+            logger.error(f"자동 재시작 실패 — Job 생성 오류: {resp.text[:300]}")
+            return
+
+        created = resp.json()
+        new_id = created[0]["id"] if isinstance(created, list) else created["id"]
+        logger.info(f"새 Job #{new_id} 생성 완료")
+
+        # 2. GitHub Actions 트리거
+        if not GITHUB_PAT or not GITHUB_REPO:
+            logger.warning("GITHUB_PAT/GITHUB_REPO 없음 — 수동으로 이어서 추출해주세요")
+            return
+
+        gh_resp = requests.post(
+            f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/crawl.yml/dispatches",
+            json={"ref": "main", "inputs": {"job_id": str(new_id)}},
+            headers={
+                "Authorization": f"token {GITHUB_PAT}",
+                "Accept": "application/vnd.github.v3+json",
+            },
+            timeout=30,
+        )
+        if gh_resp.status_code == 204:
+            logger.info(f"GitHub Actions 트리거 성공 — Job #{new_id}")
+        else:
+            logger.warning(f"GitHub Actions 트리거 실패 ({gh_resp.status_code}): {gh_resp.text[:200]}")
+            logger.warning("웹 UI에서 수동으로 이어서 추출해주세요")
+
+    except Exception as e:
+        logger.error(f"자동 재시작 중 예외: {e}")
+        logger.warning("웹 UI에서 수동으로 이어서 추출해주세요")
+
+
+# ══════════════════════════════════════════════
 # 메인 실행
 # ══════════════════════════════════════════════
 
@@ -287,23 +354,43 @@ def run(job: dict):
     db_writer.refresh_mv()
 
     # 최종 상태 결정
-    if timeout_triggered.is_set() or crawler.is_stopped():
+    if timeout_triggered.is_set():
+        final_status = "stopped"
+    elif crawler.is_stopped():
+        # 사용자가 수동 중단한 경우 (stop_requested)
         final_status = "stopped"
     else:
         final_status = "completed"
 
+    checkpoint = build_checkpoint(crawler.progress)
     stats = db_writer.get_stats()
     logger.info(f"=== Job #{job_id} 완료: status={final_status}, "
-                f"upserted={stats['upserted']}, errors={stats['errors']} ===")
+                f"upserted={stats['upserted']}, errors={stats['errors']}, "
+                f"geocoded={stats.get('geocoded', 0)} ===")
 
     update_job(job_id, {
         "status": final_status,
         "progress": build_progress_json(crawler.progress),
-        "checkpoint": build_checkpoint(crawler.progress),
+        "checkpoint": checkpoint,
         "completed_at": "now()",
     })
 
     timer.cancel()
+
+    # 타임아웃 자동 재시작: checkpoint가 있고 아직 완료가 아니면
+    # 새 Job을 만들고 GitHub Actions를 자동 트리거
+    # 무한 루프 방지: 최대 20회 (20 × 6시간 = 120시간 = 5일)
+    MAX_AUTO_RESTARTS = 20
+    restart_count = (job.get("options") or {}).get("_restart_count", 0)
+
+    if timeout_triggered.is_set() and checkpoint and restart_count < MAX_AUTO_RESTARTS:
+        # 다음 Job에 재시작 횟수 전달
+        next_options = dict(job.get("options") or {})
+        next_options["_restart_count"] = restart_count + 1
+        job_for_continue = {**job, "options": next_options}
+        auto_continue(job_for_continue, checkpoint)
+    elif timeout_triggered.is_set() and restart_count >= MAX_AUTO_RESTARTS:
+        logger.warning(f"자동 재시작 한도 도달 ({MAX_AUTO_RESTARTS}회) — 수동으로 이어서 추출해주세요")
 
 
 def main():
