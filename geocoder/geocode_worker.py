@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 # ── 환경 변수 ──
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
+KAKAO_REST_KEY = os.environ.get("KAKAO_REST_KEY", "")
 VWORLD_KEY = os.environ.get("VWORLD_KEY", "")
 
 # ── 상수 ──
@@ -106,8 +107,33 @@ def lookup_cache(addresses: list[str]) -> dict[str, tuple[float, float]]:
 # 3. VWorld API 호출
 # ══════════════════════════════════════════════
 
+def geocode_kakao(address: str) -> tuple[float, float] | None:
+    """카카오 지오코딩 (메인) — REST API 키 인증, 해외 IP에서도 동작"""
+    if not KAKAO_REST_KEY:
+        return None
+    try:
+        resp = requests.get(
+            "https://dapi.kakao.com/v2/local/search/address.json",
+            params={"query": address},
+            headers={"Authorization": f"KakaoAK {KAKAO_REST_KEY}"},
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            logger.warning(f"Kakao HTTP {resp.status_code}: {address}")
+            return None
+        docs = resp.json().get("documents", [])
+        if not docs:
+            return None
+        return (float(docs[0]["y"]), float(docs[0]["x"]))
+    except Exception as e:
+        logger.warning(f"Kakao 예외: {address}: {e}")
+        return None
+
+
 def geocode_vworld(address: str) -> tuple[float, float] | None:
-    """VWorld 지오코딩: road → parcel 순서로 시도"""
+    """VWorld 지오코딩 (fallback) — 한국 IP에서만 동작"""
+    if not VWORLD_KEY:
+        return None
     for addr_type in ("road", "parcel"):
         try:
             url = (
@@ -120,21 +146,26 @@ def geocode_vworld(address: str) -> tuple[float, float] | None:
             )
             resp = requests.get(url, timeout=15)
             if resp.status_code != 200:
-                logger.warning(f"VWorld HTTP {resp.status_code}: {address} (type={addr_type})")
                 continue
             data = resp.json()
-            status = data.get("response", {}).get("status")
-            if status != "OK":
-                logger.debug(f"VWorld status={status}: {address} (type={addr_type})")
+            if data.get("response", {}).get("status") != "OK":
                 continue
             point = data["response"]["result"]["point"]
-            lat = float(point["y"])
-            lng = float(point["x"])
-            return (lat, lng)
-        except Exception as e:
-            logger.warning(f"VWorld 예외: {address} (type={addr_type}): {e}")
+            return (float(point["y"]), float(point["x"]))
+        except Exception:
             continue
     return None
+
+
+def geocode(address: str) -> tuple[float, float] | None:
+    """카카오 메인 → VWorld fallback"""
+    result = geocode_kakao(address)
+    if result:
+        return result
+    result = geocode_vworld(address)
+    if result:
+        logger.info(f"VWorld fallback 성공: {address}")
+    return result
 
 
 # ══════════════════════════════════════════════
@@ -208,9 +239,9 @@ def main():
             update_kepco_coords(address, lat, lng)
             cache_hits += 1
         else:
-            # 캐시 miss → VWorld API
+            # 캐시 miss → 카카오(메인) → VWorld(fallback)
             api_calls += 1
-            result = geocode_vworld(address)
+            result = geocode(address)
             if result:
                 lat, lng = result
                 upsert_cache(address, lat, lng)
