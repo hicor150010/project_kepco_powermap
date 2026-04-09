@@ -60,6 +60,12 @@ export default function CrawlManager() {
   const [selectedLi, setSelectedLi] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // 수집 옵션
+  const [optFlushSize, setOptFlushSize] = useState(100);
+  const [optDelay, setOptDelay] = useState(0.5);
+  const [optFetchStep, setOptFetchStep] = useState(false);
+  const [showOptions, setShowOptions] = useState(false);
+
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -214,6 +220,11 @@ export default function CrawlManager() {
           gu: selectedGu || undefined,
           dong: selectedDong || undefined,
           li: selectedLi || undefined,
+          options: {
+            flush_size: optFlushSize,
+            delay: optDelay,
+            fetch_step_data: optFetchStep,
+          },
         }),
       });
       const data = await res.json();
@@ -481,6 +492,93 @@ export default function CrawlManager() {
           </div>
         </div>
 
+        {/* 옵션 토글 */}
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={() => setShowOptions(!showOptions)}
+            className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+          >
+            <span>{showOptions ? "▼" : "▶"}</span>
+            상세 설정
+          </button>
+
+          {showOptions && (
+            <div className="mt-3 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-4">
+              {/* 배치 크기 */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  배치 크기 (flush_size)
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    value={optFlushSize}
+                    onChange={(e) => setOptFlushSize(Number(e.target.value) || 100)}
+                    min={10}
+                    max={1000}
+                    step={10}
+                    className="w-24 border border-gray-300 rounded-md px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:outline-none"
+                  />
+                  <span className="text-xs text-gray-500">
+                    이 숫자만큼 데이터가 모이면 한꺼번에 DB에 저장합니다.
+                    저장할 때 지도에도 반영됩니다. (기본: 100건)
+                  </span>
+                </div>
+              </div>
+
+              {/* API 호출 간격 */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  API 호출 간격 (delay)
+                </label>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={optDelay}
+                    onChange={(e) => setOptDelay(Number(e.target.value))}
+                    className="w-24 border border-gray-300 rounded-md px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value={0.2}>0.2초</option>
+                    <option value={0.3}>0.3초</option>
+                    <option value={0.5}>0.5초</option>
+                    <option value={1.0}>1.0초</option>
+                    <option value={2.0}>2.0초</option>
+                  </select>
+                  <span className="text-xs text-gray-500">
+                    KEPCO 서버에 요청을 보내는 간격입니다.
+                    짧을수록 빠르지만 차단 위험이 있습니다. (기본: 0.5초)
+                  </span>
+                </div>
+              </div>
+
+              {/* STEP 데이터 */}
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={optFetchStep}
+                    onChange={(e) => setOptFetchStep(e.target.checked)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-xs font-semibold text-gray-700">
+                    STEP 데이터 포함 (접속예정 건수/용량)
+                  </span>
+                </label>
+                <p className="text-xs text-gray-500 mt-1 ml-6">
+                  각 배전선로의 접속예정 건수와 용량(STEP 01/02/03)을 추가로 조회합니다.
+                  활성화하면 번지당 API를 1회 더 호출하므로 수집 속도가 절반으로 느려집니다.
+                </p>
+              </div>
+
+              {/* 안내 */}
+              <div className="text-xs text-amber-700 bg-amber-50 rounded px-3 py-2 border border-amber-200">
+                이 설정은 수집을 시작할 때 적용됩니다.
+                실행 중에는 변경할 수 없으며, 중단 후 다시 시작하면 새 설정이 적용됩니다.
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="mt-4 flex items-center gap-3">
           <button
             onClick={handleStart}
@@ -582,11 +680,18 @@ export default function CrawlManager() {
                     )}
                   </div>
 
-                  {job.started_at && (
-                    <div className="text-sm text-gray-500 text-right">
-                      {relativeTime(job.started_at)} 시작
+                  <div className="flex items-center justify-between">
+                    {job.started_at && (
+                      <div className="text-sm text-gray-500">
+                        {relativeTime(job.started_at)} 시작
+                      </div>
+                    )}
+                    <div className="flex items-center gap-3 text-xs text-gray-400">
+                      <span>배치: {(job.options as any)?.flush_size || 100}건</span>
+                      <span>간격: {(job.options as any)?.delay || 0.5}초</span>
+                      {(job.options as any)?.fetch_step_data && <span>STEP 포함</span>}
                     </div>
-                  )}
+                  </div>
                 </div>
               )}
             </div>
