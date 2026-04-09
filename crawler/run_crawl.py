@@ -33,7 +33,7 @@ SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
 # ── 상수 ──
 PROGRESS_INTERVAL = 10     # progress 업데이트 간격 (건)
-FLUSH_SIZE = 500           # DB flush 간격 (건)
+FLUSH_SIZE = 10            # DB flush 간격 (건) — 테스트용, 운영 시 500으로 복원
 TIMEOUT_SECONDS = 5 * 3600 + 50 * 60  # 5시간 50분
 
 
