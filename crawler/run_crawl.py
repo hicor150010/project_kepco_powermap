@@ -225,29 +225,34 @@ def run(job: dict):
 
     # 결과 카운터 (progress 업데이트 주기 제어)
     result_count = [0]
+    progress_count = [0]  # processed 기준 카운터 (결과 유무와 무관)
+
+    def on_progress(progress: CrawlProgress):
+        """매 주소 처리마다 호출 (결과 유무와 무관)"""
+        progress_count[0] += 1
+        # 10건마다 progress 업데이트 (경량)
+        if progress_count[0] % PROGRESS_INTERVAL == 0:
+            update_job(job_id, {
+                "progress": build_progress_json(progress),
+            })
+            # stop 요청 확인 (flush 아닌 구간에서도 체크)
+            if check_stop_requested(job_id):
+                logger.info("중단 요청 감지 — 크롤링을 중지합니다.")
+                crawler.stop()
 
     def on_result(result: CrawlResult):
-        """매 결과마다 호출 — 버퍼 추가 + 주기적 작업"""
+        """검색 결과가 있을 때마다 호출 — 버퍼 추가 + flush"""
         result_count[0] += 1
         flushed = db_writer.add(result)
 
-        # 10건마다 progress 업데이트 (경량)
-        if result_count[0] % PROGRESS_INTERVAL == 0:
-            update_job(job_id, {
-                "progress": build_progress_json(crawler.progress),
-            })
-
-        # flush 발생 시 (500건마다): checkpoint + stop 체크
+        # flush 발생 시: checkpoint 저장
         if flushed:
             update_job(job_id, {
                 "progress": build_progress_json(crawler.progress),
                 "checkpoint": build_checkpoint(crawler.progress),
             })
-            # stop 요청 확인
-            if check_stop_requested(job_id):
-                logger.info("중단 요청 감지 — 크롤링을 중지합니다.")
-                crawler.stop()
 
+    crawler.on_progress = on_progress
     crawler.on_result = on_result
 
     # 크롤링 실행
