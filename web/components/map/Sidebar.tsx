@@ -81,12 +81,18 @@ export default function Sidebar({
           </div>
         </div>
         {isAdmin && (
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-3 gap-1.5">
             <Link
               href="/admin/upload"
               className="text-[11px] bg-blue-500 hover:bg-blue-600 text-white px-2 py-1.5 rounded-md font-medium text-center flex items-center justify-center gap-1"
             >
               📤 업로드
+            </Link>
+            <Link
+              href="/admin/crawl"
+              className="text-[11px] bg-green-600 hover:bg-green-700 text-white px-2 py-1.5 rounded-md font-medium text-center flex items-center justify-center gap-1"
+            >
+              🔄 데이터 수집
             </Link>
             <Link
               href="/admin/users"

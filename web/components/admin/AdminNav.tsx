@@ -14,7 +14,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/admin/upload", label: "엑셀 업로드", icon: "📤" },
-  { href: "/admin/crawl", label: "크롤링 관리", icon: "🔄" },
+  { href: "/admin/crawl", label: "데이터 수집", icon: "🔄" },
   { href: "/admin/users", label: "계정 관리", icon: "👥" },
 ];
 

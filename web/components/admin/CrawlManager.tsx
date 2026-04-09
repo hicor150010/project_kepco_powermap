@@ -61,6 +61,8 @@ export default function CrawlManager() {
   const [submitting, setSubmitting] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   // ── 작업 목록 조회 ──
 
@@ -71,35 +73,36 @@ export default function CrawlManager() {
       if (data.ok) {
         setJobs(data.jobs);
         setError("");
+        setLastUpdated(new Date());
       }
     } catch {
       /* 폴링 중 실패는 무시 */
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchJobs();
+  };
 
   useEffect(() => {
     fetchJobs();
   }, [fetchJobs]);
 
   // running job이 있으면 5초 폴링
+  const hasActiveJobs = jobs.some(
+    (j) => j.status === "running" || j.status === "pending" || j.status === "stop_requested"
+  );
+
   useEffect(() => {
-    const hasRunning = jobs.some(
-      (j) => j.status === "running" || j.status === "pending" || j.status === "stop_requested"
-    );
+    if (!hasActiveJobs) return;
 
-    if (hasRunning && !pollRef.current) {
-      pollRef.current = setInterval(fetchJobs, 5000);
-    } else if (!hasRunning && pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [jobs, fetchJobs]);
+    const id = setInterval(fetchJobs, 5000);
+    return () => clearInterval(id);
+  }, [hasActiveJobs, fetchJobs]);
 
   // ── 시/도 목록 로드 ──
 
@@ -240,7 +243,7 @@ export default function CrawlManager() {
   // ── 중단 요청 ──
 
   const handleStop = async (jobId: number) => {
-    if (!confirm("크롤링을 중단하시겠습니까? 현재 진행 위치는 저장됩니다."))
+    if (!confirm("데이터 수집을 중단하시겠습니까? 현재 진행 위치는 저장되며 나중에 이어서 수집할 수 있습니다."))
       return;
 
     try {
@@ -342,8 +345,25 @@ export default function CrawlManager() {
       j.status === "stopped"
   );
 
+  const isPolling = hasActiveJobs;
+
   return (
     <div className="space-y-6">
+      {/* 상태 바 */}
+      {isPolling && (
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">
+            <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+            자동 갱신 중
+          </span>
+          {lastUpdated && (
+            <span className="text-xs text-gray-400">
+              {lastUpdated.toLocaleTimeString("ko-KR")} 기준
+            </span>
+          )}
+        </div>
+      )}
+
       {/* 에러 메시지 */}
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
@@ -359,84 +379,99 @@ export default function CrawlManager() {
 
       {/* ── 새 크롤링 ── */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-        <h3 className="text-sm font-bold text-gray-900 mb-4">
-          새 크롤링 시작
+        <h3 className="text-base font-bold text-gray-900 mb-4">
+          새 수집 시작
         </h3>
 
         <div className="grid grid-cols-5 gap-3">
           {/* 시/도 */}
-          <select
-            value={selectedSido}
-            onChange={(e) => onSidoChange(e.target.value)}
-            className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-          >
-            <option value="">시/도 선택</option>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">시/도</label>
+            <select
+              value={selectedSido}
+              onChange={(e) => onSidoChange(e.target.value)}
+              className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm font-medium text-gray-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+            >
+              <option value="">선택</option>
             {sidoList.map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
             ))}
           </select>
+          </div>
 
           {/* 시 */}
-          <select
-            value={selectedSi}
-            onChange={(e) => onSiChange(e.target.value)}
-            disabled={!siList.length}
-            className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-50 disabled:text-gray-400"
-          >
-            <option value="">(전체)</option>
-            {siList.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">시</label>
+            <select
+              value={selectedSi}
+              onChange={(e) => onSiChange(e.target.value)}
+              disabled={!siList.length}
+              className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm font-medium text-gray-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+            >
+              <option value="">(전체)</option>
+              {siList.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {/* 구/군 */}
-          <select
-            value={selectedGu}
-            onChange={(e) => onGuChange(e.target.value)}
-            disabled={!guList.length}
-            className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-50 disabled:text-gray-400"
-          >
-            <option value="">(전체)</option>
-            {guList.map((g) => (
-              <option key={g} value={g}>
-                {g}
-              </option>
-            ))}
-          </select>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">구/군</label>
+            <select
+              value={selectedGu}
+              onChange={(e) => onGuChange(e.target.value)}
+              disabled={!guList.length}
+              className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm font-medium text-gray-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+            >
+              <option value="">(전체)</option>
+              {guList.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {/* 동/면 */}
-          <select
-            value={selectedDong}
-            onChange={(e) => onDongChange(e.target.value)}
-            disabled={!dongList.length}
-            className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-50 disabled:text-gray-400"
-          >
-            <option value="">(전체)</option>
-            {dongList.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">동/면</label>
+            <select
+              value={selectedDong}
+              onChange={(e) => onDongChange(e.target.value)}
+              disabled={!dongList.length}
+              className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm font-medium text-gray-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+            >
+              <option value="">(전체)</option>
+              {dongList.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {/* 리 */}
-          <select
-            value={selectedLi}
-            onChange={(e) => setSelectedLi(e.target.value)}
-            disabled={!liList.length}
-            className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-50 disabled:text-gray-400"
-          >
-            <option value="">(전체)</option>
-            {liList.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </select>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">리</label>
+            <select
+              value={selectedLi}
+              onChange={(e) => setSelectedLi(e.target.value)}
+              disabled={!liList.length}
+              className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm font-medium text-gray-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+            >
+              <option value="">(전체)</option>
+              {liList.map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="mt-4 flex items-center gap-3">
@@ -445,10 +480,10 @@ export default function CrawlManager() {
             disabled={!selectedSido || submitting}
             className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {submitting ? "시작 중..." : "크롤링 시작"}
+            {submitting ? "시작 중..." : "수집 시작"}
           </button>
           {selectedSido && (
-            <span className="text-xs text-gray-500">
+            <span className="text-sm text-gray-600">
               대상:{" "}
               {[selectedSido, selectedSi, selectedGu, selectedDong, selectedLi]
                 .filter(Boolean)
@@ -461,53 +496,84 @@ export default function CrawlManager() {
       {/* ── 실행 중인 작업 ── */}
       {activeJobs.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-sm font-bold text-gray-900">실행 중</h3>
+          <h3 className="text-base font-bold text-gray-900">실행 중</h3>
           {activeJobs.map((job) => (
             <div
               key={job.id}
-              className="bg-white rounded-xl border border-blue-200 p-5 shadow-sm"
+              className="bg-white rounded-xl border-2 border-blue-300 p-6 shadow-sm"
             >
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
                   <StatusBadge status={job.status} />
-                  <span className="text-sm font-medium text-gray-900">
+                  <span className="text-base font-semibold text-gray-900">
                     {formatScope(job)}
                   </span>
-                  <span className="text-xs text-gray-400">
+                  <span className="text-sm text-gray-400">
                     Job #{job.id}
                   </span>
                 </div>
-                {job.status === "running" && (
-                  <button
-                    onClick={() => handleStop(job.id)}
-                    className="text-xs text-red-600 hover:text-red-800 border border-red-300 hover:bg-red-50 px-3 py-1.5 rounded-md transition-colors"
-                  >
-                    중단
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {job.status === "running" && (
+                    <button
+                      onClick={() => handleStop(job.id)}
+                      className="text-sm text-red-600 hover:text-red-800 border border-red-300 hover:bg-red-50 px-4 py-2 rounded-md font-medium transition-colors"
+                    >
+                      중단
+                    </button>
+                  )}
+                  {job.status === "pending" && (
+                    <button
+                      onClick={() => handleDelete(job.id)}
+                      className="text-sm text-gray-500 hover:text-red-600 border border-gray-300 hover:border-red-300 hover:bg-red-50 px-4 py-2 rounded-md font-medium transition-colors"
+                    >
+                      취소
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* 진행률 */}
               {job.progress.processed != null && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs text-gray-600">
-                    <span>
-                      처리: {job.progress.processed?.toLocaleString()}건 | 결과:{" "}
-                      {job.progress.found?.toLocaleString()}건 | 오류:{" "}
-                      {job.progress.errors || 0}건
-                    </span>
-                    {job.started_at && (
-                      <span>{relativeTime(job.started_at)} 시작</span>
+                <div className="space-y-3">
+                  {/* 통계 카드 */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-blue-50 rounded-lg px-4 py-3 text-center">
+                      <div className="text-xl font-bold text-blue-700">
+                        {job.progress.processed?.toLocaleString()}
+                      </div>
+                      <div className="text-xs text-blue-600 mt-0.5">조회한 주소</div>
+                    </div>
+                    <div className="bg-green-50 rounded-lg px-4 py-3 text-center">
+                      <div className="text-xl font-bold text-green-700">
+                        {job.progress.found?.toLocaleString()}
+                      </div>
+                      <div className="text-xs text-green-600 mt-0.5">수집한 데이터</div>
+                    </div>
+                    <div className={`rounded-lg px-4 py-3 text-center ${(job.progress.errors || 0) > 0 ? "bg-red-50" : "bg-gray-50"}`}>
+                      <div className={`text-xl font-bold ${(job.progress.errors || 0) > 0 ? "text-red-700" : "text-gray-400"}`}>
+                        {job.progress.errors || 0}
+                      </div>
+                      <div className={`text-xs mt-0.5 ${(job.progress.errors || 0) > 0 ? "text-red-600" : "text-gray-400"}`}>오류</div>
+                    </div>
+                  </div>
+
+                  {/* 현재 위치 */}
+                  <div className="bg-gray-50 rounded-lg px-4 py-3">
+                    {job.progress.current_address && (
+                      <div className="text-sm text-gray-700">
+                        현재: <span className="font-medium">{job.progress.current_address}</span>
+                      </div>
+                    )}
+                    {job.progress.phase && (
+                      <div className="text-sm text-blue-600 font-medium mt-1">
+                        {job.progress.phase}
+                      </div>
                     )}
                   </div>
-                  {job.progress.current_address && (
-                    <div className="text-xs text-gray-500 truncate">
-                      현재: {job.progress.current_address}
-                    </div>
-                  )}
-                  {job.progress.phase && (
-                    <div className="text-xs text-blue-600 font-medium">
-                      {job.progress.phase}
+
+                  {job.started_at && (
+                    <div className="text-sm text-gray-500 text-right">
+                      {relativeTime(job.started_at)} 시작
                     </div>
                   )}
                 </div>
@@ -520,7 +586,7 @@ export default function CrawlManager() {
       {/* ── 작업 이력 ── */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100">
-          <h3 className="text-sm font-bold text-gray-900">작업 이력</h3>
+          <h3 className="text-base font-bold text-gray-900">작업 이력</h3>
         </div>
 
         {loading ? (
