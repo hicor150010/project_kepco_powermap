@@ -415,13 +415,18 @@ class KepcoСrawler:
         excel_gu = addr_gu
         excel_li = addr_li
 
+        # search_capacity에는 "-기타지역"을 빈 문자열로 변환
+        # (번지 목록 조회와 달리, 용량 검색에서는 빈 값이어야 결과가 나옴)
+        def _clean(v: str) -> str:
+            return "" if v == SKIP_VALUE else v
+
         try:
             results = self.client.search_capacity(
                 addr_do=addr_do,
-                addr_si=addr_si,
-                addr_gu=addr_gu,
-                addr_lidong=addr_lidong,
-                addr_li=addr_li,
+                addr_si=_clean(addr_si),
+                addr_gu=_clean(addr_gu),
+                addr_lidong=_clean(addr_lidong),
+                addr_li=_clean(addr_li),
                 addr_jibun=addr_jibun,
             )
 
