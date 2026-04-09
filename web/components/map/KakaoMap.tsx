@@ -37,6 +37,8 @@ interface Props {
   measureAddPointRef?: React.MutableRefObject<((latlng: any) => void) | null>;
   /** 현재 선택된 마을의 geocode_address — halo 표시 */
   selectedAddr?: string | null;
+  /** 지도 타입: "roadmap" | "skyview" | "hybrid" */
+  mapType?: "roadmap" | "skyview" | "hybrid";
 }
 
 /**
@@ -161,6 +163,7 @@ export default function KakaoMap({
   measureMode = false,
   measureAddPointRef,
   selectedAddr = null,
+  mapType = "roadmap",
 }: Props) {
   // 측정 모드 여부를 클릭 핸들러에서 참조하기 위한 ref
   // (state로 전달하면 마커 재생성이 발생하므로 ref로 우회)
@@ -208,14 +211,24 @@ export default function KakaoMap({
     mapInstanceRef.current = map;
     (window as any).__kepcoMap = map;
 
-    map.addControl(
-      new window.kakao.maps.ZoomControl(),
-      window.kakao.maps.ControlPosition.RIGHT
-    );
+    // 줌 컨트롤은 MapToolbar에서 커스텀으로 제공 — SDK 내장 컨트롤 제거
 
     // 상위(MapClient)에 인스턴스 전달 → 거리재기 등 도구가 직접 제어
     onMapReady?.(map);
   }, [loaded, onMapReady]);
+
+  // 지도 타입 변경
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!loaded || !map) return;
+    const typeId =
+      mapType === "skyview"
+        ? window.kakao.maps.MapTypeId.SKYVIEW
+        : mapType === "hybrid"
+          ? window.kakao.maps.MapTypeId.HYBRID
+          : window.kakao.maps.MapTypeId.ROADMAP;
+    map.setMapTypeId(typeId);
+  }, [loaded, mapType]);
 
   // 측정 모드 진입/해제 시 커서 모양 변경.
   // 카카오 SDK 내부 자식 요소가 자기 cursor를 설정하므로, body에 클래스를 토글해

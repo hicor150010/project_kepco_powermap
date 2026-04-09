@@ -68,37 +68,39 @@ export default function Sidebar({
         <p className="text-xs text-gray-500 mt-0.5">KEPCO 데이터 시각화</p>
       </div>
 
-      {/* 사용자 정보 */}
+      {/* 사용자 정보 + 관리 메뉴 */}
       <div className="px-5 py-3 border-b border-gray-200">
-        <div className="text-xs mb-2">
-          <div className="text-gray-500">{email}</div>
-          <div
-            className={`font-medium mt-0.5 ${
-              isAdmin ? "text-blue-600" : "text-gray-700"
-            }`}
-          >
-            {isAdmin ? "관리자" : "일반 사용자"}
+        <div className="flex items-center justify-between">
+          <div className="text-xs">
+            <span className="text-gray-500">{email}</span>
+            {isAdmin && (
+              <span className="ml-1.5 text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                관리자
+              </span>
+            )}
           </div>
         </div>
         {isAdmin && (
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="flex gap-3 mt-2.5 text-[11px] font-medium">
             <Link
               href="/admin/upload"
-              className="text-[11px] bg-blue-500 hover:bg-blue-600 text-white px-2 py-1.5 rounded-md font-medium text-center flex items-center justify-center gap-1"
+              className="text-gray-500 hover:text-blue-600 transition-colors"
             >
-              📤 업로드
+              업로드
             </Link>
+            <span className="text-gray-200">|</span>
             <Link
               href="/admin/crawl"
-              className="text-[11px] bg-green-600 hover:bg-green-700 text-white px-2 py-1.5 rounded-md font-medium text-center flex items-center justify-center gap-1"
+              className="text-gray-500 hover:text-blue-600 transition-colors"
             >
-              🔄 데이터 수집
+              데이터 수집
             </Link>
+            <span className="text-gray-200">|</span>
             <Link
               href="/admin/users"
-              className="text-[11px] bg-gray-700 hover:bg-gray-800 text-white px-2 py-1.5 rounded-md font-medium text-center flex items-center justify-center gap-1"
+              className="text-gray-500 hover:text-blue-600 transition-colors"
             >
-              👥 계정 관리
+              계정 관리
             </Link>
           </div>
         )}
@@ -109,16 +111,16 @@ export default function Sidebar({
         <button
           type="button"
           onClick={togglePromising}
-          className={`w-full rounded-lg px-3 py-2.5 text-xs font-bold transition-colors flex items-center justify-center gap-2 ${
+          className={`w-full rounded-lg px-3 py-2 text-xs font-semibold transition-all flex items-center justify-center gap-2 ${
             isPromisingMode
-              ? "bg-amber-400 hover:bg-amber-500 text-amber-950 border-2 border-amber-500 shadow-sm"
-              : "bg-white hover:bg-amber-50 text-gray-700 border-2 border-amber-300"
+              ? "bg-amber-50 hover:bg-amber-100 text-amber-700 ring-1 ring-amber-300"
+              : "bg-gray-50 hover:bg-gray-100 text-gray-600 ring-1 ring-gray-200"
           }`}
           title="변전소·주변압기·배전선로가 모두 여유 있는 마을만 표시합니다"
         >
-          <span className="text-base">🌞</span>
+          <span className={`w-2 h-2 rounded-full ${isPromisingMode ? "bg-amber-400" : "bg-gray-300"}`} />
           <span>{isPromisingMode ? "여유 있는 곳만 보는 중" : "여유 있는 곳만 보기"}</span>
-          {isPromisingMode && <span className="text-[10px]">✕</span>}
+          {isPromisingMode && <span className="text-[10px] text-amber-400 ml-auto">✕</span>}
         </button>
       </div>
 

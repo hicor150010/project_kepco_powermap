@@ -49,6 +49,7 @@ export default function MapClient({ isAdmin, email }: Props) {
   const [mapInstance, setMapInstance] = useState<any>(null);
   const [measureActive, setMeasureActive] = useState(false);
   const [topListOpen, setTopListOpen] = useState(false);
+  const [mapType, setMapType] = useState<"roadmap" | "skyview" | "hybrid">("roadmap");
 
   // 검색 결과가 필터에 가려졌을 때 자동 해제하면서 띄우는 토스트.
   // filterSnapshot은 "되돌리기" 시 복원할 이전 필터.
@@ -294,6 +295,7 @@ export default function MapClient({ isAdmin, email }: Props) {
           measureMode={measureActive}
           measureAddPointRef={measureAddPointRef}
           selectedAddr={selectedAddr}
+          mapType={mapType}
         />
 
         {/* 좌상단 마커 색상 범례 */}
@@ -305,6 +307,10 @@ export default function MapClient({ isAdmin, email }: Props) {
           onToggleMeasure={() => setMeasureActive((v) => !v)}
           topListActive={topListOpen}
           onToggleTopList={() => setTopListOpen((v) => !v)}
+          mapType={mapType}
+          onMapTypeChange={setMapType}
+          onZoomIn={() => mapInstance?.setLevel(mapInstance.getLevel() - 1)}
+          onZoomOut={() => mapInstance?.setLevel(mapInstance.getLevel() + 1)}
         />
 
         {/* 유망 부지 TOP 플로팅 패널 — open 일 때만 마운트 */}
