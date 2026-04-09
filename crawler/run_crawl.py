@@ -33,7 +33,7 @@ SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
 # ── 상수 ──
 PROGRESS_INTERVAL = 10     # progress 업데이트 간격 (건)
-FLUSH_SIZE = 10            # DB flush 간격 (건) — 테스트용, 운영 시 500으로 복원
+FLUSH_SIZE = 100           # DB flush 간격 (건)
 TIMEOUT_SECONDS = 5 * 3600 + 50 * 60  # 5시간 50분
 
 
@@ -250,21 +250,15 @@ def run(job: dict):
 
     crawler.on_result = on_result
 
-    # scope에서 "-기타지역"은 None으로 변환
-    # (크롤러가 자동으로 해당 단계를 순환하도록)
-    def clean_scope(val: str | None) -> str | None:
-        if not val or val.strip() == "-기타지역":
-            return None
-        return val.strip()
-
     # 크롤링 실행
+    # -기타지역은 크롤러에 그대로 전달 (크롤러 내부에서 처리)
     try:
         crawler.crawl(
             addr_do=job.get("sido"),
-            addr_si=clean_scope(job.get("si")),
-            addr_gu=clean_scope(job.get("gu")),
-            addr_dong=clean_scope(job.get("dong")),
-            addr_li=clean_scope(job.get("li")),
+            addr_si=job.get("si"),
+            addr_gu=job.get("gu"),
+            addr_dong=job.get("dong"),
+            addr_li=job.get("li"),
             resume_from=resume_from,
             resume_stats=resume_stats,
         )
