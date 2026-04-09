@@ -105,15 +105,21 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // "-기타지역"은 저장하지 않음 (크롤러가 자동 순환)
+  const clean = (v?: string) => {
+    const t = v?.trim();
+    return t && t !== "-기타지역" ? t : null;
+  };
+
   // crawl_jobs 생성
   const { data: job, error: insertErr } = await supabase
     .from("crawl_jobs")
     .insert({
       sido: body.sido.trim(),
-      si: body.si?.trim() || null,
-      gu: body.gu?.trim() || null,
-      dong: body.dong?.trim() || null,
-      li: body.li?.trim() || null,
+      si: clean(body.si),
+      gu: clean(body.gu),
+      dong: clean(body.dong),
+      li: clean(body.li),
       options: body.options || {},
       checkpoint: body.checkpoint || null,
       requested_by: me.id,

@@ -250,14 +250,21 @@ def run(job: dict):
 
     crawler.on_result = on_result
 
+    # scope에서 "-기타지역"은 None으로 변환
+    # (크롤러가 자동으로 해당 단계를 순환하도록)
+    def clean_scope(val: str | None) -> str | None:
+        if not val or val.strip() == "-기타지역":
+            return None
+        return val.strip()
+
     # 크롤링 실행
     try:
         crawler.crawl(
             addr_do=job.get("sido"),
-            addr_si=job.get("si"),
-            addr_gu=job.get("gu"),
-            addr_dong=job.get("dong"),
-            addr_li=job.get("li"),
+            addr_si=clean_scope(job.get("si")),
+            addr_gu=clean_scope(job.get("gu")),
+            addr_dong=clean_scope(job.get("dong")),
+            addr_li=clean_scope(job.get("li")),
             resume_from=resume_from,
             resume_stats=resume_stats,
         )
