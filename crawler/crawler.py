@@ -415,17 +415,32 @@ class KepcoСrawler:
         excel_gu = addr_gu
         excel_li = addr_li
 
-        # search_capacity: addr_li의 "-기타지역"만 빈 문자열로 변환
-        # addr_si/gu/lidong의 "-기타지역"은 그대로 보내야 결과가 나옴
-        try:
-            results = self.client.search_capacity(
-                addr_do=addr_do,
-                addr_si=addr_si,
-                addr_gu=addr_gu,
-                addr_lidong=addr_lidong,
-                addr_li="" if addr_li == SKIP_VALUE else addr_li,
-                addr_jibun=addr_jibun,
+        # search_capacity: -기타지역 처리
+        # KEPCO API가 지역마다 -기타지역 처리가 다름:
+        #   광주: si=-기타지역 유지해야 함
+        #   천안: gu=-기타지역 빈값이어야 함
+        # → 1차: addr_li만 빈값, 나머지 그대로
+        # → 0건이면 2차: 모든 -기타지역을 빈값으로 재시도
+        def _try_search(si, gu, lidong, li):
+            return self.client.search_capacity(
+                addr_do=addr_do, addr_si=si, addr_gu=gu,
+                addr_lidong=lidong, addr_li=li, addr_jibun=addr_jibun,
             )
+
+        try:
+            # 1차: addr_li만 빈값
+            results = _try_search(
+                addr_si, addr_gu, addr_lidong,
+                "" if addr_li == SKIP_VALUE else addr_li,
+            )
+            # 0건이면 2차: 모든 -기타지역을 빈값으로
+            if not results:
+                alt_si = "" if addr_si == SKIP_VALUE else addr_si
+                alt_gu = "" if addr_gu == SKIP_VALUE else addr_gu
+                alt_li = "" if addr_li == SKIP_VALUE else addr_li
+                retry = _try_search(alt_si, alt_gu, addr_lidong, alt_li)
+                if retry:
+                    results = retry
 
             self.progress.processed += 1
 
