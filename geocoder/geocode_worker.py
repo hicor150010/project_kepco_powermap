@@ -120,15 +120,19 @@ def geocode_vworld(address: str) -> tuple[float, float] | None:
             )
             resp = requests.get(url, timeout=15)
             if resp.status_code != 200:
+                logger.warning(f"VWorld HTTP {resp.status_code}: {address} (type={addr_type})")
                 continue
             data = resp.json()
-            if data.get("response", {}).get("status") != "OK":
+            status = data.get("response", {}).get("status")
+            if status != "OK":
+                logger.debug(f"VWorld status={status}: {address} (type={addr_type})")
                 continue
             point = data["response"]["result"]["point"]
             lat = float(point["y"])
             lng = float(point["x"])
             return (lat, lng)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"VWorld 예외: {address} (type={addr_type}): {e}")
             continue
     return None
 
