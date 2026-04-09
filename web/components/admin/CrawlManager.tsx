@@ -680,18 +680,31 @@ export default function CrawlManager() {
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    {job.started_at && (
-                      <div className="text-sm text-gray-500">
-                        {relativeTime(job.started_at)} 시작
+                  {/* 설정 + 동작 안내 */}
+                  {(() => {
+                    const opts = (job.options || {}) as any;
+                    const flush = opts.flush_size || 100;
+                    const delay = opts.delay || 0.5;
+                    const hasStep = opts.fetch_step_data;
+                    return (
+                      <div className="bg-gray-50 rounded-lg px-4 py-3 text-xs text-gray-500 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          {job.started_at && (
+                            <span>{relativeTime(job.started_at)} 시작</span>
+                          )}
+                          <span className="text-gray-400">Job #{job.id}</span>
+                        </div>
+                        <div className="border-t border-gray-200 pt-1.5 grid grid-cols-2 gap-x-6 gap-y-1">
+                          <span>화면 갱신: <b className="text-gray-700">~{Math.round(10 * delay)}초</b>마다</span>
+                          <span>DB 저장 + 지도 반영: <b className="text-gray-700">{flush}건</b>마다</span>
+                          <span>좌표 변환: <b className="text-gray-700">DB 저장 시 자동</b></span>
+                          <span>중단 확인: <b className="text-gray-700">~{Math.round(10 * delay)}초</b>마다</span>
+                          <span>체크포인트 저장: <b className="text-gray-700">{flush}건</b>마다</span>
+                          <span>API 호출 간격: <b className="text-gray-700">{delay}초</b>{hasStep ? " (STEP 포함)" : ""}</span>
+                        </div>
                       </div>
-                    )}
-                    <div className="flex items-center gap-3 text-xs text-gray-400">
-                      <span>배치: {(job.options as any)?.flush_size || 100}건</span>
-                      <span>간격: {(job.options as any)?.delay || 0.5}초</span>
-                      {(job.options as any)?.fetch_step_data && <span>STEP 포함</span>}
-                    </div>
-                  </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
