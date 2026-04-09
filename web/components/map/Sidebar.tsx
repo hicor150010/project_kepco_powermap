@@ -70,58 +70,42 @@ export default function Sidebar({
 
       {/* 사용자 정보 + 관리 메뉴 */}
       <div className="px-5 py-3 border-b border-gray-200">
-        <div className="flex items-center justify-between">
-          <div className="text-xs">
-            <span className="text-gray-500">{email}</span>
-            {isAdmin && (
-              <span className="ml-1.5 text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
-                관리자
-              </span>
-            )}
-          </div>
+        <div className="text-xs">
+          <span className="text-gray-500">{email}</span>
+          {isAdmin && (
+            <span className="ml-1.5 text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+              관리자
+            </span>
+          )}
         </div>
         {isAdmin && (
-          <div className="flex gap-3 mt-2.5 text-[11px] font-medium">
+          <div className="flex gap-2 mt-3">
             <Link
               href="/admin/upload"
-              className="text-gray-500 hover:text-blue-600 transition-colors"
+              className="flex-1 text-[11px] text-center py-1.5 rounded-md font-medium
+                         bg-blue-50 text-blue-600 hover:bg-blue-100
+                         border border-blue-100 hover:border-blue-200 transition-colors"
             >
-              업로드
+              <span className="opacity-70 mr-0.5">&#8593;</span> 업로드
             </Link>
-            <span className="text-gray-200">|</span>
             <Link
               href="/admin/crawl"
-              className="text-gray-500 hover:text-blue-600 transition-colors"
+              className="flex-1 text-[11px] text-center py-1.5 rounded-md font-medium
+                         bg-emerald-50 text-emerald-600 hover:bg-emerald-100
+                         border border-emerald-100 hover:border-emerald-200 transition-colors"
             >
-              데이터 수집
+              <span className="opacity-70 mr-0.5">&#8635;</span> 수집
             </Link>
-            <span className="text-gray-200">|</span>
             <Link
               href="/admin/users"
-              className="text-gray-500 hover:text-blue-600 transition-colors"
+              className="flex-1 text-[11px] text-center py-1.5 rounded-md font-medium
+                         bg-gray-50 text-gray-600 hover:bg-gray-100
+                         border border-gray-200 hover:border-gray-300 transition-colors"
             >
-              계정 관리
+              <span className="opacity-70 mr-0.5">&#9881;</span> 계정
             </Link>
           </div>
         )}
-      </div>
-
-      {/* 빠른 토글 — 여유 있는 곳만 보기 */}
-      <div className="px-5 py-3 border-b border-gray-200">
-        <button
-          type="button"
-          onClick={togglePromising}
-          className={`w-full rounded-lg px-3 py-2 text-xs font-semibold transition-all flex items-center justify-center gap-2 ${
-            isPromisingMode
-              ? "bg-amber-50 hover:bg-amber-100 text-amber-700 ring-1 ring-amber-300"
-              : "bg-gray-50 hover:bg-gray-100 text-gray-600 ring-1 ring-gray-200"
-          }`}
-          title="변전소·주변압기·배전선로가 모두 여유 있는 마을만 표시합니다"
-        >
-          <span className={`w-2 h-2 rounded-full ${isPromisingMode ? "bg-amber-400" : "bg-gray-300"}`} />
-          <span>{isPromisingMode ? "여유 있는 곳만 보는 중" : "여유 있는 곳만 보기"}</span>
-          {isPromisingMode && <span className="text-[10px] text-amber-400 ml-auto">✕</span>}
-        </button>
       </div>
 
       {/* 통계 */}
@@ -157,6 +141,8 @@ export default function Sidebar({
           totalRows={totalRows}
           filters={filters}
           onChange={onFiltersChange}
+          isPromisingMode={isPromisingMode}
+          onTogglePromising={togglePromising}
         />
       </div>
 

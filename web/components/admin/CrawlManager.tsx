@@ -314,9 +314,13 @@ export default function CrawlManager() {
   // ── 유틸 ──
 
   function formatScope(job: CrawlJob): string {
-    return [job.sido, job.si, job.gu, job.dong, job.li]
-      .filter(Boolean)
-      .join(" > ");
+    return [
+      job.sido,
+      job.si || "(전체)",
+      job.gu || "(전체)",
+      job.dong || "(전체)",
+      job.li || "(전체)",
+    ].join(" > ");
   }
 
   function relativeTime(iso: string): string {
@@ -352,8 +356,11 @@ export default function CrawlManager() {
       {/* 상태 바 */}
       {isPolling && (
         <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">
-            <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+          <span className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full">
+            <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
             자동 갱신 중
           </span>
           {lastUpdated && (
@@ -485,9 +492,13 @@ export default function CrawlManager() {
           {selectedSido && (
             <span className="text-sm text-gray-600">
               대상:{" "}
-              {[selectedSido, selectedSi, selectedGu, selectedDong, selectedLi]
-                .filter(Boolean)
-                .join(" > ")}
+              {[
+                selectedSido,
+                selectedSi || "(전체)",
+                selectedGu || "(전체)",
+                selectedDong || "(전체)",
+                selectedLi || "(전체)",
+              ].join(" > ")}
             </span>
           )}
         </div>

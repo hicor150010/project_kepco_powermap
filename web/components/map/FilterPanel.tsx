@@ -10,6 +10,10 @@ interface Props {
   totalRows: MapSummaryRow[];
   filters: Filters;
   onChange: (filters: Filters) => void;
+  /** "여유 있는 곳만 보기" 활성 여부 */
+  isPromisingMode?: boolean;
+  /** "여유 있는 곳만 보기" 토글 */
+  onTogglePromising?: () => void;
 }
 
 /**
@@ -69,7 +73,7 @@ function VolumeToggle({
   );
 }
 
-export default function FilterPanel({ totalRows, filters, onChange }: Props) {
+export default function FilterPanel({ totalRows, filters, onChange, isPromisingMode, onTogglePromising }: Props) {
   const [expanded, setExpanded] = useState(true);
 
   // 0. 여유용량(1차) 필터 적용
@@ -270,6 +274,21 @@ export default function FilterPanel({ totalRows, filters, onChange }: Props) {
             <div className="text-sm font-bold text-blue-800 flex items-center gap-1.5 pb-2 border-b border-blue-200">
               <span className="text-base">📊</span> 여유용량 상태
             </div>
+            {onTogglePromising && (
+              <button
+                type="button"
+                onClick={onTogglePromising}
+                className={`w-full rounded-md px-3 py-2 text-xs font-semibold transition-all flex items-center justify-center gap-2 ${
+                  isPromisingMode
+                    ? "bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300"
+                    : "bg-white hover:bg-amber-50 text-gray-600 border border-gray-200 hover:border-amber-200"
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${isPromisingMode ? "bg-amber-500" : "bg-gray-400"}`} />
+                {isPromisingMode ? "여유 있는 곳만 보는 중" : "여유 있는 곳만 보기"}
+                {isPromisingMode && <span className="text-[10px] text-amber-400 ml-auto">✕</span>}
+              </button>
+            )}
             <VolumeToggle
               label="변전소"
               selected={filters.vol_subst}
@@ -291,6 +310,14 @@ export default function FilterPanel({ totalRows, filters, onChange }: Props) {
           <div className="border-2 border-gray-300 -mx-2 px-3 py-3.5 rounded-lg space-y-3 bg-white shadow-sm">
             <div className="text-sm font-bold text-gray-800 flex items-center gap-1.5 pb-2 border-b border-gray-200">
               <span className="text-base">🗺</span> 지역
+              {(filters.addr_do.size > 0 || filters.addr_gu.size > 0 || filters.addr_dong.size > 0 || filters.addr_li.size > 0) && (
+                <button
+                  onClick={() => onChange({ ...filters, addr_do: new Set(), addr_gu: new Set(), addr_dong: new Set(), addr_li: new Set() })}
+                  className="ml-auto text-[10px] font-normal text-gray-400 hover:text-red-500 transition-colors"
+                >
+                  지역 초기화
+                </button>
+              )}
             </div>
             <ChipToggle
               label="시/도"
@@ -326,6 +353,14 @@ export default function FilterPanel({ totalRows, filters, onChange }: Props) {
           <div className="border-2 border-gray-300 -mx-2 px-3 py-3.5 rounded-lg space-y-3 bg-white shadow-sm">
             <div className="text-sm font-bold text-gray-800 flex items-center gap-1.5 pb-2 border-b border-gray-200">
               <span className="text-base">⚡</span> 설비
+              {(filters.subst_nm.size > 0 || filters.dl_nm.size > 0) && (
+                <button
+                  onClick={() => onChange({ ...filters, subst_nm: new Set(), dl_nm: new Set() })}
+                  className="ml-auto text-[10px] font-normal text-gray-400 hover:text-red-500 transition-colors"
+                >
+                  설비 초기화
+                </button>
+              )}
             </div>
             <ChipToggle
               label="변전소명"
