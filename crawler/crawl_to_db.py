@@ -1,8 +1,11 @@
 """
-KEPCO 크롤링 결과 → Supabase DB UPSERT
+KEPCO 크롤링 결과 → Supabase DB UPSERT + 실시간 지오코딩
 PostgREST REST API 직접 호출 (supabase-py 불필요)
 """
 import logging
+import os
+import urllib.parse
+
 import requests
 from crawler import CrawlResult
 
@@ -10,6 +13,9 @@ logger = logging.getLogger(__name__)
 
 # PostgREST 배치 한도
 BATCH_SIZE = 1000
+
+# 카카오 REST API 키 (지오코딩용)
+KAKAO_REST_KEY = os.environ.get("KAKAO_REST_KEY", "")
 
 
 def _parse_int(value: str):
@@ -66,8 +72,6 @@ def _to_row(result: CrawlResult) -> dict:
         "addr_li": _empty_to_none(result.addr_li),
         "addr_jibun": _empty_to_none(result.addr_jibun),
         "geocode_address": geocode_addr,
-        # 좌표는 geocoder 워크플로우에서 별도 처리
-        # lat, lng 생략 → UPSERT 시 기존 값 유지
         "subst_nm": _empty_to_none(result.subst_nm),
         "mtr_no": _empty_to_none(result.mtr_no),
         "dl_nm": _empty_to_none(result.dl_nm),
@@ -96,8 +100,33 @@ def _to_row(result: CrawlResult) -> dict:
     }
 
 
+# ══════════════════════════════════════════════
+# 지오코딩 (카카오 메인)
+# ══════════════════════════════════════════════
+
+def _geocode_kakao(address: str) -> tuple[float, float] | None:
+    """카카오 지오코딩 — REST API 키 인증, 해외 IP에서도 동작"""
+    if not KAKAO_REST_KEY:
+        return None
+    try:
+        resp = requests.get(
+            "https://dapi.kakao.com/v2/local/search/address.json",
+            params={"query": address},
+            headers={"Authorization": f"KakaoAK {KAKAO_REST_KEY}"},
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            return None
+        docs = resp.json().get("documents", [])
+        if not docs:
+            return None
+        return (float(docs[0]["y"]), float(docs[0]["x"]))
+    except Exception:
+        return None
+
+
 class CrawlDbWriter:
-    """크롤링 결과를 Supabase kepco_data에 스트리밍 UPSERT"""
+    """크롤링 결과를 Supabase kepco_data에 스트리밍 UPSERT + 실시간 지오코딩"""
 
     def __init__(
         self,
@@ -109,7 +138,9 @@ class CrawlDbWriter:
         self._key = supabase_key
         self._flush_size = flush_size
         self._buffer: list[dict] = []
-        self._stats = {"upserted": 0, "errors": 0}
+        self._stats = {"upserted": 0, "errors": 0, "geocoded": 0}
+        # 이미 지오코딩한 주소 캐시 (세션 내 중복 방지)
+        self._geocode_done: set[str] = set()
 
     def _headers(self, prefer: str = "") -> dict:
         """PostgREST 요청 헤더"""
@@ -135,14 +166,14 @@ class CrawlDbWriter:
         return False
 
     def flush(self):
-        """버퍼의 모든 데이터를 Supabase에 UPSERT 후 비움"""
+        """버퍼의 모든 데이터를 Supabase에 UPSERT 후 비움 + 지오코딩"""
         if not self._buffer:
             return
 
         rows = self._buffer.copy()
         self._buffer.clear()
 
-        # BATCH_SIZE 단위로 나눠서 전송
+        # 1. UPSERT
         for i in range(0, len(rows), BATCH_SIZE):
             chunk = rows[i : i + BATCH_SIZE]
             try:
@@ -167,6 +198,82 @@ class CrawlDbWriter:
                 self._stats["errors"] += len(chunk)
                 logger.error(f"UPSERT 네트워크 오류: {e}")
 
+        # 2. 지오코딩 — 이번 flush의 고유 geocode_address 중 아직 안 한 것만
+        new_addresses = set()
+        for row in rows:
+            addr = row.get("geocode_address", "")
+            if addr and addr not in self._geocode_done:
+                new_addresses.add(addr)
+
+        if new_addresses:
+            self._geocode_addresses(new_addresses)
+
+    def _geocode_addresses(self, addresses: set[str]):
+        """주소 목록을 지오코딩하여 geocode_cache + kepco_data 업데이트"""
+        for address in addresses:
+            # 1) geocode_cache 확인
+            coords = self._lookup_cache(address)
+
+            # 2) 캐시 miss → 카카오 API
+            if not coords:
+                coords = _geocode_kakao(address)
+                if coords:
+                    self._save_cache(address, coords[0], coords[1])
+
+            # 3) 좌표 있으면 kepco_data 업데이트
+            if coords:
+                self._update_coords(address, coords[0], coords[1])
+                self._stats["geocoded"] += 1
+
+            self._geocode_done.add(address)
+
+    def _lookup_cache(self, address: str) -> tuple[float, float] | None:
+        """geocode_cache에서 좌표 조회"""
+        try:
+            resp = requests.get(
+                f"{self._url}/rest/v1/geocode_cache",
+                params={
+                    "address": f"eq.{address}",
+                    "select": "lat,lng",
+                },
+                headers=self._headers(),
+                timeout=10,
+            )
+            rows = resp.json()
+            if rows:
+                return (rows[0]["lat"], rows[0]["lng"])
+        except Exception:
+            pass
+        return None
+
+    def _save_cache(self, address: str, lat: float, lng: float):
+        """geocode_cache에 저장"""
+        try:
+            requests.post(
+                f"{self._url}/rest/v1/geocode_cache",
+                json={"address": address, "lat": lat, "lng": lng, "source": "kakao"},
+                headers=self._headers("resolution=merge-duplicates,return=minimal"),
+                timeout=10,
+            )
+        except Exception:
+            pass
+
+    def _update_coords(self, geocode_address: str, lat: float, lng: float):
+        """kepco_data에서 해당 geocode_address의 좌표 업데이트"""
+        try:
+            requests.patch(
+                f"{self._url}/rest/v1/kepco_data",
+                params={
+                    "geocode_address": f"eq.{geocode_address}",
+                    "lat": "is.null",
+                },
+                json={"lat": lat, "lng": lng},
+                headers=self._headers("return=minimal"),
+                timeout=15,
+            )
+        except Exception:
+            pass
+
     def refresh_mv(self):
         """Materialized View 새로고침 (refresh_kepco_summary RPC)"""
         try:
@@ -176,7 +283,7 @@ class CrawlDbWriter:
                 headers=self._headers(),
                 timeout=120,
             )
-            if resp.status_code == 200:
+            if resp.status_code in (200, 204):
                 logger.info("Materialized View 새로고침 완료")
             else:
                 logger.warning(
