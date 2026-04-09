@@ -208,6 +208,9 @@ class CrawlDbWriter:
         if new_addresses:
             self._geocode_addresses(new_addresses)
 
+        # 3. MV 새로고침 — 지도에 실시간 반영
+        self.refresh_mv()
+
     def _geocode_addresses(self, addresses: set[str]):
         """주소 목록을 지오코딩하여 geocode_cache + kepco_data 업데이트"""
         for address in addresses:
