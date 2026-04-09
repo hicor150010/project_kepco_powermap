@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/*
+ * 거리재기 모드 활성 시 카카오 지도 위 커서를 십자 모양으로 강제.
+ * 카카오 SDK는 내부에 여러 자식 div를 깔고 각자 cursor 스타일을 설정하기 때문에
+ * 부모 div에만 cursor를 지정하면 자식에게 덮어쓰인다.
+ * body에 클래스를 걸고 .measure-mode *로 모든 하위를 강제한다.
+ */
+body.measure-mode,
+body.measure-mode * {
+  cursor: crosshair !important;
+}

@@ -1,0 +1,40 @@
+name: KEPCO Crawl
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: 'crawl_jobs ID'
+        required: true
+        type: string
+  schedule:
+    # 매주 일요일 03:00 KST (18:00 UTC 토요일)
+    - cron: '0 18 * * 0'
+
+concurrency:
+  group: kepco-crawl
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r crawler/requirements.txt
+
+      - name: Run crawler
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: cd crawler && python run_crawl.py --job-id=${{ github.event.inputs.job_id || '0' }}

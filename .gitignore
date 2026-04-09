@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.tmp
+
+# Node (web/ has its own .gitignore)
+node_modules/
+
+# Environment / Secrets
+.env
+.env.*
+*.local.md
+*.secret.md
+
+# Data files (엑셀 등 대용량)
+data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

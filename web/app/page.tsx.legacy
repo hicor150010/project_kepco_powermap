@@ -1,0 +1,298 @@
+"use client";
+
+import { useState, useMemo, useRef } from "react";
+import KakaoMap from "@/components/KakaoMap";
+import Sidebar from "@/components/Sidebar";
+import Welcome from "@/components/Welcome";
+import LoadingOverlay from "@/components/LoadingOverlay";
+import { parseExcelFile } from "@/lib/parseExcel";
+import { batchGeocode } from "@/lib/geocoder";
+import { groupByLocation } from "@/lib/groupByLocation";
+import { exportToExcel } from "@/lib/exportExcel";
+import { applyFilters } from "@/lib/applyFilters";
+import type { LocationData, MarkerColor, ViewMode, ColumnFilters } from "@/lib/types";
+import { emptyFilters } from "@/lib/types";
+
+export default function Home() {
+  const [data, setData] = useState<LocationData[]>([]);
+  const [fileNames, setFileNames] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState("");
+  const [loadingDetail, setLoadingDetail] = useState("");
+  const [loadingHint, setLoadingHint] = useState("");
+  const [progress, setProgress] = useState<number | undefined>(undefined);
+  const [filter, setFilter] = useState<Set<MarkerColor>>(
+    new Set(["red", "blue", "green", "yellow"])
+  );
+  const [fitBoundsKey, setFitBoundsKey] = useState(0);
+  const [viewMode, setViewMode] = useState<ViewMode>("combined");
+  const [columnFilters, setColumnFilters] = useState<ColumnFilters>(emptyFilters());
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 컬럼 필터 적용된 데이터
+  const filteredData = useMemo(
+    () => applyFilters(data, columnFilters),
+    [data, columnFilters]
+  );
+
+  const groups = useMemo(
+    () => groupByLocation(filteredData, viewMode),
+    [filteredData, viewMode]
+  );
+
+  // 보기 모드 변경 시 필터 초기화 (모드별 색상 집합이 달라서)
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    if (mode === "combined") {
+      setFilter(new Set(["red", "blue", "green", "yellow"]));
+    } else {
+      setFilter(new Set(["red", "blue"]));
+    }
+  };
+
+  const handleFiles = async (files: FileList | File[]) => {
+    const fileArr = Array.from(files);
+    if (fileArr.length === 0) return;
+
+    setLoading(true);
+    setProgress(undefined);
+
+    try {
+      const allParsed: LocationData[] = [];
+
+      // 1단계: 모든 엑셀 파일 파싱
+      for (let i = 0; i < fileArr.length; i++) {
+        const file = fileArr[i];
+        setLoadingStep("엑셀 파일 읽는 중");
+        setLoadingDetail(
+          fileArr.length > 1
+            ? `${i + 1} / ${fileArr.length}: ${file.name}`
+            : file.name
+        );
+        setLoadingHint("파일 크기에 따라 잠시 걸릴 수 있습니다.");
+
+        const parsed = await parseExcelFile(file);
+        allParsed.push(...parsed);
+      }
+
+      // 2단계: 고유 위치 추출
+      setLoadingStep("위치 정보 준비 중");
+      setLoadingDetail(`총 ${allParsed.length.toLocaleString()}건`);
+      setLoadingHint("");
+
+      const uniqueAddresses = [...new Set(allParsed.map((d) => d.geocodeAddress))];
+
+      // 3단계: 지오코딩
+      setLoadingStep("지도 위치 확인 중");
+      setLoadingDetail(`고유 위치 ${uniqueAddresses.length.toLocaleString()}곳`);
+      setLoadingHint("한 번 확인된 위치는 다음에 빠르게 표시됩니다.");
+      setProgress(0);
+
+      const geoResults = await batchGeocode(uniqueAddresses, (ratio) => {
+        const pct = Math.round(ratio * 100);
+        setProgress(pct);
+        setLoadingDetail(
+          `${Math.round(ratio * uniqueAddresses.length).toLocaleString()} / ${uniqueAddresses.length.toLocaleString()}곳`
+        );
+      });
+
+      // 4단계: 좌표 매핑 + 누적 추가
+      setLoadingStep("지도에 표시 중");
+      setProgress(undefined);
+      setLoadingHint("");
+
+      const geocoded = allParsed.map((item) => {
+        const geo = geoResults[item.geocodeAddress];
+        return geo ? { ...item, lat: geo.lat, lng: geo.lng } : item;
+      });
+
+      // 기존 데이터에 누적 (중복 방지: 파일+주소+변전소+선로 키)
+      setData((prev) => {
+        const existingKeys = new Set(
+          prev.map(
+            (d) =>
+              `${d.fullAddress}|${d.subst_nm}|${d.mtr_no}|${d.dl_nm}`
+          )
+        );
+        const newItems = geocoded.filter(
+          (d) =>
+            !existingKeys.has(
+              `${d.fullAddress}|${d.subst_nm}|${d.mtr_no}|${d.dl_nm}`
+            )
+        );
+        return [...prev, ...newItems];
+      });
+
+      setFileNames((prev) => [...prev, ...fileArr.map((f) => f.name)]);
+      setFitBoundsKey((k) => k + 1); // 새 데이터 → bounds 재조정
+    } catch (err) {
+      alert(`처리 실패: ${err}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClearAll = () => {
+    if (data.length === 0) return;
+    if (confirm("업로드된 모든 데이터를 지우시겠습니까?")) {
+      setData([]);
+      setFileNames([]);
+      setColumnFilters(emptyFilters());
+    }
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) handleFiles(files);
+    // 같은 파일 재업로드 가능하도록 reset
+    if (e.target) e.target.value = "";
+  };
+
+  const handleSearch = (query: string) => {
+    if (!window.kakao?.maps?.services) {
+      alert("지도 검색 기능을 불러오는 중입니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+    const geocoder = new window.kakao.maps.services.Geocoder();
+    geocoder.addressSearch(query, (result: any[], status: string) => {
+      if (status === window.kakao.maps.services.Status.OK && result.length > 0) {
+        const { x, y } = result[0];
+        const latlng = new window.kakao.maps.LatLng(parseFloat(y), parseFloat(x));
+        // mapInstanceRef는 KakaoMap 내부, window 통해 접근
+        if ((window as any).__kepcoMap) {
+          (window as any).__kepcoMap.panTo(latlng);
+          (window as any).__kepcoMap.setLevel(5);
+        }
+      } else {
+        alert("주소를 찾을 수 없습니다.");
+      }
+    });
+  };
+
+  const handleApplyFacilityFilter = (
+    kind: "subst" | "mtr" | "dl",
+    name: string
+  ) => {
+    const key =
+      kind === "subst" ? "subst_nm" : kind === "mtr" ? "subst_nm" : "dl_nm";
+    // 주변압기는 단독 필터 컬럼이 없어 변전소명+선로명으로 좁히기 어려움
+    // → 일단 변전소/배전선로만 처리
+    if (kind === "mtr") {
+      alert("주변압기 필터는 상세 목록에서 확인해주세요.");
+      return;
+    }
+    setColumnFilters({
+      ...columnFilters,
+      [key]: new Set([name]),
+    });
+  };
+
+  const handleDownload = () => {
+    // 컬럼 필터 + 색상 필터 모두 적용 + 좌표 있는 것만
+    const filtered = filteredData.filter((d) => {
+      if (!d.lat || !d.lng) return false;
+      const c =
+        viewMode === "combined"
+          ? d.color
+          : (viewMode === "subst"
+              ? d.vol_subst
+              : viewMode === "mtr"
+                ? d.vol_mtr
+                : d.vol_dl) === "여유용량 있음"
+            ? "blue"
+            : "red";
+      return filter.has(c as MarkerColor);
+    });
+    if (filtered.length === 0) {
+      alert("저장할 데이터가 없습니다.");
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    exportToExcel(filtered, `여유용량_필터링_${today}.xlsx`);
+  };
+
+  const showWelcome = data.length === 0 && !loading;
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  return (
+    <div className="flex h-screen overflow-hidden relative">
+      {/* 사이드바 (모바일에서 슬라이드) */}
+      <div
+        className={`${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        } md:translate-x-0 fixed md:relative inset-y-0 left-0 z-30 transition-transform duration-200`}
+      >
+        <Sidebar
+          fileNames={fileNames}
+          data={data}
+          filteredData={filteredData}
+          filter={filter}
+          onFilterChange={setFilter}
+          onUploadClick={handleUploadClick}
+          onDownloadClick={handleDownload}
+          onSearch={handleSearch}
+          onClearAll={handleClearAll}
+          viewMode={viewMode}
+          onViewModeChange={handleViewModeChange}
+          columnFilters={columnFilters}
+          onColumnFiltersChange={setColumnFilters}
+        />
+      </div>
+
+      {/* 모바일: 사이드바 오버레이 */}
+      {sidebarOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/30 z-20"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <main className="flex-1 relative">
+        {/* 모바일 메뉴 토글 버튼 */}
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="md:hidden absolute top-4 left-4 z-10 bg-white shadow-md rounded-lg p-2 border border-gray-200"
+          aria-label="메뉴"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+
+        <KakaoMap
+          groups={groups}
+          filter={filter}
+          fitBoundsKey={fitBoundsKey}
+          viewMode={viewMode}
+          onApplyFacilityFilter={handleApplyFacilityFilter}
+        />
+
+        {showWelcome && <Welcome onUploadClick={handleUploadClick} />}
+
+        {loading && (
+          <LoadingOverlay
+            step={loadingStep}
+            detail={loadingDetail}
+            progress={progress}
+            hint={loadingHint}
+          />
+        )}
+      </main>
+
+      {/* 숨겨진 파일 input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx,.xls"
+        multiple
+        onChange={handleFileInput}
+        className="hidden"
+      />
+    </div>
+  );
+}
