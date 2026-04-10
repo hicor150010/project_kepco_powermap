@@ -235,7 +235,7 @@ export default function CrawlManager() {
       } else {
         if (data.warning) setError(data.warning);
         await fetchJobs();
-        // 폼 초기화
+        // 폼 초기화 + 상세 설정 닫기
         setSelectedSido("");
         setSelectedSi("");
         setSelectedGu("");
@@ -245,6 +245,7 @@ export default function CrawlManager() {
         setGuList([]);
         setDongList([]);
         setLiList([]);
+        setShowOptions(false);
       }
     } catch {
       setError("네트워크 오류");

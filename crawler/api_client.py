@@ -3,6 +3,9 @@ KEPCO 배전선로 여유용량 API 클라이언트
 - 브라우저 위장 헤더 (봇 탐지 우회)
 - User-Agent 랜덤 선택
 - 요청 간격 랜덤화
+- 세션 주기적 재생성
+- 점진적 백오프
+- 주기적 휴식
 """
 import json
 import random
@@ -42,6 +45,13 @@ CONSECUTIVE_ERROR_PAUSE = 5    # 연속 에러 시 대기
 CONSECUTIVE_ERROR_PAUSE_SEC = 60
 CONSECUTIVE_ERROR_ABORT = 10   # 연속 에러 시 중단
 
+# 세션 재생성 주기 (요청 수 기준)
+SESSION_REFRESH_INTERVAL = 2000
+
+# 주기적 휴식 (요청 수 기준)
+REST_INTERVAL = 1000      # 1000건마다
+REST_DURATION_SEC = 15     # 15초 휴식
+
 
 class TooManyErrorsException(Exception):
     """연속 에러 한계 초과"""
@@ -54,15 +64,15 @@ class KepcoApiClient:
         self.delay = delay
         self._last_request_time = 0.0
         self._consecutive_errors = 0
+        self._request_count = 0
         self._on_log = None  # 로그 콜백 (외부에서 설정)
         self._init_session()
 
     def _init_session(self):
         """세션 초기화 — 랜덤 UA + 브라우저 헤더 + 쿠키 획득"""
-        # 랜덤 User-Agent 선택
+        self.session = requests.Session()
         ua = random.choice(USER_AGENTS)
         self.session.headers.update({**HEADERS, "User-Agent": ua})
-        # 메인 페이지 접속 (쿠키 획득)
         try:
             self.session.get(f"{BASE_URL}/EWM092D00", timeout=30)
         except requests.exceptions.RequestException:
@@ -75,6 +85,20 @@ class KepcoApiClient:
         if elapsed < jitter:
             time.sleep(jitter - elapsed)
 
+    def _check_maintenance(self):
+        """주기적 세션 재생성 + 휴식"""
+        self._request_count += 1
+
+        # 세션 재생성 (새 UA + 새 쿠키)
+        if self._request_count % SESSION_REFRESH_INTERVAL == 0:
+            self._log(f"  [세션 재생성] {self._request_count}건 도달 — 새 세션 생성")
+            self._init_session()
+
+        # 주기적 휴식
+        if self._request_count % REST_INTERVAL == 0:
+            self._log(f"  [휴식] {self._request_count}건 도달 — {REST_DURATION_SEC}초 대기")
+            time.sleep(REST_DURATION_SEC)
+
     def _log(self, msg: str):
         if self._on_log:
             self._on_log(msg)
@@ -83,6 +107,7 @@ class KepcoApiClient:
         """공통 POST 요청 (재시도 + 연속 에러 감지)"""
         url = f"{BASE_URL}{path}"
         self._wait()
+        self._check_maintenance()
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
 
         for attempt in range(1, MAX_RETRIES + 1):
@@ -103,16 +128,18 @@ class KepcoApiClient:
         return {}
 
     def _handle_consecutive_errors(self):
-        """연속 에러 임계값 처리"""
+        """연속 에러 임계값 처리 — 점진적 백오프"""
         if self._consecutive_errors >= CONSECUTIVE_ERROR_ABORT:
             self._log(f"[경고] 연속 {self._consecutive_errors}회 에러 — 크롤링을 자동 중지합니다.")
             raise TooManyErrorsException(
                 f"연속 {self._consecutive_errors}회 에러 발생으로 자동 중지"
             )
         elif self._consecutive_errors >= CONSECUTIVE_ERROR_PAUSE:
+            # 점진적 백오프: 5회→60초, 6회→120초, 7회→180초, ...
+            wait = CONSECUTIVE_ERROR_PAUSE_SEC * (self._consecutive_errors - CONSECUTIVE_ERROR_PAUSE + 1)
             self._log(f"[경고] 연속 {self._consecutive_errors}회 에러 — "
-                      f"{CONSECUTIVE_ERROR_PAUSE_SEC}초 대기 후 재시도합니다.")
-            time.sleep(CONSECUTIVE_ERROR_PAUSE_SEC)
+                      f"{wait}초 대기 후 재시도합니다.")
+            time.sleep(wait)
 
     # ── API 1: 시/도 목록 ──
     def get_sido_list(self) -> list[str]:

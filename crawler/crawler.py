@@ -4,6 +4,7 @@ KEPCO 배전선로 여유용량 - 주소 순환 크롤러
 """
 import threading
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from api_client import KepcoApiClient, TooManyErrorsException
@@ -74,6 +75,7 @@ class CrawlResult:
     step2_pwr: str = ""       # STEP02 공용망보강 용량(kW)
     step3_cnt: str = ""       # STEP03 접속공사 건수
     step3_pwr: str = ""       # STEP03 접속공사 용량(kW)
+    crawled_at: str = ""      # 실제 크롤링 시점 (UTC ISO 8601)
 
 
 class KepcoСrawler:
@@ -475,6 +477,7 @@ class KepcoСrawler:
                         dl_capa=str(item.get("DL_CAPA", "")),
                         dl_pwr=str(item.get("DL_PWR", "")),
                         g_dl_capa=str(item.get("G_DL_CAPA", "")),
+                        crawled_at=datetime.now(timezone.utc).isoformat(),
                     )
 
                     # STEP 01/02/03 접속예정 건수/용량

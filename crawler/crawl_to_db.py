@@ -97,6 +97,8 @@ def _to_row(result: CrawlResult) -> dict:
         "step2_pwr": _parse_int(result.step2_pwr),
         "step3_cnt": _parse_int(result.step3_cnt),
         "step3_pwr": _parse_int(result.step3_pwr),
+        # 실제 크롤링 시점 (UTC)
+        "crawled_at": result.crawled_at or None,
     }
 
 
