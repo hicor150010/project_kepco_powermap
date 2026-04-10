@@ -20,6 +20,10 @@ import type { SearchRiResult } from "@/lib/search/searchKepco";
 interface Props {
   /** 결과 행 클릭 시 호출 — MapClient가 지도 이동/모달 열기 처리 */
   onPick: (pick: SearchPick) => void;
+  /** 지번 위치 핀 표시 */
+  onJibunPin?: (row: KepcoDataRow) => void;
+  /** 검색바 포커스 시 호출 — 요약 카드 등 숨기기 */
+  onFocus?: () => void;
 }
 
 interface SearchState {
@@ -86,12 +90,39 @@ function TabButton({
   );
 }
 
-export default function SearchPanel({ onPick }: Props) {
+const HISTORY_KEY = "kepco_search_history";
+const HISTORY_MAX = 10;
+
+function getHistory(): string[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function addHistory(q: string) {
+  const list = getHistory().filter((h) => h !== q);
+  list.unshift(q);
+  if (list.length > HISTORY_MAX) list.length = HISTORY_MAX;
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
+}
+
+function removeHistory(q: string) {
+  const list = getHistory().filter((h) => h !== q);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
+}
+
+export default function SearchPanel({ onPick, onJibunPin, onFocus }: Props) {
   const [query, setQuery] = useState("");
   const [state, setState] = useState<SearchState>(EMPTY_STATE);
   const [tab, setTab] = useState<"ri" | "ji">("ri");
   const [open, setOpen] = useState(false); // 결과 패널 펼침 여부
   const [panelHeight, setPanelHeight] = useState(PANEL_DEFAULT);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<string[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // 드래그 상태 — ref로 관리해서 mousemove 리스너에서 closure 꼬임 방지
   const draggingRef = useRef(false);
@@ -136,10 +167,12 @@ export default function SearchPanel({ onPick }: Props) {
   // ─────────────────────────────────────────────
   // 검색 실행 (Enter 또는 [검색] 버튼)
   // ─────────────────────────────────────────────
-  const runSearch = useCallback(async () => {
-    const q = query.trim();
+  const doSearch = useCallback(async (q: string) => {
     if (!q) return;
 
+    addHistory(q);
+    setHistory(getHistory());
+    setHistoryOpen(false);
     setState({ ...EMPTY_STATE, loading: true });
     setOpen(true);
 
@@ -160,7 +193,6 @@ export default function SearchPanel({ onPick }: Props) {
         parsed: data.parsed ?? null,
       });
 
-      // 지번을 같이 검색했으면 지번 탭부터 보여주는 게 직관적
       if (data.parsed?.lotNo != null) {
         setTab("ji");
       } else {
@@ -169,7 +201,11 @@ export default function SearchPanel({ onPick }: Props) {
     } catch (err: any) {
       setState({ ...EMPTY_STATE, error: String(err?.message || err) });
     }
-  }, [query]);
+  }, []);
+
+  const runSearch = useCallback(() => {
+    doSearch(query.trim());
+  }, [query, doSearch]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") runSearch();
@@ -264,7 +300,11 @@ export default function SearchPanel({ onPick }: Props) {
                 mode={tab}
                 ri={state.ri}
                 ji={state.ji}
-                onPick={onPick}
+                onPick={(pick) => {
+                  onPick(pick);
+                  setOpen(false);
+                }}
+                onJibunPin={onJibunPin}
               />
             )}
           </div>
@@ -272,35 +312,88 @@ export default function SearchPanel({ onPick }: Props) {
       )}
 
       {/* 검색 입력 바 (항상 표시) */}
-      <div className="pointer-events-auto bg-white/95 backdrop-blur border border-gray-200 rounded-xl px-4 py-2.5 mx-3 mb-3 flex items-center gap-2.5 shadow-lg">
-        <span className="text-base text-gray-400">🔍</span>
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="주소·지번 검색 (예: 용구리 100)"
-          className="flex-1 text-sm text-gray-900 placeholder:text-gray-400 outline-none bg-transparent"
-        />
-        {query && (
+      <div className="pointer-events-auto mx-3 mb-3 relative">
+        <div className="bg-white/95 backdrop-blur border border-gray-200 rounded-xl px-4 py-2.5 flex items-center gap-2.5 shadow-lg">
+          <span className="text-base text-gray-400">🔍</span>
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onFocus={() => {
+              const h = getHistory();
+              setHistory(h);
+              if (h.length > 0 && !open) setHistoryOpen(true);
+              onFocus?.();
+            }}
+            onBlur={() => {
+              // 약간 지연 — 히스토리 항목 클릭이 먼저 처리되도록
+              setTimeout(() => setHistoryOpen(false), 150);
+            }}
+            placeholder="주소·지번 검색 (예: 용구리 100)"
+            className="flex-1 text-sm text-gray-900 placeholder:text-gray-400 outline-none bg-transparent"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={handleClear}
+              className="text-gray-300 hover:text-gray-500 text-sm"
+              title="지우기"
+            >
+              ✕
+            </button>
+          )}
           <button
             type="button"
-            onClick={handleClear}
-            className="text-gray-300 hover:text-gray-500 text-sm"
-            title="지우기"
+            onClick={runSearch}
+            disabled={!query.trim() || state.loading}
+            className="text-sm px-4 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600
+                       disabled:opacity-40 disabled:cursor-not-allowed font-medium"
           >
-            ✕
+            검색
           </button>
+        </div>
+
+        {/* 검색 히스토리 드롭다운 */}
+        {historyOpen && history.length > 0 && (
+          <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-20">
+            <div className="px-3 py-1.5 text-[10px] text-gray-400 font-semibold border-b border-gray-100">
+              최근 검색
+            </div>
+            {history.map((h) => (
+              <div
+                key={h}
+                className="flex items-center gap-2 px-3 py-2 hover:bg-blue-50 cursor-pointer group"
+              >
+                <span className="text-gray-300 text-xs">🕐</span>
+                <button
+                  type="button"
+                  className="flex-1 text-left text-sm text-gray-700 truncate"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setQuery(h);
+                    doSearch(h);
+                  }}
+                >
+                  {h}
+                </button>
+                <button
+                  type="button"
+                  className="text-gray-300 hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    removeHistory(h);
+                    setHistory(getHistory());
+                  }}
+                  title="삭제"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
         )}
-        <button
-          type="button"
-          onClick={runSearch}
-          disabled={!query.trim() || state.loading}
-          className="text-sm px-4 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600
-                     disabled:opacity-40 disabled:cursor-not-allowed font-medium"
-        >
-          검색
-        </button>
       </div>
     </div>
   );
