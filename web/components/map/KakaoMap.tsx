@@ -64,9 +64,9 @@ function makeMarkerSvg(
   const arrowH = 8;
   const totalH = cardH + arrowH;
 
-  // 선택 상태: 진한 파란 테두리 + 노란 외곽 glow, 일반: 얇은 회색 테두리
-  const outlineColor = selected ? "#2563eb" : "rgba(0,0,0,0.35)";
-  const outlineWidth = selected ? 2 : 1;
+  // 선택 상태: 주황 테두리 + 드롭섀도, 일반: 얇은 회색 테두리
+  const outlineColor = selected ? "#f97316" : "rgba(0,0,0,0.35)";
+  const outlineWidth = selected ? 2.5 : 1;
 
   const showBadge = count > 1;
   const badgeText = count > 999 ? "999+" : String(count);
@@ -114,14 +114,17 @@ function makeMarkerSvg(
 
   const arrowPath = `M${cardW / 2 - 5} ${cardH} L${cardW / 2} ${totalH - 1} L${cardW / 2 + 5} ${cardH} Z`;
 
-  // 선택 시 카드 바깥에 얇은 파란 glow ring (rect의 stroke를 두 번 그려서 표현)
-  const glow = selected
-    ? `<rect x="-1" y="-1" width="${cardW + 2}" height="${cardH + 2}" rx="4" ry="4"
-         fill="none" stroke="rgba(37,99,235,0.35)" stroke-width="3"/>`
+  // 선택 시 드롭섀도 필터
+  const shadowFilter = selected
+    ? `<defs><filter id="ds" x="-30%" y="-30%" width="160%" height="160%">
+         <feDropShadow dx="0" dy="1" stdDeviation="2.5" flood-color="#f97316" flood-opacity="0.5"/>
+       </filter></defs>`
     : "";
+  const filterAttr = selected ? ' filter="url(#ds)"' : "";
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${totalH}" viewBox="-2 -2 ${w + 4} ${totalH + 2}">
-    ${glow}
+    ${shadowFilter}
+    <g${filterAttr}>
     <!-- 화살표 -->
     <path d="${arrowPath}" fill="white" stroke="${outlineColor}" stroke-width="${outlineWidth}" stroke-linejoin="round"/>
     <!-- 카드 본체 -->
@@ -135,6 +138,7 @@ function makeMarkerSvg(
     <line x1="${cardW / 2 - 5}" y1="${cardH - 0.5}" x2="${cardW / 2 + 5}" y2="${cardH - 0.5}"
       stroke="white" stroke-width="1.2"/>
     ${badge}
+    </g>
   </svg>`;
   return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
 }
@@ -184,6 +188,8 @@ export default function KakaoMap({
   const markersByAddrRef = useRef<Map<string, { marker: any; row: MapSummaryRow }>>(
     new Map()
   );
+  // 선택 마커 펄스 링 오버레이
+  const pulseOverlayRef = useRef<any>(null);
 
   /** 마을명 라벨을 보여줄 줌 레벨 임계값 (이하일 때 표시 — 카카오는 숫자 작을수록 확대) */
   const LABEL_VISIBLE_LEVEL = 7;
@@ -473,6 +479,8 @@ export default function KakaoMap({
   const prevSelectedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!loaded) return;
+    const map = mapInstanceRef.current;
+
     const rebuildImage = (addr: string | null, selected: boolean) => {
       if (!addr) return;
       const entry = markersByAddrRef.current.get(addr);
@@ -494,9 +502,46 @@ export default function KakaoMap({
     if (prevSelectedRef.current && prevSelectedRef.current !== selectedAddr) {
       rebuildImage(prevSelectedRef.current, false);
     }
+
+    // 이전 펄스 링 제거
+    if (pulseOverlayRef.current) {
+      pulseOverlayRef.current.setMap(null);
+      pulseOverlayRef.current = null;
+    }
+
     // 새 선택 강조
-    if (selectedAddr) {
+    if (selectedAddr && map) {
       rebuildImage(selectedAddr, true);
+
+      // 펄스 링 오버레이 추가 — 인라인 스타일로 CSS 의존성 제거
+      const entry = markersByAddrRef.current.get(selectedAddr);
+      if (entry) {
+        const pos = entry.marker.getPosition();
+        const pulseHtml = `
+          <div style="position:relative;width:0;height:0;">
+            <div style="
+              position:absolute;left:-20px;top:-20px;
+              width:40px;height:40px;border-radius:50%;
+              border:2.5px solid #f97316;
+              animation:kepcoPulse 2s ease-out infinite;
+              pointer-events:none;
+            "></div>
+            <style>
+              @keyframes kepcoPulse {
+                0% { transform:scale(0.5); opacity:0.7; }
+                100% { transform:scale(2.5); opacity:0; }
+              }
+            </style>
+          </div>`;
+        pulseOverlayRef.current = new window.kakao.maps.CustomOverlay({
+          position: pos,
+          content: pulseHtml,
+          yAnchor: 0.5,
+          xAnchor: 0.5,
+          zIndex: 1,
+        });
+        pulseOverlayRef.current.setMap(map);
+      }
     }
     prevSelectedRef.current = selectedAddr;
   }, [loaded, selectedAddr]);

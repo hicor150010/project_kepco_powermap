@@ -137,6 +137,22 @@ export default function MapToolbar({
           −
         </button>
       </div>
+
+      {/* ── 5. 나침반 (북쪽 고정) ── */}
+      <div
+        title="북쪽"
+        className="w-8 h-8 bg-white rounded-full shadow border border-gray-200
+                   flex items-center justify-center"
+      >
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+          {/* 북쪽 삼각형 (빨강) */}
+          <polygon points="9,1 12,9 9,7.5 6,9" fill="#e53e3e" />
+          {/* 남쪽 삼각형 (회색) */}
+          <polygon points="9,17 6,9 9,10.5 12,9" fill="#a0aec0" />
+          {/* N 텍스트 */}
+          <text x="9" y="0.5" textAnchor="middle" fontSize="3.5" fontWeight="bold" fill="#e53e3e" fontFamily="Arial, sans-serif">N</text>
+        </svg>
+      </div>
     </div>
   );
 }
