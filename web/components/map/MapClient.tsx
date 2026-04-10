@@ -13,6 +13,7 @@ import MapLegend from "./MapLegend";
 import Toast from "./Toast";
 import TopRemainingList from "./TopRemainingList";
 import ComparePanel, { getChangeDirection, type ChangeDirection } from "./ComparePanel";
+import GpsTracker from "./GpsTracker";
 import type { CompareRow } from "@/app/api/compare/route";
 import type { SearchPick } from "./SearchResultList";
 import {
@@ -56,6 +57,10 @@ export default function MapClient({ isAdmin, email }: Props) {
   // 비교 모드
   const [compareActive, setCompareActive] = useState(false);
   const [compareRows, setCompareRows] = useState<CompareRow[]>([]);
+
+  // GPS 실시간 추적
+  const [gpsActive, setGpsActive] = useState(false);
+  const [gpsAutoFollow, setGpsAutoFollow] = useState(true);
 
   // 검색 결과가 필터에 가려졌을 때 자동 해제하면서 띄우는 토스트.
   // filterSnapshot은 "되돌리기" 시 복원할 이전 필터.
@@ -319,6 +324,17 @@ export default function MapClient({ isAdmin, email }: Props) {
             setCompareActive((v) => !v);
             if (compareActive) setCompareRows([]);
           }}
+          gpsActive={gpsActive}
+          gpsAutoFollow={gpsAutoFollow}
+          onToggleGps={() => {
+            if (gpsActive) {
+              setGpsActive(false);
+            } else {
+              setGpsActive(true);
+              setGpsAutoFollow(true);
+            }
+          }}
+          onGpsRecenter={() => setGpsAutoFollow(true)}
           mapType={mapType}
           onMapTypeChange={setMapType}
           onZoomIn={() => mapInstance?.setLevel(mapInstance.getLevel() - 1)}
@@ -360,6 +376,15 @@ export default function MapClient({ isAdmin, email }: Props) {
           active={measureActive}
           onClose={() => setMeasureActive(false)}
           registerAddPoint={registerMeasureAddPoint}
+        />
+
+        {/* GPS 실시간 위치 추적 */}
+        <GpsTracker
+          map={mapInstance}
+          active={gpsActive}
+          autoFollow={gpsAutoFollow}
+          onAutoFollowChange={setGpsAutoFollow}
+          onError={(msg) => setError(msg)}
         />
 
         {/* 화면 하단 검색 패널 (주소·지번 → 업로드된 데이터 검색) */}

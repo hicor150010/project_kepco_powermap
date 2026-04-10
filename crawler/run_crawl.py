@@ -162,7 +162,7 @@ def build_checkpoint(progress: CrawlProgress) -> dict:
 
 def build_progress_json(progress: CrawlProgress, geocoded: int = 0) -> dict:
     """CrawlProgress → progress JSONB (모니터링용)"""
-    return {
+    result = {
         "processed": progress.processed,
         "found": progress.found,
         "errors": progress.errors,
@@ -170,6 +170,9 @@ def build_progress_json(progress: CrawlProgress, geocoded: int = 0) -> dict:
         "current_address": progress.current_address,
         "phase": progress.phase,
     }
+    if progress.recent_errors:
+        result["recent_errors"] = progress.recent_errors
+    return result
 
 
 # ══════════════════════════════════════════════
@@ -336,10 +339,13 @@ def run(job: dict):
     except Exception as e:
         logger.error(f"크롤링 중 예외: {e}")
         db_writer.flush()
+        fail_progress = build_progress_json(crawler.progress)
+        if crawler.progress.all_errors:
+            fail_progress["all_errors"] = crawler.progress.all_errors
         update_job(job_id, {
             "status": "failed",
             "error_message": str(e)[:1000],
-            "progress": build_progress_json(crawler.progress),
+            "progress": fail_progress,
             "checkpoint": build_checkpoint(crawler.progress),
             "completed_at": "now()",
         })
@@ -367,9 +373,14 @@ def run(job: dict):
                 f"upserted={stats['upserted']}, errors={stats['errors']}, "
                 f"geocoded={stats.get('geocoded', 0)} ===")
 
+    final_progress = build_progress_json(crawler.progress)
+    # 완료 시 전체 에러 목록도 저장 (분석용)
+    if crawler.progress.all_errors:
+        final_progress["all_errors"] = crawler.progress.all_errors
+
     update_job(job_id, {
         "status": final_status,
-        "progress": build_progress_json(crawler.progress),
+        "progress": final_progress,
         "checkpoint": checkpoint,
         "completed_at": "now()",
     })

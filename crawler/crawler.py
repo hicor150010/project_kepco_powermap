@@ -42,6 +42,26 @@ class CrawlProgress:
     dong_name: str = ""
     li_name: str = ""
     jibun_name: str = ""
+    # 에러 로그 (디버그용)
+    recent_errors: list = None   # 최근 10건 (UI 표시용)
+    all_errors: list = None      # 전체 에러 (분석용)
+
+    def __post_init__(self):
+        if self.recent_errors is None:
+            self.recent_errors = []
+        if self.all_errors is None:
+            self.all_errors = []
+
+    def add_error(self, address: str, error: str):
+        """에러 기록 — 전체 + 최근 10건"""
+        entry = {
+            "addr": address[:150],
+            "error": str(error)[:300],
+        }
+        self.all_errors.append(entry)
+        self.recent_errors.append(entry)
+        if len(self.recent_errors) > 10:
+            self.recent_errors.pop(0)
 
 
 @dataclass
@@ -509,5 +529,6 @@ class KepcoСrawler:
         except Exception as e:
             self.progress.errors += 1
             self.progress.processed += 1
+            self.progress.add_error(display_addr, e)
             self._log(f"          [오류] {display_addr}: {e}")
             self._update_progress()

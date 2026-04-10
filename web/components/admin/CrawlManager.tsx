@@ -19,6 +19,7 @@ interface CrawlJob {
     geocoded?: number;
     current_address?: string;
     phase?: string;
+    recent_errors?: { addr: string; error: string }[];
   };
   checkpoint: Record<string, unknown> | null;
   options: Record<string, unknown>;
@@ -692,32 +693,63 @@ export default function CrawlManager() {
               {job.progress.processed != null && (
                 <div className="space-y-3">
                   {/* 통계 카드 */}
-                  <div className="grid grid-cols-4 gap-3">
-                    <div className="bg-blue-50 rounded-lg px-4 py-3 text-center">
-                      <div className="text-xl font-bold text-blue-700">
-                        {job.progress.processed?.toLocaleString()}
-                      </div>
-                      <div className="text-xs text-blue-600 mt-0.5">조회한 주소</div>
-                    </div>
-                    <div className="bg-green-50 rounded-lg px-4 py-3 text-center">
-                      <div className="text-xl font-bold text-green-700">
-                        {job.progress.found?.toLocaleString()}
-                      </div>
-                      <div className="text-xs text-green-600 mt-0.5">수집한 데이터</div>
-                    </div>
-                    <div className="bg-purple-50 rounded-lg px-4 py-3 text-center">
-                      <div className="text-xl font-bold text-purple-700">
-                        {job.progress.geocoded?.toLocaleString() || 0}
-                      </div>
-                      <div className="text-xs text-purple-600 mt-0.5">좌표 변환</div>
-                    </div>
-                    <div className={`rounded-lg px-4 py-3 text-center ${(job.progress.errors || 0) > 0 ? "bg-red-50" : "bg-gray-50"}`}>
-                      <div className={`text-xl font-bold ${(job.progress.errors || 0) > 0 ? "text-red-700" : "text-gray-400"}`}>
-                        {job.progress.errors || 0}
-                      </div>
-                      <div className={`text-xs mt-0.5 ${(job.progress.errors || 0) > 0 ? "text-red-600" : "text-gray-400"}`}>오류</div>
-                    </div>
-                  </div>
+                  {(() => {
+                    const processed = job.progress.processed || 0;
+                    const found = job.progress.found || 0;
+                    const errors = job.progress.errors || 0;
+                    const noData = Math.max(0, processed - found - errors);
+                    return (
+                      <>
+                        <div className="grid grid-cols-5 gap-2">
+                          <div className="bg-green-50 rounded-lg px-3 py-3 text-center">
+                            <div className="text-xl font-bold text-green-700">
+                              {found.toLocaleString()}
+                            </div>
+                            <div className="text-xs text-green-600 mt-0.5">수집</div>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg px-3 py-3 text-center">
+                            <div className="text-xl font-bold text-gray-500">
+                              {noData.toLocaleString()}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-0.5">정보없음</div>
+                          </div>
+                          <div className="bg-purple-50 rounded-lg px-3 py-3 text-center">
+                            <div className="text-xl font-bold text-purple-700">
+                              {(job.progress.geocoded || 0).toLocaleString()}
+                            </div>
+                            <div className="text-xs text-purple-600 mt-0.5">좌표변환</div>
+                          </div>
+                          <div className={`rounded-lg px-3 py-3 text-center ${errors > 0 ? "bg-red-50" : "bg-gray-50"}`}>
+                            <div className={`text-xl font-bold ${errors > 0 ? "text-red-700" : "text-gray-400"}`}>
+                              {errors}
+                            </div>
+                            <div className={`text-xs mt-0.5 ${errors > 0 ? "text-red-600" : "text-gray-400"}`}>오류</div>
+                          </div>
+                          <div className="bg-blue-50 rounded-lg px-3 py-3 text-center">
+                            <div className="text-xl font-bold text-blue-700">
+                              {processed.toLocaleString()}
+                            </div>
+                            <div className="text-xs text-blue-600 mt-0.5">총 조회</div>
+                          </div>
+                        </div>
+
+                        {/* 최근 오류 내역 */}
+                        {job.progress.recent_errors && job.progress.recent_errors.length > 0 && (
+                          <div className="bg-red-50 rounded-lg px-4 py-3 border border-red-100">
+                            <div className="text-xs font-bold text-red-600 mb-1.5">최근 오류 ({job.progress.recent_errors.length}건)</div>
+                            <div className="space-y-1">
+                              {job.progress.recent_errors.slice(-5).map((err, i) => (
+                                <div key={i} className="text-[11px] text-red-700 flex gap-2">
+                                  <span className="text-red-400 flex-shrink-0">{err.addr}</span>
+                                  <span className="truncate">{err.error}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   {/* 현재 위치 */}
                   <div className="bg-gray-50 rounded-lg px-4 py-3">
@@ -853,24 +885,36 @@ export default function CrawlManager() {
                               {/* 수집 결과 */}
                               <div>
                                 <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">수집 결과</h4>
-                                <div className="grid grid-cols-4 gap-2">
-                                  <div className="bg-blue-50 rounded-lg px-3 py-2 text-center">
-                                    <div className="text-lg font-bold text-blue-700">{job.progress.processed?.toLocaleString() ?? "-"}</div>
-                                    <div className="text-[10px] text-blue-600">조회</div>
-                                  </div>
-                                  <div className="bg-green-50 rounded-lg px-3 py-2 text-center">
-                                    <div className="text-lg font-bold text-green-700">{job.progress.found?.toLocaleString() ?? "-"}</div>
-                                    <div className="text-[10px] text-green-600">수집</div>
-                                  </div>
-                                  <div className="bg-purple-50 rounded-lg px-3 py-2 text-center">
-                                    <div className="text-lg font-bold text-purple-700">{job.progress.geocoded?.toLocaleString() ?? 0}</div>
-                                    <div className="text-[10px] text-purple-600">좌표</div>
-                                  </div>
-                                  <div className={`rounded-lg px-3 py-2 text-center ${(job.progress.errors || 0) > 0 ? "bg-red-50" : "bg-gray-100"}`}>
-                                    <div className={`text-lg font-bold ${(job.progress.errors || 0) > 0 ? "text-red-700" : "text-gray-400"}`}>{job.progress.errors ?? 0}</div>
-                                    <div className={`text-[10px] ${(job.progress.errors || 0) > 0 ? "text-red-600" : "text-gray-400"}`}>오류</div>
-                                  </div>
-                                </div>
+                                {(() => {
+                                  const hProcessed = job.progress.processed || 0;
+                                  const hFound = job.progress.found || 0;
+                                  const hErrors = job.progress.errors || 0;
+                                  const hNoData = Math.max(0, hProcessed - hFound - hErrors);
+                                  return (
+                                    <div className="grid grid-cols-5 gap-2">
+                                      <div className="bg-green-50 rounded-lg px-3 py-2 text-center">
+                                        <div className="text-lg font-bold text-green-700">{hFound.toLocaleString()}</div>
+                                        <div className="text-[10px] text-green-600">수집</div>
+                                      </div>
+                                      <div className="bg-gray-50 rounded-lg px-3 py-2 text-center">
+                                        <div className="text-lg font-bold text-gray-500">{hNoData.toLocaleString()}</div>
+                                        <div className="text-[10px] text-gray-400">정보없음</div>
+                                      </div>
+                                      <div className="bg-purple-50 rounded-lg px-3 py-2 text-center">
+                                        <div className="text-lg font-bold text-purple-700">{(job.progress.geocoded ?? 0).toLocaleString()}</div>
+                                        <div className="text-[10px] text-purple-600">좌표</div>
+                                      </div>
+                                      <div className={`rounded-lg px-3 py-2 text-center ${hErrors > 0 ? "bg-red-50" : "bg-gray-100"}`}>
+                                        <div className={`text-lg font-bold ${hErrors > 0 ? "text-red-700" : "text-gray-400"}`}>{hErrors}</div>
+                                        <div className={`text-[10px] ${hErrors > 0 ? "text-red-600" : "text-gray-400"}`}>오류</div>
+                                      </div>
+                                      <div className="bg-blue-50 rounded-lg px-3 py-2 text-center">
+                                        <div className="text-lg font-bold text-blue-700">{hProcessed.toLocaleString()}</div>
+                                        <div className="text-[10px] text-blue-600">총 조회</div>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                               </div>
 
                               {/* 시간 정보 */}
@@ -910,6 +954,21 @@ export default function CrawlManager() {
                                   <h4 className="text-xs font-bold text-red-500 uppercase tracking-wider mb-1">오류 메시지</h4>
                                   <div className="text-xs text-red-700 bg-red-50 rounded px-3 py-2 border border-red-200 break-all">
                                     {job.error_message}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* 최근 오류 내역 */}
+                              {job.progress.recent_errors && job.progress.recent_errors.length > 0 && (
+                                <div>
+                                  <h4 className="text-xs font-bold text-red-500 uppercase tracking-wider mb-1">최근 오류 ({job.progress.recent_errors.length}건)</h4>
+                                  <div className="bg-red-50 rounded px-3 py-2 border border-red-200 space-y-1">
+                                    {job.progress.recent_errors.map((err, i) => (
+                                      <div key={i} className="text-[11px] text-red-700 flex gap-2">
+                                        <span className="text-red-400 flex-shrink-0 font-medium">{err.addr}</span>
+                                        <span className="truncate">{err.error}</span>
+                                      </div>
+                                    ))}
                                   </div>
                                 </div>
                               )}
@@ -992,7 +1051,7 @@ export default function CrawlManager() {
                                   </table>
                                   {cpStats && (
                                     <div className="mt-1.5 text-[10px] text-gray-400">
-                                      체크포인트 시점: 조회 {cpStats.processed?.toLocaleString() ?? 0} / 수집 {cpStats.found?.toLocaleString() ?? 0} / 오류 {cpStats.errors ?? 0}
+                                      체크포인트 시점: 조회 {cpStats.processed?.toLocaleString() ?? 0} {"/"}  수집 {cpStats.found?.toLocaleString() ?? 0} {"/"} 오류 {cpStats.errors ?? 0}
                                     </div>
                                   )}
                                 </div>

@@ -21,6 +21,10 @@ interface Props {
   onToggleTopList: () => void;
   compareActive: boolean;
   onToggleCompare: () => void;
+  gpsActive: boolean;
+  gpsAutoFollow: boolean;
+  onToggleGps: () => void;
+  onGpsRecenter: () => void;
   mapType: MapType;
   onMapTypeChange: (type: MapType) => void;
   /** 줌 인/아웃 콜백 */
@@ -35,6 +39,10 @@ export default function MapToolbar({
   onToggleTopList,
   compareActive,
   onToggleCompare,
+  gpsActive,
+  gpsAutoFollow,
+  onToggleGps,
+  onGpsRecenter,
   mapType,
   onMapTypeChange,
   onZoomIn,
@@ -131,6 +139,34 @@ export default function MapToolbar({
                      }`}
         >
           📏
+        </button>
+        <button
+          type="button"
+          onClick={gpsActive && !gpsAutoFollow ? onGpsRecenter : onToggleGps}
+          title={
+            !gpsActive
+              ? "내 위치 추적"
+              : gpsAutoFollow
+                ? "위치 추적 종료"
+                : "내 위치로 이동"
+          }
+          className={`w-8 h-8 rounded flex items-center justify-center text-sm
+                     transition-colors ${
+                       gpsActive
+                         ? gpsAutoFollow
+                           ? "bg-blue-500 text-white hover:bg-blue-600"
+                           : "bg-blue-100 text-blue-600 hover:bg-blue-200"
+                         : "bg-white text-gray-700 hover:bg-gray-100"
+                     }`}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.5" />
+            <circle cx="8" cy="8" r="1" fill="currentColor" />
+            <line x1="8" y1="0.5" x2="8" y2="3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1="8" y1="13" x2="8" y2="15.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1="0.5" y1="8" x2="3" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1="13" y1="8" x2="15.5" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
         </button>
       </div>
 
