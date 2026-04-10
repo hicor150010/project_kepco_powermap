@@ -343,7 +343,7 @@ export default function SearchPanel({ onPick, onJibunPin, onFocus }: Props) {
               setTimeout(() => setHistoryOpen(false), 150);
             }}
             placeholder="주소·지번 검색 (예: 용구리 100)"
-            className="flex-1 text-sm text-gray-900 placeholder:text-gray-400 outline-none bg-transparent"
+            className="flex-1 text-base md:text-sm text-gray-900 placeholder:text-gray-400 outline-none bg-transparent"
           />
           {query && (
             <button

@@ -586,7 +586,7 @@ export default function MapClient({ isAdmin, email }: Props) {
   );
 
   return (
-    <div className="flex h-screen overflow-hidden relative">
+    <div className="flex h-dvh overflow-hidden relative">
       <Sidebar
         isAdmin={isAdmin}
         email={email}
@@ -650,7 +650,9 @@ export default function MapClient({ isAdmin, email }: Props) {
               </svg>
             </button>
           )}
-          <MapLegend />
+          <div className="hidden md:block">
+            <MapLegend />
+          </div>
         </div>
 
         {/* 우상단 도구 패널 (거리재기 / 유망 부지 TOP) */}
