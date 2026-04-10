@@ -512,9 +512,9 @@ export default function CrawlManager() {
                   onChange={(e) => setMaxCycles(e.target.value ? Number(e.target.value) : undefined)}
                   placeholder="무제한"
                   min={1}
-                  className="w-16 border border-gray-300 rounded px-2 py-1 text-xs focus:border-orange-400 focus:outline-none"
+                  className="w-20 border border-gray-300 rounded px-2 py-1.5 text-sm text-gray-900 font-medium focus:border-orange-400 focus:outline-none"
                 />
-                <span className="text-[10px] text-gray-400">회 순환</span>
+                <span className="text-xs text-gray-500">회 순환</span>
               </div>
             )}
           </div>
