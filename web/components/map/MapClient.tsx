@@ -412,7 +412,7 @@ export default function MapClient({ isAdmin, email }: Props) {
   const jibunPinsRef = useRef<{ overlay: any; line: any; jibun: string; lat: number; lng: number }[]>([]);
   const jibunBoundCircleRef = useRef<any>(null);
 
-  /** 핀 좌표 + 선택된 마을 마커를 모두 감싸는 붉은 반투명 원 갱신 */
+  /** 마을 마커 + 핀 전부를 감싸는 최소 외접원 (Welzl 알고리즘) */
   function updateBoundCircle(map: any, villageAddr?: string) {
     // 기존 원 제거
     if (jibunBoundCircleRef.current) {
@@ -420,30 +420,75 @@ export default function MapClient({ isAdmin, email }: Props) {
       jibunBoundCircleRef.current = null;
     }
 
-    // 핀이 1개 이상 있어야 원 표시
     if (jibunPinsRef.current.length === 0) return;
 
-    // 좌표 수집: 핀들 + 해당 마을 마커
+    // 좌표 수집: 핀들 + 마을 마커
     const points: { lat: number; lng: number }[] = jibunPinsRef.current.map((p) => ({ lat: p.lat, lng: p.lng }));
     const addr = villageAddr ?? selectedAddr;
     const village = allRows.find((r) => r.geocode_address === addr);
     if (village) points.push({ lat: village.lat, lng: village.lng });
 
-    // 중심점 (centroid)
-    const cLat = points.reduce((s, p) => s + p.lat, 0) / points.length;
-    const cLng = points.reduce((s, p) => s + p.lng, 0) / points.length;
-    const center = new window.kakao.maps.LatLng(cLat, cLng);
+    // --- 최소 외접원 (Welzl) — 위경도 → 미터 근사 ---
+    const REF_LAT = points[0].lat;
+    const M_PER_LAT = 111_320;
+    const M_PER_LNG = 111_320 * Math.cos((REF_LAT * Math.PI) / 180);
+    const toXY = (p: { lat: number; lng: number }) => ({
+      x: (p.lng - points[0].lng) * M_PER_LNG,
+      y: (p.lat - points[0].lat) * M_PER_LAT,
+    });
+    type Pt = { x: number; y: number };
 
-    // 중심에서 가장 먼 점까지 거리 (미터) + 20% 패딩, 최대 2km
-    const polyline = new window.kakao.maps.Polyline({ path: [] });
-    let maxDist = 0;
-    for (const p of points) {
-      polyline.setPath([center, new window.kakao.maps.LatLng(p.lat, p.lng)]);
-      const d = polyline.getLength();
-      if (d > maxDist) maxDist = d;
+    const dist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y);
+
+    const circleFrom1 = (a: Pt): { cx: number; cy: number; r: number } => ({ cx: a.x, cy: a.y, r: 0 });
+    const circleFrom2 = (a: Pt, b: Pt) => ({
+      cx: (a.x + b.x) / 2,
+      cy: (a.y + b.y) / 2,
+      r: dist(a, b) / 2,
+    });
+    const circleFrom3 = (a: Pt, b: Pt, c: Pt) => {
+      const ax = a.x, ay = a.y, bx = b.x, by = b.y, cx2 = c.x, cy2 = c.y;
+      const D = 2 * (ax * (by - cy2) + bx * (cy2 - ay) + cx2 * (ay - by));
+      if (Math.abs(D) < 1e-10) return circleFrom2(a, dist(a, b) > dist(a, c) ? b : c);
+      const ux = ((ax * ax + ay * ay) * (by - cy2) + (bx * bx + by * by) * (cy2 - ay) + (cx2 * cx2 + cy2 * cy2) * (ay - by)) / D;
+      const uy = ((ax * ax + ay * ay) * (cx2 - bx) + (bx * bx + by * by) * (ax - cx2) + (cx2 * cx2 + cy2 * cy2) * (bx - ax)) / D;
+      return { cx: ux, cy: uy, r: dist({ x: ux, y: uy }, a) };
+    };
+
+    const inside = (c: { cx: number; cy: number; r: number }, p: Pt) =>
+      dist({ x: c.cx, y: c.cy }, p) <= c.r + 1e-6;
+
+    // Welzl iterative (셔플 + 경계 포인트 최대 3개)
+    const pts = points.map(toXY);
+    // 셔플
+    for (let i = pts.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pts[i], pts[j]] = [pts[j], pts[i]];
     }
-    const radius = Math.min(Math.max(maxDist * 1.2, 50), 2000);
 
+    let circle = circleFrom1(pts[0]);
+    for (let i = 1; i < pts.length; i++) {
+      if (!inside(circle, pts[i])) {
+        circle = circleFrom1(pts[i]);
+        for (let j = 0; j < i; j++) {
+          if (!inside(circle, pts[j])) {
+            circle = circleFrom2(pts[i], pts[j]);
+            for (let k = 0; k < j; k++) {
+              if (!inside(circle, pts[k])) {
+                circle = circleFrom3(pts[i], pts[j], pts[k]);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 미터 좌표 → 위경도 복원
+    const centerLat = points[0].lat + circle.cy / M_PER_LAT;
+    const centerLng = points[0].lng + circle.cx / M_PER_LNG;
+    const radius = Math.max(circle.r * 1.05, 30); // 5% 패딩, 최소 30m
+
+    const center = new window.kakao.maps.LatLng(centerLat, centerLng);
     jibunBoundCircleRef.current = new window.kakao.maps.Circle({
       center,
       radius,
