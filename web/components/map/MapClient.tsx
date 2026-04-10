@@ -317,24 +317,8 @@ export default function MapClient({ isAdmin, email }: Props) {
     (pick: SearchPick) => {
       if (!mapInstance) return;
 
-      // geocode_address 결정
-      let targetAddr: string | null = null;
-      if (pick.kind === "ji") {
-        targetAddr = pick.row.geocode_address;
-      } else {
-        // ri → allRows에서 geocode_address만 찾기
-        const match = allRows.find(
-          (r) =>
-            r.addr_do === pick.row.addr_do &&
-            r.addr_si === pick.row.addr_si &&
-            r.addr_gu === pick.row.addr_gu &&
-            r.addr_dong === pick.row.addr_dong &&
-            r.addr_li === pick.row.addr_li
-        );
-        targetAddr = match?.geocode_address ?? null;
-      }
-
-      // 좌표는 검색 결과에서 직접 사용 (같은 DB 출처)
+      // 좌표·geocode_address 모두 검색 결과에서 직접 사용 (같은 DB)
+      const targetAddr = pick.row.geocode_address;
       const lat = pick.row.lat;
       const lng = pick.row.lng;
       if (lat == null || lng == null) return;
@@ -375,7 +359,7 @@ export default function MapClient({ isAdmin, email }: Props) {
         });
       }
     },
-    [mapInstance, filteredRows, filters, allRows, openLocationDetail]
+    [mapInstance, filteredRows, filters, openLocationDetail]
   );
 
   // 5. 공유 링크 생성 + 클립보드 복사

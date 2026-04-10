@@ -15,6 +15,7 @@ export interface SearchRiResult {
   addr_gu: string | null;
   addr_dong: string | null;
   addr_li: string | null;
+  geocode_address: string;
   cnt: number;
   lat: number | null;
   lng: number | null;

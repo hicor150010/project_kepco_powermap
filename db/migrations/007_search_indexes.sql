@@ -104,6 +104,7 @@ BEGIN
       addr_gu,
       addr_dong,
       addr_li,
+      geocode_address,
       COUNT(*)::int AS cnt,
       -- 리 단위 좌표 — 같은 리는 같은 lat/lng 가짐 (geocode_cache가 리 단위)
       MAX(lat) AS lat,
@@ -119,7 +120,7 @@ BEGIN
       )
       FROM unnest(keywords) AS kw
     )
-    GROUP BY addr_do, addr_si, addr_gu, addr_dong, addr_li
+    GROUP BY addr_do, addr_si, addr_gu, addr_dong, addr_li, geocode_address
     ORDER BY cnt DESC
     LIMIT ri_limit
   ) t;
