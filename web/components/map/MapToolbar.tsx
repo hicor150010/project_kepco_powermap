@@ -103,13 +103,13 @@ export default function MapToolbar({
         </label>
       )}
 
-      {/* ── 3. 도구 버튼 — 데스크톱에서만 (비교/유망부지/거리재기) ── */}
-      <div className="hidden md:flex flex-col gap-px bg-white rounded-lg shadow border border-gray-200 p-1">
+      {/* ── 3. 도구 버튼 (비교 / 유망 부지 / 거리재기 / GPS / 공유) ── */}
+      <div className="flex flex-col gap-px bg-white rounded-lg shadow border border-gray-200 p-1">
         <button
           type="button"
           onClick={onToggleCompare}
           title={compareActive ? "비교 모드 종료" : "변경 비교"}
-          className={`w-8 h-8 rounded flex items-center justify-center text-sm
+          className={`w-9 h-9 md:w-8 md:h-8 rounded flex items-center justify-center text-sm
                      transition-colors ${
                        compareActive
                          ? "bg-orange-500 text-white hover:bg-orange-600"
@@ -124,7 +124,7 @@ export default function MapToolbar({
           type="button"
           onClick={onToggleTopList}
           title={topListActive ? "유망 부지 닫기" : "유망 부지 TOP 보기"}
-          className={`w-8 h-8 rounded flex items-center justify-center text-sm
+          className={`w-9 h-9 md:w-8 md:h-8 rounded flex items-center justify-center text-sm
                      transition-colors ${
                        topListActive
                          ? "bg-amber-400 text-amber-950 hover:bg-amber-500"
@@ -137,7 +137,7 @@ export default function MapToolbar({
           type="button"
           onClick={onToggleMeasure}
           title={measureActive ? "거리재기 종료" : "거리재기"}
-          className={`w-8 h-8 rounded flex items-center justify-center text-sm
+          className={`w-9 h-9 md:w-8 md:h-8 rounded flex items-center justify-center text-sm
                      transition-colors ${
                        measureActive
                          ? "bg-blue-500 text-white hover:bg-blue-600"
@@ -156,7 +156,7 @@ export default function MapToolbar({
                 ? "위치 추적 종료"
                 : "내 위치로 이동"
           }
-          className={`w-8 h-8 rounded flex items-center justify-center text-sm
+          className={`w-9 h-9 md:w-8 md:h-8 rounded flex items-center justify-center text-sm
                      transition-colors ${
                        gpsActive
                          ? gpsAutoFollow
@@ -178,7 +178,7 @@ export default function MapToolbar({
           type="button"
           onClick={onShare}
           title="현재 지도 상태 링크 복사"
-          className="w-8 h-8 rounded flex items-center justify-center text-sm
+          className="w-9 h-9 md:w-8 md:h-8 rounded flex items-center justify-center text-sm
                      transition-colors bg-white text-gray-700 hover:bg-gray-100"
         >
           <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
@@ -225,11 +225,11 @@ export default function MapToolbar({
         </button>
       </div>
 
-      {/* ── 5. 나침반 — 데스크톱만 ── */}
+      {/* ── 5. 나침반 (북쪽 고정) ── */}
       <div
         title="북쪽"
-        className="hidden md:flex w-8 h-8 bg-white rounded-full shadow border border-gray-200
-                   items-center justify-center"
+        className="w-9 h-9 md:w-8 md:h-8 bg-white rounded-full shadow border border-gray-200
+                   flex items-center justify-center"
       >
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
           <polygon points="9,1 12,9 9,7.5 6,9" fill="#e53e3e" />
