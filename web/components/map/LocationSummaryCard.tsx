@@ -38,7 +38,7 @@ export default function LocationSummaryCard({
 }: Props) {
   if (loading || !rows || rows.length === 0) {
     return (
-      <div className="absolute left-4 bottom-20 w-[380px] max-w-[calc(100%-32px)] bg-white rounded-xl shadow-2xl border border-gray-200 p-6 z-10 kepco-slide-up">
+      <div className="absolute left-2 right-2 bottom-16 md:left-4 md:right-auto md:bottom-20 md:w-[380px] max-w-[calc(100%-16px)] md:max-w-[calc(100%-32px)] bg-white rounded-xl shadow-2xl border border-gray-200 p-6 z-10 kepco-slide-up">
         <div className="flex items-center justify-between">
           <div className="text-sm text-gray-600">
             {loading ? "마을 정보를 불러오는 중..." : "데이터 없음"}
@@ -65,7 +65,7 @@ export default function LocationSummaryCard({
   ].filter(Boolean) as string[];
 
   return (
-    <div className="absolute left-4 bottom-20 w-[380px] max-w-[calc(100%-32px)] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden z-10 flex flex-col max-h-[calc(100vh-180px)] kepco-slide-up">
+    <div className="absolute left-2 right-2 bottom-16 md:left-4 md:right-auto md:bottom-20 md:w-[380px] max-w-[calc(100%-16px)] md:max-w-[calc(100%-32px)] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden z-10 flex flex-col max-h-[calc(100vh-180px)] kepco-slide-up">
       {/* 헤더 — 위치명 + 총 건수 */}
       <div className="px-4 py-3 border-b bg-gray-50 flex items-start justify-between gap-2 flex-shrink-0">
         <div className="flex-1 min-w-0">

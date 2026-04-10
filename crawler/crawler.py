@@ -423,10 +423,10 @@ class KepcoСrawler:
         if self.is_stopped():
             return
 
-        # 표시용 주소 (기타지역 제외)
+        # 표시용 주소 (전체 표시)
         parts = [addr_do]
         for v in [addr_si, addr_gu, addr_lidong, addr_li, addr_jibun]:
-            if v and v != SKIP_VALUE:
+            if v:
                 parts.append(v)
         display_addr = " ".join(parts)
         self.progress.current_address = display_addr

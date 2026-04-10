@@ -47,7 +47,8 @@ const EMPTY_STATE: SearchState = {
 // 결과 패널 높이(px) — 사용자가 드래그로 조절. 최소/최대/기본값.
 const PANEL_MIN = 140;
 const PANEL_MAX_RATIO = 0.85; // 화면 높이의 85%
-const PANEL_DEFAULT = 280;
+const PANEL_DEFAULT_MOBILE = 200;
+const PANEL_DEFAULT_DESKTOP = 280;
 
 /**
  * 탭 버튼 — 카운트가 0보다 크면 파란색 pill로 강조.
@@ -119,7 +120,11 @@ export default function SearchPanel({ onPick, onJibunPin, onFocus }: Props) {
   const [state, setState] = useState<SearchState>(EMPTY_STATE);
   const [tab, setTab] = useState<"ri" | "ji">("ri");
   const [open, setOpen] = useState(false); // 결과 패널 펼침 여부
-  const [panelHeight, setPanelHeight] = useState(PANEL_DEFAULT);
+  const [panelHeight, setPanelHeight] = useState(
+    typeof window !== "undefined" && window.innerWidth < 768
+      ? PANEL_DEFAULT_MOBILE
+      : PANEL_DEFAULT_DESKTOP
+  );
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -134,32 +139,42 @@ export default function SearchPanel({ onPick, onJibunPin, onFocus }: Props) {
   //   - 검색바 높이(약 40px)는 빼서 결과 영역만 고려
   // ─────────────────────────────────────────────
   useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!draggingRef.current) return;
+    const calcHeight = (clientY: number) => {
       const winH = window.innerHeight;
       const SEARCH_BAR_H = 40;
-      const next = winH - e.clientY - SEARCH_BAR_H;
+      const next = winH - clientY - SEARCH_BAR_H;
       const max = winH * PANEL_MAX_RATIO;
       setPanelHeight(Math.min(Math.max(next, PANEL_MIN), max));
     };
-    const onUp = () => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!draggingRef.current) return;
+      calcHeight(e.clientY);
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (!draggingRef.current) return;
+      calcHeight(e.touches[0].clientY);
+    };
+    const onEnd = () => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
     };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onEnd);
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("touchend", onEnd);
     return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onEnd);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onEnd);
     };
   }, []);
 
-  const handleDragStart = (e: React.MouseEvent) => {
+  const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     draggingRef.current = true;
-    // 드래그 중 텍스트 선택/커서 깜빡임 방지
     document.body.style.userSelect = "none";
     document.body.style.cursor = "ns-resize";
   };
@@ -237,7 +252,8 @@ export default function SearchPanel({ onPick, onJibunPin, onFocus }: Props) {
           {/* 드래그 핸들 — 위/아래로 끌어 패널 높이 조절 */}
           <div
             onMouseDown={handleDragStart}
-            className="h-2 cursor-ns-resize bg-gray-100 hover:bg-blue-100 flex items-center justify-center group"
+            onTouchStart={handleDragStart}
+            className="h-3 md:h-2 cursor-ns-resize bg-gray-100 hover:bg-blue-100 flex items-center justify-center group touch-none"
             title="드래그로 높이 조절"
           >
             <div className="w-10 h-1 rounded-full bg-gray-300 group-hover:bg-blue-400" />
@@ -312,7 +328,7 @@ export default function SearchPanel({ onPick, onJibunPin, onFocus }: Props) {
       )}
 
       {/* 검색 입력 바 (항상 표시) */}
-      <div className="pointer-events-auto mx-3 mb-3 relative">
+      <div className="pointer-events-auto mx-2 mb-2 md:mx-3 md:mb-3 pb-[env(safe-area-inset-bottom)] relative">
         <div className="bg-white/95 backdrop-blur border border-gray-200 rounded-xl px-4 py-2.5 flex items-center gap-2.5 shadow-lg">
           <span className="text-base text-gray-400">🔍</span>
           <input

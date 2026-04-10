@@ -137,8 +137,8 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/40 md:p-4">
+      <div className="bg-white rounded-t-xl md:rounded-xl shadow-2xl w-full md:max-w-4xl h-[90vh] md:max-h-[90vh] flex flex-col overflow-hidden">
         <div className="px-5 py-4 border-b flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="text-xs text-gray-500 mb-0.5">상세 목록</div>
@@ -239,7 +239,7 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
             </div>
 
             <div className="overflow-auto flex-1 min-h-0">
-              <table className="w-full text-xs">
+              <table className="w-full text-xs min-w-[640px]">
                 {/*
                  * 2단 헤더 — 같은 시설에 속한 [이름 / 여유] 를 상단 그룹 헤더로
                  * 묶어서 한눈에 그룹핑을 보이게 한다.

@@ -44,7 +44,7 @@
 
 ### 등록된 플랫폼 (Web)
 - `http://localhost:3000` (개발)
-- ⚠️ Vercel 배포 후 운영 도메인 등록 필요
+- `https://kepco-powermap.vercel.app` (운영)
 
 ### 환경변수
 ```
@@ -82,9 +82,8 @@ KAKAO_REST_KEY            # REST API 키 (서버 전용)
 
 ### 키 정보
 - **인증키 만료일**: **2026-10-08** ⚠️ **달력에 등록 권장**
-- **등록 서비스 URL**:
-  - `http://localhost:3000` (개발)
-  - ⚠️ Vercel 배포 후 운영 도메인 추가 필요
+- **등록 서비스 URL**: `*` (와일드카드 — 모든 도메인 허용)
+  - 운영 안정화 후 좁힐 것 권장
 - **활성화 API**: 검색 API, 2D 지도 API
 - **갱신 방법**: 만료 전 콘솔에서 연장 신청
 
@@ -117,7 +116,31 @@ VWORLD_KEY  # 인증키 (서버 전용)
 ### 개요
 - Next.js 호스팅 플랫폼
 - Edge Functions, KV, Postgres 등 통합 제공
-- **현재 미배포** — 로컬 개발 중
+- **플랜**: Hobby (무료)
+
+### 계정
+- **가입 방법**: Google 소셜 로그인
+- **계정**: `hicor150010@gmail.com`
+- **콘솔**: https://vercel.com/dashboard
+
+### 프로젝트 설정
+- **프로젝트명**: `kepco-powermap`
+- **GitHub 연결**: `hicor1/project_kepco_powermap`
+- **Root Directory**: `web`
+- **Framework**: Next.js (자동 감지)
+- **배포 도메인**: `https://kepco-powermap.vercel.app`
+
+### 환경변수 (Vercel에 등록)
+| 변수 | 용도 | 비고 |
+|---|---|---|
+| `NEXT_PUBLIC_KAKAO_JS_KEY` | 카카오 지도 SDK | 브라우저 노출 OK |
+| `KAKAO_REST_KEY` | 카카오 지오코딩 | 서버 전용 |
+| `VWORLD_KEY` | VWorld 지오코딩 | 서버 전용 |
+| `GITHUB_PAT` | 크롤링 트리거 | 서버 전용 |
+| `GITHUB_REPO` | 리포 경로 | `hicor1/project_kepco_powermap` |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase API | 브라우저 노출 OK |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase 익명키 | 브라우저 노출 OK |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase 관리키 | 서버 전용 |
 
 ### 무료 한도 (Hobby)
 | 항목 | 한도 | 비고 |
@@ -127,12 +150,12 @@ VWORLD_KEY  # 인증키 (서버 전용)
 | Edge Function 실행 | 500,000회/월 | |
 | Vercel KV (Upstash) | 256 MB / 10K 명령/일 | 미사용 |
 
-### 배포 시 필요 작업
-1. GitHub 리포지토리 연결
-2. 환경변수 등록 (Kakao, VWorld, Supabase 등)
-3. Kakao 콘솔에 배포 도메인 추가
-4. VWorld 콘솔에 배포 도메인 추가
-5. 도메인 추가 후 SECRETS.local.md / SERVICES.md 업데이트
+### 배포 완료 (2026-04-10)
+1. ~~GitHub 리포지토리 연결~~ ✅
+2. ~~환경변수 등록~~ ✅
+3. ~~Kakao 콘솔에 배포 도메인 추가~~ ✅
+4. ~~VWorld — 서비스URL `*` (와일드카드) 설정으로 별도 추가 불필요~~ ✅
+5. ~~이 문서에 프로젝트명 + 배포 도메인 기입~~ ✅
 
 ---
 
@@ -277,10 +300,11 @@ SECRETS.local.md
 |---|---|
 | Kakao | https://developers.kakao.com/console/app/1424714 |
 | VWorld | https://www.vworld.kr/dev/v4api.do |
-| Vercel | https://vercel.com/dashboard (미생성) |
+| Vercel | https://vercel.com/dashboard |
 | Supabase | https://supabase.com/dashboard (미생성) |
 
 ---
 
 ## 변경 이력
+- 2026-04-10: Vercel 배포 완료. 계정/프로젝트/도메인 정보 추가. VWorld 서비스URL 와일드카드 확인.
 - 2026-04-08: 초안 작성. 기존 API_KEYS.md를 SERVICES.md(공개) + SECRETS.local.md(비공개)로 분리. VWorld 추가.
