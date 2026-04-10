@@ -161,7 +161,7 @@ export default function MapToolbar({
                        gpsActive
                          ? gpsAutoFollow
                            ? "bg-blue-500 text-white hover:bg-blue-600"
-                           : "bg-blue-100 text-blue-600 hover:bg-blue-200"
+                           : "bg-blue-100 text-blue-600 hover:bg-blue-200 ring-2 ring-blue-400"
                          : "bg-white text-gray-700 hover:bg-gray-100"
                      }`}
         >

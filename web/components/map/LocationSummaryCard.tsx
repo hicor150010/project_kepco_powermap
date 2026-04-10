@@ -259,10 +259,15 @@ function ChangeArrow({ prev, cur }: { prev: string | null; cur: string | null })
 
 /** 모바일용 미니 비율 바 */
 function MiniBar({ label, counts }: { label: string; counts: FacilityCounts }) {
-  const { okPct, noPct } = counts;
+  const { okPct, noPct, okCount, noCount } = counts;
   return (
     <div className="flex-1 min-w-0">
-      <div className="text-[9px] text-gray-500 mb-0.5 truncate">{label}</div>
+      <div className="flex items-center justify-between mb-0.5">
+        <span className="text-[10px] font-medium text-gray-600 truncate">{label}</span>
+        <span className="text-[9px] tabular-nums text-gray-400">
+          <span className="text-blue-500">{okCount}</span>/<span className="text-red-500">{noCount}</span>
+        </span>
+      </div>
       <div className="h-1.5 rounded-full overflow-hidden bg-gray-100 flex">
         {okPct > 0 && <div className="bg-blue-500 h-full" style={{ width: `${okPct}%` }} />}
         {noPct > 0 && <div className="bg-red-500 h-full" style={{ width: `${noPct}%` }} />}

@@ -185,8 +185,6 @@ export default function KakaoMap({
   const lastFitKeyRef = useRef(-1);
   // 마커 위 마을명 라벨(CustomOverlay) — 줌 인 했을 때만 표시
   const labelOverlaysRef = useRef<any[]>([]);
-  // 마커 범위 표시 원형 오버레이
-  const circleOverlaysRef = useRef<any[]>([]);
   // 줌 변경 리스너 핸들 (마커 effect 재실행 시 정리)
   const zoomListenerRef = useRef<any>(null);
   // 마커 참조 맵 (geocode_address → kakao.maps.Marker) — 선택 변경 시 이미지 교체용
@@ -354,31 +352,6 @@ export default function KakaoMap({
     });
 
     // ─────────────────────────────────────────────
-    // 범위 표시 원형 — 마커가 점이 아닌 범위임을 시각화
-    //   줌이 충분히 가까울 때(level <= CIRCLE_VISIBLE_LEVEL)만 보이도록 토글
-    // ─────────────────────────────────────────────
-    circleOverlaysRef.current.forEach((c) => c.setMap(null));
-    const CIRCLE_VISIBLE_LEVEL = 7;
-    circleOverlaysRef.current = filtered.map((row) => {
-      // 데이터 건수에 따라 반지름 조절 (최소 150m ~ 최대 500m)
-      const radius = Math.min(500, Math.max(150, row.total * 3));
-      // 여유 비율에 따라 색상 결정
-      const noCapRatio = (row.dl_no_cap ?? 0) / Math.max(row.total, 1);
-      const color = noCapRatio > 0.5 ? "#ef4444" : noCapRatio > 0.2 ? "#f59e0b" : "#3b82f6";
-
-      const circle = new window.kakao.maps.Circle({
-        center: new window.kakao.maps.LatLng(row.lat, row.lng),
-        radius,
-        strokeWeight: 1,
-        strokeColor: color,
-        strokeOpacity: 0.3,
-        fillColor: color,
-        fillOpacity: 0.08,
-      });
-      return circle;
-    });
-
-    // ─────────────────────────────────────────────
     // 마을명 라벨 — 각 마커 아래에 작은 텍스트 박스
     //   줌이 충분히 가까울 때(level <= LABEL_VISIBLE_LEVEL)만 보이도록
     //   zoom_changed 이벤트로 토글한다.
@@ -435,8 +408,6 @@ export default function KakaoMap({
       const level = map.getLevel();
       const labelVisible = level <= LABEL_VISIBLE_LEVEL;
       labelOverlaysRef.current.forEach((o) => o.setMap(labelVisible ? map : null));
-      const circleVisible = level <= CIRCLE_VISIBLE_LEVEL;
-      circleOverlaysRef.current.forEach((c) => c.setMap(circleVisible ? map : null));
     };
     applyLabelVisibility();
 

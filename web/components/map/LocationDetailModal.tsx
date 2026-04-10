@@ -201,7 +201,7 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
             </div>
             <button
               onClick={onClose}
-              className="w-9 h-9 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-2xl leading-none"
+              className="w-10 h-10 md:w-9 md:h-9 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-2xl leading-none"
               aria-label="닫기"
             >
               ×
@@ -238,137 +238,59 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
               </button>
             </div>
 
-            <div className="overflow-auto flex-1 min-h-0">
+            {/* ── 데스크톱: 테이블 뷰 ── */}
+            <div className="hidden md:block overflow-auto flex-1 min-h-0">
               <table className="w-full text-xs min-w-[640px]">
-                {/*
-                 * 2단 헤더 — 같은 시설에 속한 [이름 / 여유] 를 상단 그룹 헤더로
-                 * 묶어서 한눈에 그룹핑을 보이게 한다.
-                 */}
                 <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
-                  {/* 1단: 시설 그룹 */}
                   <tr className="border-b border-gray-200">
                     <th className="w-8 px-2 py-2 bg-gray-100" rowSpan={2}></th>
                     <th className="px-3 py-2 bg-gray-100" rowSpan={2}>
-                      <SortHeaderInline
-                        label="번지"
-                        col="addr_jibun"
-                        sortKey={sortKey}
-                        sortDir={sortDir}
-                        onSort={setSort}
-                      />
+                      <SortHeaderInline label="번지" col="addr_jibun" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
                     </th>
-                    <th
-                      colSpan={2}
-                      className="px-3 py-1.5 text-center text-[10px] font-bold text-blue-800 bg-blue-50 border-l border-r border-blue-200"
-                    >
-                      🏭 변전소
-                    </th>
-                    <th
-                      colSpan={2}
-                      className="px-3 py-1.5 text-center text-[10px] font-bold text-emerald-800 bg-emerald-50 border-l border-r border-emerald-200"
-                    >
-                      ⚡ 주변압기
-                    </th>
-                    <th
-                      colSpan={2}
-                      className="px-3 py-1.5 text-center text-[10px] font-bold text-amber-800 bg-amber-50 border-l border-r border-amber-200"
-                    >
-                      📡 배전선로
-                    </th>
+                    <th colSpan={2} className="px-3 py-1.5 text-center text-[10px] font-bold text-blue-800 bg-blue-50 border-l border-r border-blue-200">🏭 변전소</th>
+                    <th colSpan={2} className="px-3 py-1.5 text-center text-[10px] font-bold text-emerald-800 bg-emerald-50 border-l border-r border-emerald-200">⚡ 주변압기</th>
+                    <th colSpan={2} className="px-3 py-1.5 text-center text-[10px] font-bold text-amber-800 bg-amber-50 border-l border-r border-amber-200">📡 배전선로</th>
                   </tr>
-                  {/* 2단: 세부 컬럼 */}
                   <tr className="border-b-2 border-gray-300">
-                    <th className="px-3 py-2 text-left bg-blue-50/40 border-l border-blue-200">
-                      <SortHeaderInline
-                        label="이름"
-                        col="subst_nm"
-                        sortKey={sortKey}
-                        sortDir={sortDir}
-                        onSort={setSort}
-                      />
-                    </th>
-                    <th className="px-3 py-2 text-right bg-blue-50/40 border-r border-blue-200">
-                      <SortHeaderInline
-                        label="여유"
-                        col="vol_subst"
-                        sortKey={sortKey}
-                        sortDir={sortDir}
-                        onSort={setSort}
-                        align="right"
-                      />
-                    </th>
-                    <th className="px-3 py-2 text-left bg-emerald-50/40 border-l border-emerald-200">
-                      <SortHeaderInline
-                        label="번호"
-                        col="mtr_no"
-                        sortKey={sortKey}
-                        sortDir={sortDir}
-                        onSort={setSort}
-                      />
-                    </th>
-                    <th className="px-3 py-2 text-right bg-emerald-50/40 border-r border-emerald-200">
-                      <SortHeaderInline
-                        label="여유"
-                        col="vol_mtr"
-                        sortKey={sortKey}
-                        sortDir={sortDir}
-                        onSort={setSort}
-                        align="right"
-                      />
-                    </th>
-                    <th className="px-3 py-2 text-left bg-amber-50/40 border-l border-amber-200">
-                      <SortHeaderInline
-                        label="이름"
-                        col="dl_nm"
-                        sortKey={sortKey}
-                        sortDir={sortDir}
-                        onSort={setSort}
-                      />
-                    </th>
-                    <th className="px-3 py-2 text-right bg-amber-50/40 border-r border-amber-200">
-                      <SortHeaderInline
-                        label="여유"
-                        col="vol_dl"
-                        sortKey={sortKey}
-                        sortDir={sortDir}
-                        onSort={setSort}
-                        align="right"
-                      />
-                    </th>
+                    <th className="px-3 py-2 text-left bg-blue-50/40 border-l border-blue-200"><SortHeaderInline label="이름" col="subst_nm" sortKey={sortKey} sortDir={sortDir} onSort={setSort} /></th>
+                    <th className="px-3 py-2 text-right bg-blue-50/40 border-r border-blue-200"><SortHeaderInline label="여유" col="vol_subst" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" /></th>
+                    <th className="px-3 py-2 text-left bg-emerald-50/40 border-l border-emerald-200"><SortHeaderInline label="번호" col="mtr_no" sortKey={sortKey} sortDir={sortDir} onSort={setSort} /></th>
+                    <th className="px-3 py-2 text-right bg-emerald-50/40 border-r border-emerald-200"><SortHeaderInline label="여유" col="vol_mtr" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" /></th>
+                    <th className="px-3 py-2 text-left bg-amber-50/40 border-l border-amber-200"><SortHeaderInline label="이름" col="dl_nm" sortKey={sortKey} sortDir={sortDir} onSort={setSort} /></th>
+                    <th className="px-3 py-2 text-right bg-amber-50/40 border-r border-amber-200"><SortHeaderInline label="여유" col="vol_dl" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" /></th>
                   </tr>
                 </thead>
                 <tbody>
                   {pageItems.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="px-3 py-8 text-center text-gray-400">
-                        결과 없음
-                      </td>
-                    </tr>
+                    <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-400">결과 없음</td></tr>
                   ) : (
-                    pageItems.map((it, idx) => {
-                      const isOpen = expanded.has(it.id);
-                      return (
-                        <FragmentRow
-                          key={it.id}
-                          it={it}
-                          idx={idx}
-                          isOpen={isOpen}
-                          onToggle={() => toggleExpand(it.id)}
-                          onJibunPin={onJibunPin}
-                        />
-                      );
-                    })
+                    pageItems.map((it, idx) => (
+                      <FragmentRow key={it.id} it={it} idx={idx} isOpen={expanded.has(it.id)} onToggle={() => toggleExpand(it.id)} onJibunPin={onJibunPin} />
+                    ))
                   )}
                 </tbody>
               </table>
             </div>
 
+            {/* ── 모바일: 카드 리스트 ── */}
+            <div className="md:hidden overflow-auto flex-1 min-h-0">
+              {pageItems.length === 0 ? (
+                <div className="px-4 py-8 text-center text-gray-400 text-xs">결과 없음</div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {pageItems.map((it) => (
+                    <MobileCard key={it.id} it={it} isOpen={expanded.has(it.id)} onToggle={() => toggleExpand(it.id)} onJibunPin={onJibunPin} />
+                  ))}
+                </div>
+              )}
+            </div>
+
             {totalPages > 1 && (
-              <div className="px-5 py-3 border-t bg-gray-50 flex items-center justify-between text-xs flex-shrink-0">
+              <div className="px-4 py-3 border-t bg-gray-50 flex items-center justify-between text-xs flex-shrink-0">
                 <button
                   onClick={() => setPage(Math.max(0, page - 1))}
                   disabled={page === 0}
-                  className="px-4 py-2 rounded-md font-semibold border border-blue-500 bg-white text-blue-600
+                  className="px-4 py-2.5 rounded-md font-semibold border border-blue-500 bg-white text-blue-600
                              hover:bg-blue-500 hover:text-white transition-colors
                              disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400
                              disabled:hover:bg-gray-100 disabled:hover:text-gray-400 disabled:cursor-not-allowed"
@@ -383,7 +305,7 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
                 <button
                   onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
                   disabled={page >= totalPages - 1}
-                  className="px-4 py-2 rounded-md font-semibold border border-blue-500 bg-white text-blue-600
+                  className="px-4 py-2.5 rounded-md font-semibold border border-blue-500 bg-white text-blue-600
                              hover:bg-blue-500 hover:text-white transition-colors
                              disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400
                              disabled:hover:bg-gray-100 disabled:hover:text-gray-400 disabled:cursor-not-allowed"
@@ -602,4 +524,65 @@ function DetailContent({ it }: { it: KepcoDataRow }) {
   );
 }
 
-// FacilityCard, StepBlock 은 ./FacilityCard 에서 import (재사용)
+/** 모바일 카드 — 한 지번의 3시설 요약을 세로로 표시 */
+function MobileCard({
+  it,
+  isOpen,
+  onToggle,
+  onJibunPin,
+}: {
+  it: KepcoDataRow;
+  isOpen: boolean;
+  onToggle: () => void;
+  onJibunPin?: (row: KepcoDataRow) => void;
+}) {
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`w-full text-left px-4 py-3 flex items-start gap-3 active:bg-blue-50 transition-colors ${
+          isOpen ? "bg-blue-50/60" : ""
+        }`}
+      >
+        <span className={`text-gray-400 mt-0.5 transition-transform ${isOpen ? "rotate-90 text-blue-600" : ""}`}>▶</span>
+        <div className="flex-1 min-w-0">
+          {/* 지번 */}
+          <div className="text-sm font-semibold text-gray-900 mb-1.5">
+            {onJibunPin && it.addr_jibun ? (
+              <span
+                role="button"
+                onClick={(e) => { e.stopPropagation(); onJibunPin(it); }}
+                className="text-blue-600"
+              >
+                📍 {it.addr_jibun}
+              </span>
+            ) : (
+              it.addr_jibun || "-"
+            )}
+          </div>
+          {/* 3시설 요약 — 한 줄씩 */}
+          <div className="space-y-1 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">🏭 {it.subst_nm || "-"}</span>
+              <RemainingCell base={it.subst_capa} received={it.subst_pwr} />
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">⚡ #{it.mtr_no || "-"}</span>
+              <RemainingCell base={it.mtr_capa} received={it.mtr_pwr} />
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">📡 {it.dl_nm || "-"}</span>
+              <RemainingCell base={it.dl_capa} received={it.dl_pwr} />
+            </div>
+          </div>
+        </div>
+      </button>
+      {isOpen && (
+        <div className="px-4 py-3 bg-blue-50/30 border-t border-blue-100">
+          <DetailContent it={it} />
+        </div>
+      )}
+    </div>
+  );
+}

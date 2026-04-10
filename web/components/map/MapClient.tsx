@@ -643,12 +643,20 @@ export default function MapClient({ isAdmin, email }: Props) {
         {/* 우상단 도구 패널 (거리재기 / 유망 부지 TOP) */}
         <MapToolbar
           measureActive={measureActive}
-          onToggleMeasure={() => setMeasureActive((v) => !v)}
+          onToggleMeasure={() => {
+            setMeasureActive((v) => {
+              if (!v) setSimpleToast("거리재기 모드 — 지도를 클릭하세요");
+              return !v;
+            });
+          }}
           topListActive={topListOpen}
           onToggleTopList={() => setTopListOpen((v) => !v)}
           compareActive={compareActive}
           onToggleCompare={() => {
-            setCompareActive((v) => !v);
+            setCompareActive((v) => {
+              if (!v) setSimpleToast("용량 변화 비교 모드");
+              return !v;
+            });
             if (compareActive) setCompareRows([]);
           }}
           gpsActive={gpsActive}
@@ -659,6 +667,7 @@ export default function MapClient({ isAdmin, email }: Props) {
             } else {
               setGpsActive(true);
               setGpsAutoFollow(true);
+              setSimpleToast("GPS 추적 시작");
             }
           }}
           onGpsRecenter={() => setGpsAutoFollow(true)}

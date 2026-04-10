@@ -88,7 +88,7 @@ export default function SearchResultList({ mode, ri, ji, onPick, onJibunPin }: P
             <button
               type="button"
               onClick={() => onPick({ kind: "ri", row: r })}
-              className="w-full text-left px-4 py-2.5 hover:bg-blue-50 flex items-center justify-between gap-3 transition-colors"
+              className="w-full text-left px-4 py-2.5 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-between gap-3 transition-colors"
             >
               <div className="min-w-0">
                 <div className="text-xs font-medium text-gray-900 truncate">
@@ -144,7 +144,7 @@ export default function SearchResultList({ mode, ri, ji, onPick, onJibunPin }: P
               type="button"
               onClick={() => handleJiClick(row)}
               className={`w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 transition-colors ${
-                isOpen ? "bg-blue-50" : "hover:bg-blue-50"
+                isOpen ? "bg-blue-50" : "hover:bg-blue-50 active:bg-blue-100"
               }`}
             >
               <div className="min-w-0 flex-1">
