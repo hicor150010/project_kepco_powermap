@@ -252,6 +252,7 @@ def run(job: dict):
     delay = options.get("delay", 0.5)
     fetch_step = options.get("fetch_step_data", False)
     flush_size = options.get("flush_size", FLUSH_SIZE)
+    progress_interval = options.get("progress_interval", PROGRESS_INTERVAL)
 
     # 체크포인트 (재개용)
     checkpoint = job.get("checkpoint")
@@ -290,29 +291,26 @@ def run(job: dict):
     timer.daemon = True
     timer.start()
 
-    # 결과 카운터 (progress 업데이트 주기 제어)
-    result_count = [0]
-    progress_count = [0]  # processed 기준 카운터 (결과 유무와 무관)
+    # ── 콜백 ──
+    # 2단계 주기:
+    #   경량 (PROGRESS_INTERVAL건마다): progress 표시 + 중단 체크
+    #   무거움 (FLUSH_SIZE건마다):      DB UPSERT + 지오코딩 + MV + checkpoint
+    call_count = [0]
 
     def on_progress(progress: CrawlProgress):
-        """매 주소 처리마다 호출 (결과 유무와 무관)"""
-        progress_count[0] += 1
-        # 10건마다 progress 업데이트 (경량)
-        if progress_count[0] % PROGRESS_INTERVAL == 0:
+        """경량 — 매 progress_interval건마다 실행"""
+        call_count[0] += 1
+        if call_count[0] % progress_interval == 0:
             update_job(job_id, {
                 "progress": build_progress_json(progress),
             })
-            # stop 요청 확인 (flush 아닌 구간에서도 체크)
             if check_stop_requested(job_id):
                 logger.info("중단 요청 감지 — 크롤링을 중지합니다.")
                 crawler.stop()
 
     def on_result(result: CrawlResult):
-        """검색 결과가 있을 때마다 호출 — 버퍼 추가 + flush"""
-        result_count[0] += 1
+        """무거움 — flush 시 UPSERT + 지오코딩 + MV + checkpoint"""
         flushed = db_writer.add(result)
-
-        # flush 발생 시: checkpoint 저장
         if flushed:
             update_job(job_id, {
                 "progress": build_progress_json(crawler.progress),

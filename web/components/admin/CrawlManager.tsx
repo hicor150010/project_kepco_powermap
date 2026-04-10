@@ -63,6 +63,7 @@ export default function CrawlManager() {
   // 수집 옵션
   const [optFlushSize, setOptFlushSize] = useState(100);
   const [optDelay, setOptDelay] = useState(0.5);
+  const [optProgressInterval, setOptProgressInterval] = useState(10);
   const [optFetchStep, setOptFetchStep] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
 
@@ -223,6 +224,7 @@ export default function CrawlManager() {
           options: {
             flush_size: optFlushSize,
             delay: optDelay,
+            progress_interval: optProgressInterval,
             fetch_step_data: optFetchStep,
           },
         }),
@@ -505,70 +507,79 @@ export default function CrawlManager() {
 
           {showOptions && (
             <div className="mt-3 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-4">
-              {/* 배치 크기 */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  배치 크기 (flush_size)
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="number"
-                    value={optFlushSize}
-                    onChange={(e) => setOptFlushSize(Number(e.target.value) || 100)}
-                    min={10}
-                    max={1000}
-                    step={10}
-                    className="w-24 border border-gray-300 rounded-md px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:outline-none"
-                  />
-                  <span className="text-xs text-gray-500">
-                    이 숫자만큼 데이터가 모이면 한꺼번에 DB에 저장합니다.
-                    저장할 때 지도에도 반영됩니다. (기본: 100건)
-                  </span>
-                </div>
-              </div>
-
-              {/* API 호출 간격 */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  API 호출 간격 (delay)
-                </label>
-                <div className="flex items-center gap-3">
-                  <select
-                    value={optDelay}
-                    onChange={(e) => setOptDelay(Number(e.target.value))}
-                    className="w-24 border border-gray-300 rounded-md px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:outline-none"
-                  >
-                    <option value={0.2}>0.2초</option>
-                    <option value={0.3}>0.3초</option>
-                    <option value={0.5}>0.5초</option>
-                    <option value={1.0}>1.0초</option>
-                    <option value={2.0}>2.0초</option>
-                  </select>
-                  <span className="text-xs text-gray-500">
-                    KEPCO 서버에 요청을 보내는 간격입니다.
-                    짧을수록 빠르지만 차단 위험이 있습니다. (기본: 0.5초)
-                  </span>
-                </div>
-              </div>
-
-              {/* STEP 데이터 */}
-              <div>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={optFetchStep}
-                    onChange={(e) => setOptFetchStep(e.target.checked)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-xs font-semibold text-gray-700">
-                    STEP 데이터 포함 (접속예정 건수/용량)
-                  </span>
-                </label>
-                <p className="text-xs text-gray-500 mt-1 ml-6">
-                  각 배전선로의 접속예정 건수와 용량(STEP 01/02/03)을 추가로 조회합니다.
-                  활성화하면 번지당 API를 1회 더 호출하므로 수집 속도가 절반으로 느려집니다.
-                </p>
-              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-gray-500 border-b border-gray-200">
+                    <th className="text-left py-2 font-medium w-1/4">항목</th>
+                    <th className="text-left py-2 font-medium w-1/4">설정값</th>
+                    <th className="text-left py-2 font-medium">설명</th>
+                  </tr>
+                </thead>
+                <tbody className="text-xs">
+                  {/* 1. API 호출 간격 */}
+                  <tr className="border-b border-gray-100">
+                    <td className="py-3 font-semibold text-gray-700">API 호출 간격</td>
+                    <td className="py-3">
+                      <select
+                        value={optDelay}
+                        onChange={(e) => setOptDelay(Number(e.target.value))}
+                        className="border border-gray-300 rounded px-2 py-1 text-sm text-gray-900 focus:border-blue-500 focus:outline-none"
+                      >
+                        <option value={0.2}>0.2초</option>
+                        <option value={0.3}>0.3초</option>
+                        <option value={0.5}>0.5초 (기본)</option>
+                        <option value={1.0}>1.0초</option>
+                        <option value={2.0}>2.0초</option>
+                      </select>
+                    </td>
+                    <td className="py-3 text-gray-500">KEPCO에 요청 보내는 간격. 짧으면 빠르지만 차단 위험.</td>
+                  </tr>
+                  {/* 2. 배치 크기 */}
+                  <tr className="border-b border-gray-100">
+                    <td className="py-3 font-semibold text-gray-700">배치 크기</td>
+                    <td className="py-3">
+                      <input
+                        type="number"
+                        value={optFlushSize}
+                        onChange={(e) => setOptFlushSize(Number(e.target.value) || 100)}
+                        min={10} max={1000} step={10}
+                        className="w-20 border border-gray-300 rounded px-2 py-1 text-sm text-gray-900 focus:border-blue-500 focus:outline-none"
+                      /> 건
+                    </td>
+                    <td className="py-3 text-gray-500">이만큼 모이면 DB 저장 + 좌표 변환 + 지도 반영 + 체크포인트 저장</td>
+                  </tr>
+                  {/* 3. 화면 갱신 주기 */}
+                  <tr className="border-b border-gray-100">
+                    <td className="py-3 font-semibold text-gray-700">화면 갱신 주기</td>
+                    <td className="py-3">
+                      <input
+                        type="number"
+                        value={optProgressInterval}
+                        onChange={(e) => setOptProgressInterval(Number(e.target.value) || 10)}
+                        min={1} max={100} step={1}
+                        className="w-20 border border-gray-300 rounded px-2 py-1 text-sm text-gray-900 focus:border-blue-500 focus:outline-none"
+                      /> 건
+                    </td>
+                    <td className="py-3 text-gray-500">이만큼 조회할 때마다 진행 상황 갱신 + 중단 요청 확인 (~{Math.round(optProgressInterval * optDelay)}초 간격)</td>
+                  </tr>
+                  {/* 4. STEP 데이터 */}
+                  <tr>
+                    <td className="py-3 font-semibold text-gray-700">STEP 데이터</td>
+                    <td className="py-3">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={optFetchStep}
+                          onChange={(e) => setOptFetchStep(e.target.checked)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-gray-700">{optFetchStep ? "사용" : "미사용"}</span>
+                      </label>
+                    </td>
+                    <td className="py-3 text-gray-500">접속예정 건수/용량(STEP 01/02/03) 추가 조회. 속도 절반으로 느려짐.</td>
+                  </tr>
+                </tbody>
+              </table>
 
               {/* 안내 */}
               <div className="text-xs text-amber-700 bg-amber-50 rounded px-3 py-2 border border-amber-200">
@@ -685,23 +696,31 @@ export default function CrawlManager() {
                     const opts = (job.options || {}) as any;
                     const flush = opts.flush_size || 100;
                     const delay = opts.delay || 0.5;
+                    const progInterval = opts.progress_interval || 10;
                     const hasStep = opts.fetch_step_data;
                     return (
-                      <div className="bg-gray-50 rounded-lg px-4 py-3 text-xs text-gray-500 space-y-1.5">
-                        <div className="flex items-center justify-between">
+                      <div className="bg-gray-50 rounded-lg px-4 py-3 text-xs text-gray-500">
+                        <div className="flex items-center justify-between mb-2">
                           {job.started_at && (
                             <span>{relativeTime(job.started_at)} 시작</span>
                           )}
-                          <span className="text-gray-400">Job #{job.id}</span>
                         </div>
-                        <div className="border-t border-gray-200 pt-1.5 grid grid-cols-2 gap-x-6 gap-y-1">
-                          <span>화면 갱신: <b className="text-gray-700">~{Math.round(10 * delay)}초</b>마다</span>
-                          <span>DB 저장 + 지도 반영: <b className="text-gray-700">{flush}건</b>마다</span>
-                          <span>좌표 변환: <b className="text-gray-700">DB 저장 시 자동</b></span>
-                          <span>중단 확인: <b className="text-gray-700">~{Math.round(10 * delay)}초</b>마다</span>
-                          <span>체크포인트 저장: <b className="text-gray-700">{flush}건</b>마다</span>
-                          <span>API 호출 간격: <b className="text-gray-700">{delay}초</b>{hasStep ? " (STEP 포함)" : ""}</span>
-                        </div>
+                        <table className="w-full">
+                          <tbody>
+                            <tr className="border-t border-gray-200">
+                              <td className="py-1.5 font-semibold text-gray-600 w-1/3">API 호출 간격</td>
+                              <td className="py-1.5 text-gray-700 font-medium">{delay}초{hasStep ? " (STEP 포함)" : ""}</td>
+                            </tr>
+                            <tr className="border-t border-gray-200">
+                              <td className="py-1.5 font-semibold text-gray-600">배치 크기</td>
+                              <td className="py-1.5 text-gray-700 font-medium">{flush}건마다 → DB 저장 + 좌표 변환 + 지도 반영 + 체크포인트</td>
+                            </tr>
+                            <tr className="border-t border-gray-200">
+                              <td className="py-1.5 font-semibold text-gray-600">화면 갱신 주기</td>
+                              <td className="py-1.5 text-gray-700 font-medium">{progInterval}건마다 (~{Math.round(progInterval * delay)}초) → 진행 상황 + 중단 확인</td>
+                            </tr>
+                          </tbody>
+                        </table>
                       </div>
                     );
                   })()}
