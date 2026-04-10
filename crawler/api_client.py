@@ -1,16 +1,38 @@
 """
 KEPCO 배전선로 여유용량 API 클라이언트
+- 브라우저 위장 헤더 (봇 탐지 우회)
+- User-Agent 랜덤 선택
+- 요청 간격 랜덤화
 """
 import json
+import random
 import time
 import requests
 
 BASE_URL = "https://online.kepco.co.kr"
+
+# 브라우저와 동일한 헤더 (봇 탐지 우회)
 HEADERS = {
     "Content-Type": "application/json",
     "Referer": "https://online.kepco.co.kr/EWM092D00",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Origin": "https://online.kepco.co.kr",
+    "X-Requested-With": "XMLHttpRequest",
 }
+
+# User-Agent 풀 — 세션마다 랜덤 선택
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15",
+]
+
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
 SKIP_VALUE = "-기타지역"
@@ -29,7 +51,6 @@ class TooManyErrorsException(Exception):
 class KepcoApiClient:
     def __init__(self, delay: float = 0.5):
         self.session = requests.Session()
-        self.session.headers.update(HEADERS)
         self.delay = delay
         self._last_request_time = 0.0
         self._consecutive_errors = 0
@@ -37,17 +58,22 @@ class KepcoApiClient:
         self._init_session()
 
     def _init_session(self):
-        """세션 초기화 (쿠키 획득)"""
+        """세션 초기화 — 랜덤 UA + 브라우저 헤더 + 쿠키 획득"""
+        # 랜덤 User-Agent 선택
+        ua = random.choice(USER_AGENTS)
+        self.session.headers.update({**HEADERS, "User-Agent": ua})
+        # 메인 페이지 접속 (쿠키 획득)
         try:
             self.session.get(f"{BASE_URL}/EWM092D00", timeout=30)
         except requests.exceptions.RequestException:
             pass
 
     def _wait(self):
-        """요청 간 딜레이 적용"""
+        """요청 간 딜레이 — ±20% 랜덤화 (봇 패턴 회피)"""
         elapsed = time.time() - self._last_request_time
-        if elapsed < self.delay:
-            time.sleep(self.delay - elapsed)
+        jitter = self.delay * random.uniform(0.8, 1.2)
+        if elapsed < jitter:
+            time.sleep(jitter - elapsed)
 
     def _log(self, msg: str):
         if self._on_log:
