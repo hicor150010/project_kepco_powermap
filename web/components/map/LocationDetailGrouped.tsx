@@ -314,6 +314,9 @@ function JibunRow({ row, onJibunPin }: { row: KepcoDataRow; onJibunPin?: (row: K
   const substRemain = (row.subst_capa ?? 0) - (row.subst_pwr ?? 0);
   const mtrRemain = (row.mtr_capa ?? 0) - (row.mtr_pwr ?? 0);
   const dlRemain = (row.dl_capa ?? 0) - (row.dl_pwr ?? 0);
+  const substOk = substRemain >= 0;
+  const mtrOk = mtrRemain >= 0;
+  const dlOk = dlRemain >= 0;
 
   return (
     <>
