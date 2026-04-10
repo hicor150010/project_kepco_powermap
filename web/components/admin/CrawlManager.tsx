@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // ── 타입 ──
 
@@ -944,68 +944,53 @@ export default function CrawlManager() {
             완료된 작업이 없습니다.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[700px]">
-            <thead>
-              <tr className="bg-gray-50 text-gray-600 text-xs">
-                <th className="text-left px-4 py-2 font-medium w-6"></th>
-                <th className="text-left px-4 py-2 font-medium w-6"></th>
-                <th className="text-left px-4 py-2 font-medium whitespace-nowrap">ID</th>
-                <th className="text-left px-4 py-2 font-medium">지역</th>
-                <th className="text-left px-4 py-2 font-medium whitespace-nowrap">상태</th>
-                <th className="text-right px-4 py-2 font-medium whitespace-nowrap">결과</th>
-                <th className="text-right px-4 py-2 font-medium whitespace-nowrap">수집 일시</th>
-                <th className="text-right px-4 py-2 font-medium whitespace-nowrap">작업</th>
-              </tr>
-            </thead>
-            <tbody>
-              {historyJobs.map((job, idx) => {
-                const isExpanded = expandedJobId === job.id;
-                const opts = (job.options || {}) as Record<string, any>;
-                const cp = (job.checkpoint || {}) as Record<string, any>;
-                const cpPos = cp.position as Record<string, any> | undefined;
-                const cpStats = cp.stats as Record<string, any> | undefined;
-                return (
-                  <Fragment key={job.id}>
-                    <tr
-                      className={`cursor-pointer hover:bg-blue-50/50 transition-colors ${idx % 2 === 1 ? "bg-gray-50/40" : ""}`}
-                      onClick={() => setExpandedJobId(isExpanded ? null : job.id)}
+          <div>
+            {/* 헤더 */}
+            <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 text-xs text-gray-500 font-medium border-b border-gray-100">
+              <span className="flex-shrink-0" style={{width: 16}}></span>
+              <span className="flex-shrink-0" style={{width: 36}}>ID</span>
+              <span className="flex-1 min-w-0">지역</span>
+              <span className="flex-shrink-0" style={{width: 52}}>상태</span>
+              <span className="flex-shrink-0 text-right" style={{width: 55}}>결과</span>
+              <span className="flex-shrink-0 text-right w-16">수집 일시</span>
+              <span className="flex-shrink-0 text-right" style={{width: 36}}>작업</span>
+            </div>
+          <div className="divide-y divide-gray-100">
+            {historyJobs.map((job) => {
+              const isExpanded = expandedJobId === job.id;
+              const opts = (job.options || {}) as Record<string, any>;
+              const cp = (job.checkpoint || {}) as Record<string, any>;
+              const cpPos = cp.position as Record<string, any> | undefined;
+              const cpStats = cp.stats as Record<string, any> | undefined;
+              return (
+                <div key={job.id}>
+                  {/* 요약 행 */}
+                  <div
+                    className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-blue-50/50 transition-colors"
+                    onClick={() => setExpandedJobId(isExpanded ? null : job.id)}
+                  >
+                    <span className="text-gray-400 text-xs flex-shrink-0">{isExpanded ? "▼" : "▶"}</span>
+                    <span className="text-gray-500 text-sm flex-shrink-0">#{job.id}</span>
+                    <span className="text-sm font-medium text-gray-900 truncate flex-1 min-w-0">{formatScope(job)}</span>
+                    <StatusBadge status={job.status} />
+                    <span className="text-sm text-gray-600 flex-shrink-0">
+                      {job.progress.found != null ? `${job.progress.found.toLocaleString()}건` : "-"}
+                    </span>
+                    <span className="text-xs text-gray-500 flex-shrink-0 w-16 text-right">
+                      {job.completed_at ? relativeTime(job.completed_at) : job.created_at ? relativeTime(job.created_at) : "-"}
+                    </span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDelete(job.id); }}
+                      className="text-xs text-gray-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors flex-shrink-0"
                     >
-                      <td className="px-4 py-2.5 text-gray-400 text-xs">
-                        {isExpanded ? "▼" : "▶"}
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-500">#{job.id}</td>
-                      <td className="px-4 py-2.5 font-medium text-gray-900">
-                        {formatScope(job)}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <StatusBadge status={job.status} />
-                      </td>
-                      <td className="px-4 py-2.5 text-right text-gray-600">
-                        {job.progress.found != null
-                          ? `${job.progress.found.toLocaleString()}건`
-                          : "-"}
-                      </td>
-                      <td className="px-4 py-2.5 text-right text-gray-500 text-xs">
-                        {job.completed_at
-                          ? relativeTime(job.completed_at)
-                          : job.created_at
-                            ? relativeTime(job.created_at)
-                            : "-"}
-                      </td>
-                      <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => handleDelete(job.id)}
-                          className="text-xs text-gray-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors"
-                        >
-                          삭제
-                        </button>
-                      </td>
-                    </tr>
-                    {isExpanded && (
-                      <tr>
-                        <td colSpan={8} className="bg-gray-50 px-6 py-4 border-t border-gray-100">
-                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      삭제
+                    </button>
+                  </div>
+
+                  {/* 상세 영역 */}
+                  {isExpanded && (
+                    <div className="bg-gray-50 px-4 py-4 border-t border-gray-100">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             {/* 왼쪽: 수집 결과 + 수집 일시 */}
                             <div className="space-y-4">
                               {/* 수집 결과 */}
@@ -1231,14 +1216,12 @@ export default function CrawlManager() {
                               </div>
                             );
                           })()}
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
           </div>
         )}
       </div>

@@ -261,7 +261,7 @@ export default function GpsTracker({
   const headingDir = gpsInfo.heading != null ? degToDir(gpsInfo.heading) : null;
 
   return (
-    <div className="absolute bottom-4 right-4 z-20 bg-white/95 backdrop-blur rounded-lg shadow-lg border border-gray-200 px-3 py-2.5 text-xs space-y-1.5 min-w-[160px] kepco-slide-up">
+    <div className="absolute bottom-16 md:bottom-4 right-3 md:right-4 z-20 bg-white/95 backdrop-blur rounded-lg shadow-lg border border-gray-200 px-3 py-2.5 text-xs space-y-1.5 min-w-[160px] max-w-[calc(100vw-24px)] kepco-slide-up">
       <div className="flex items-center gap-1.5 text-blue-600 font-bold text-[11px]">
         <span className="relative flex h-2 w-2">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />

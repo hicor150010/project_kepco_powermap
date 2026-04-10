@@ -139,7 +139,7 @@ export default function Sidebar({
                          bg-gray-100/60 text-gray-700 hover:bg-gray-100
                          border border-gray-300 transition-colors"
             >
-              &#9881; 계정
+              &#9881; 계정관리
             </Link>
           </div>
         )}

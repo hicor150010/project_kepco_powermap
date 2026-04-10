@@ -50,7 +50,7 @@ export default function TopRemainingList({
 
   return (
     // 우상단 — 도구 패널(top-4 right-4) 아래에 위치
-    <div className="absolute top-16 right-4 z-10 w-[300px] max-w-[calc(100vw-32px)]">
+    <div className="absolute top-16 left-3 right-3 md:left-auto md:right-4 z-10 md:w-[300px]">
       <div className="bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
         {/* 헤더 — 닫기 버튼 포함 */}
         <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between gap-2 bg-amber-50">
@@ -71,7 +71,7 @@ export default function TopRemainingList({
         </div>
 
         {/* 본문 */}
-        <div className="max-h-[60vh] overflow-y-auto px-2 py-2">
+        <div className="max-h-[60dvh] overflow-y-auto px-2 py-2">
           {top.length === 0 ? (
             <div className="text-[11px] text-gray-400 text-center py-6">
               현재 필터에서 잔여 용량이 있는 마을이 없어요

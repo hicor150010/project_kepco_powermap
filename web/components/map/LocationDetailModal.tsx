@@ -138,8 +138,8 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/40 md:p-4">
-      <div className="bg-white rounded-t-xl md:rounded-xl shadow-2xl w-full md:max-w-4xl h-[90vh] md:max-h-[90vh] flex flex-col overflow-hidden">
-        <div className="px-5 py-4 border-b flex items-start justify-between gap-3">
+      <div className="bg-white rounded-t-xl md:rounded-xl shadow-2xl w-full md:max-w-4xl h-[80dvh] md:h-auto md:max-h-[90vh] flex flex-col overflow-hidden pb-[env(safe-area-inset-bottom)]">
+        <div className="px-4 py-3 md:px-5 md:py-4 border-b flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <div className="text-xs text-gray-500 mb-0.5">상세 목록</div>
             <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
@@ -201,7 +201,7 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
             </div>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 text-2xl leading-none ml-1"
+              className="w-9 h-9 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-2xl leading-none"
               aria-label="닫기"
             >
               ×
@@ -228,7 +228,7 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
                   setPage(0);
                 }}
                 placeholder="번지, 변전소, 배전선로명 검색..."
-                className="flex-1 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-md bg-white focus:outline-none focus:border-blue-500"
+                className="flex-1 px-3 py-2 text-base md:text-sm text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-md bg-white focus:outline-none focus:border-blue-500"
               />
               <button
                 onClick={expanded.size === rows.length ? collapseAll : expandAll}

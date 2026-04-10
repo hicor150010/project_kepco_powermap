@@ -251,8 +251,8 @@ export default function DistanceTool({
   const totalText = formatDistance(totalMeters);
 
   return (
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20">
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200 px-4 py-3 flex items-center gap-3">
+    <div className="absolute bottom-16 md:bottom-6 left-1/2 -translate-x-1/2 z-20 w-[calc(100%-24px)] md:w-auto max-w-md">
+      <div className="bg-white rounded-xl shadow-lg border border-gray-200 px-3 py-2.5 md:px-4 md:py-3 flex items-center gap-3">
         {/* 안내 + 누적 거리 */}
         <div className="flex items-center gap-2">
           <span className="text-base">📏</span>

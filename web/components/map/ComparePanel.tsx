@@ -186,7 +186,7 @@ export default function ComparePanel({ onResults, onClose, onVillageClick }: Pro
   const riskCount = villages.filter((v) => v.direction === "worsened" || v.direction === "mixed").length;
 
   return (
-    <div className="absolute top-3 left-[340px] z-20 w-[380px] max-h-[calc(100vh-80px)] bg-white rounded-xl shadow-lg border border-gray-200 flex flex-col overflow-hidden">
+    <div className="absolute top-3 left-3 right-3 md:left-[340px] md:right-auto z-20 md:w-[380px] max-h-[calc(100dvh-80px)] bg-white rounded-xl shadow-lg border border-gray-200 flex flex-col overflow-hidden">
       {/* 헤더 */}
       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-orange-50 to-white">
         <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
@@ -206,7 +206,7 @@ export default function ComparePanel({ onResults, onClose, onVillageClick }: Pro
           <select
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm font-bold text-gray-900 bg-white focus:border-orange-400 focus:ring-1 focus:ring-orange-400 focus:outline-none"
+            className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-base md:text-sm font-bold text-gray-900 bg-white focus:border-orange-400 focus:ring-1 focus:ring-orange-400 focus:outline-none"
           >
             {dates.length === 0 && <option value="">기록된 변경이 없습니다</option>}
             {dates.map((d) => (
