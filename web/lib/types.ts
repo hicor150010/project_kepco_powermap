@@ -114,9 +114,9 @@ export interface ColumnFilters {
   subst_nm: Set<string>;
   dl_nm: Set<string>;
   /** 마을 단위 여유 상태: "전부 여유" / "일부 부족" / "전부 부족" */
-  vol_subst: Set<string>;
-  vol_mtr: Set<string>;
-  vol_dl: Set<string>;
+  cap_subst: Set<string>;
+  cap_mtr: Set<string>;
+  cap_dl: Set<string>;
 }
 
 export function emptyFilters(): ColumnFilters {
@@ -127,8 +127,8 @@ export function emptyFilters(): ColumnFilters {
     addr_li: new Set(),
     subst_nm: new Set(),
     dl_nm: new Set(),
-    vol_subst: new Set(),
-    vol_mtr: new Set(),
-    vol_dl: new Set(),
+    cap_subst: new Set(),
+    cap_mtr: new Set(),
+    cap_dl: new Set(),
   };
 }

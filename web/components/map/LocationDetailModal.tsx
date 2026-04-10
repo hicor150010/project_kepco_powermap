@@ -244,28 +244,28 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
                 <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                   <tr className="border-b border-gray-200">
                     <th className="w-8 px-1 md:px-2 py-2 bg-gray-100" rowSpan={2}></th>
-                    <th className="px-2 md:px-3 py-2 bg-gray-100" rowSpan={2}>
+                    <th className="px-2 md:px-3 py-2 bg-gray-100 cursor-pointer" rowSpan={2} onClick={() => setSort("addr_jibun")}>
                       <SortHeaderInline label="번지" col="addr_jibun" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
                     </th>
                     {/* 모바일: 1열씩, 데스크톱: 2열씩 */}
-                    <th className="hidden md:table-cell px-3 py-1.5 text-center text-[10px] font-bold text-blue-800 bg-blue-50 border-l border-blue-200" rowSpan={2}>
+                    <th className="hidden md:table-cell px-3 py-1.5 text-center text-[10px] font-bold text-blue-800 bg-blue-50 border-l border-blue-200 cursor-pointer" rowSpan={2} onClick={() => setSort("subst_nm")}>
                       <SortHeaderInline label="변전소" col="subst_nm" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
                     </th>
-                    <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-blue-800 bg-blue-50 border-l md:border-l-0 border-r border-blue-200" rowSpan={2}>
+                    <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-blue-800 bg-blue-50 border-l md:border-l-0 border-r border-blue-200 cursor-pointer" rowSpan={2} onClick={() => setSort("cap_subst")}>
                       <SortHeaderInline label="🏭" col="cap_subst" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" />
                       <span className="md:hidden block text-[9px] font-normal text-blue-600">변전소</span>
                     </th>
-                    <th className="hidden md:table-cell px-3 py-1.5 text-center text-[10px] font-bold text-emerald-800 bg-emerald-50 border-l border-emerald-200" rowSpan={2}>
+                    <th className="hidden md:table-cell px-3 py-1.5 text-center text-[10px] font-bold text-emerald-800 bg-emerald-50 border-l border-emerald-200 cursor-pointer" rowSpan={2} onClick={() => setSort("mtr_no")}>
                       <SortHeaderInline label="주변압기" col="mtr_no" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
                     </th>
-                    <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-emerald-800 bg-emerald-50 border-l md:border-l-0 border-r border-emerald-200" rowSpan={2}>
+                    <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-emerald-800 bg-emerald-50 border-l md:border-l-0 border-r border-emerald-200 cursor-pointer" rowSpan={2} onClick={() => setSort("cap_mtr")}>
                       <SortHeaderInline label="⚡" col="cap_mtr" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" />
                       <span className="md:hidden block text-[9px] font-normal text-emerald-600">주변압기</span>
                     </th>
-                    <th className="hidden md:table-cell px-3 py-1.5 text-center text-[10px] font-bold text-amber-800 bg-amber-50 border-l border-amber-200" rowSpan={2}>
+                    <th className="hidden md:table-cell px-3 py-1.5 text-center text-[10px] font-bold text-amber-800 bg-amber-50 border-l border-amber-200 cursor-pointer" rowSpan={2} onClick={() => setSort("dl_nm")}>
                       <SortHeaderInline label="배전선로" col="dl_nm" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
                     </th>
-                    <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-amber-800 bg-amber-50 border-l md:border-l-0 border-r border-amber-200" rowSpan={2}>
+                    <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-amber-800 bg-amber-50 border-l md:border-l-0 border-r border-amber-200 cursor-pointer" rowSpan={2} onClick={() => setSort("cap_dl")}>
                       <SortHeaderInline label="📡" col="cap_dl" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" />
                       <span className="md:hidden block text-[9px] font-normal text-amber-600">배전선로</span>
                     </th>
@@ -342,14 +342,12 @@ function SortHeaderInline({
   return (
     <button
       onClick={() => onSort(col)}
-      className={`inline-flex items-center gap-1 font-medium ${
-        align === "right" ? "justify-end" : ""
+      className={`w-full h-full flex items-center gap-1 font-medium cursor-pointer select-none ${
+        align === "right" ? "justify-end" : "justify-center"
       } ${active ? "text-blue-600" : "text-gray-600 hover:text-gray-900"}`}
     >
       {label}
-      {active && (
-        <span className="text-[10px]">{sortDir === "asc" ? "▲" : "▼"}</span>
-      )}
+      <span className="text-[10px]">{active ? (sortDir === "asc" ? "▲" : "▼") : "⇅"}</span>
     </button>
   );
 }

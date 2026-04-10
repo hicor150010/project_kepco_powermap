@@ -169,7 +169,7 @@ export default function MapClient({ isAdmin, email }: Props) {
     // 필터 복원
     const filterKeys: (keyof ColumnFilters)[] = [
       "addr_do", "addr_gu", "addr_dong", "addr_li",
-      "subst_nm", "dl_nm", "vol_subst", "vol_mtr", "vol_dl",
+      "subst_nm", "dl_nm", "cap_subst", "cap_mtr", "cap_dl",
     ];
     let hasFilter = false;
     const restored = emptyFilters();
@@ -210,9 +210,9 @@ export default function MapClient({ isAdmin, email }: Props) {
   const filteredRows = useMemo(() => {
     return allRows.filter((r) => {
       // 1차: 여유용량 (공용 유틸 사용 — FilterPanel과 동일 로직)
-      if (!matchesVolumeFilter(r.subst_no_cap, r.total, filters.vol_subst)) return false;
-      if (!matchesVolumeFilter(r.mtr_no_cap, r.total, filters.vol_mtr)) return false;
-      if (!matchesVolumeFilter(r.dl_no_cap, r.total, filters.vol_dl)) return false;
+      if (!matchesVolumeFilter(r.subst_no_cap, r.total, filters.cap_subst)) return false;
+      if (!matchesVolumeFilter(r.mtr_no_cap, r.total, filters.cap_mtr)) return false;
+      if (!matchesVolumeFilter(r.dl_no_cap, r.total, filters.cap_dl)) return false;
 
       // 2차: 지역/설비
       if (filters.addr_do.size > 0 && (!r.addr_do || !filters.addr_do.has(r.addr_do)))
@@ -386,7 +386,7 @@ export default function MapClient({ isAdmin, email }: Props) {
     // 필터 — 값이 있는 것만 직렬화
     const filterKeys: (keyof ColumnFilters)[] = [
       "addr_do", "addr_gu", "addr_dong", "addr_li",
-      "subst_nm", "dl_nm", "vol_subst", "vol_mtr", "vol_dl",
+      "subst_nm", "dl_nm", "cap_subst", "cap_mtr", "cap_dl",
     ];
     for (const key of filterKeys) {
       const s = filters[key];

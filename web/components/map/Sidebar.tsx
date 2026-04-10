@@ -35,29 +35,29 @@ export default function Sidebar({
   // 활성 조건: 변전소·주변압기·배전선로 3개가 모두 "전부 여유"로 설정됨
   // (그 외 다른 필터(지역·설비)는 건드리지 않음)
   const isPromisingMode =
-    filters.vol_subst.size === 1 &&
-    filters.vol_subst.has("전부 여유") &&
-    filters.vol_mtr.size === 1 &&
-    filters.vol_mtr.has("전부 여유") &&
-    filters.vol_dl.size === 1 &&
-    filters.vol_dl.has("전부 여유");
+    filters.cap_subst.size === 1 &&
+    filters.cap_subst.has("전부 여유") &&
+    filters.cap_mtr.size === 1 &&
+    filters.cap_mtr.has("전부 여유") &&
+    filters.cap_dl.size === 1 &&
+    filters.cap_dl.has("전부 여유");
 
   const togglePromising = () => {
     if (isPromisingMode) {
-      // 해제: 3시설 vol 필터만 비움
+      // 해제: 3시설 cap 필터만 비움
       onFiltersChange({
         ...filters,
-        vol_subst: new Set(),
-        vol_mtr: new Set(),
-        vol_dl: new Set(),
+        cap_subst: new Set(),
+        cap_mtr: new Set(),
+        cap_dl: new Set(),
       });
     } else {
       // 활성: 3시설 모두 "전부 여유"로
       onFiltersChange({
         ...filters,
-        vol_subst: new Set(["전부 여유"]),
-        vol_mtr: new Set(["전부 여유"]),
-        vol_dl: new Set(["전부 여유"]),
+        cap_subst: new Set(["전부 여유"]),
+        cap_mtr: new Set(["전부 여유"]),
+        cap_dl: new Set(["전부 여유"]),
       });
     }
   };

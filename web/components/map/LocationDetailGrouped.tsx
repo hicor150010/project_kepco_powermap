@@ -260,34 +260,28 @@ function GroupBlock({
           ▶
         </span>
         <div className="flex-1 min-w-0">
-          <div className="text-xs md:text-sm font-bold text-gray-900 flex items-center gap-1 md:gap-1.5 flex-wrap">
-            <span>변전소 {substNm}</span>
-            <span className="text-gray-400">·</span>
-            <span>주변압기 #{mtrNo}</span>
+          <div className="text-xs md:text-sm text-gray-900 flex items-center gap-1.5 md:gap-2 flex-wrap">
+            <span><span className="text-gray-500 font-medium">변전소</span> <span className="font-bold text-blue-700">{substNm}</span></span>
+            <span className="text-gray-300">·</span>
+            <span><span className="text-gray-500 font-medium">주변압기</span> <span className="font-bold text-emerald-700">#{mtrNo}</span></span>
+            <span className="text-gray-300">·</span>
+            <span><span className="text-gray-500 font-medium">배전선로</span> <span className="font-bold text-amber-700">{dlNm}</span></span>
           </div>
-          <div className="text-xs md:text-sm font-bold text-gray-900">
-            배전선로 {dlNm}
-          </div>
-          <div className="text-[11px] text-gray-600 mt-0.5">
-            {total.toLocaleString()}건
+          <div className="text-[11px] text-gray-600 mt-0.5 flex items-center gap-1 flex-wrap">
+            <span>{total.toLocaleString()}건</span>
             {status !== "ok" && (
               <>
-                {" · "}
+                <span className="text-gray-300">·</span>
                 {noCap.subst > 0 && (
-                  <span className="text-red-600">
-                    변전소 부족 {noCap.subst}
-                  </span>
+                  <span className="text-red-600">변전소 <span className="font-semibold">{noCap.subst}</span></span>
                 )}
                 {noCap.mtr > 0 && (
-                  <span className="text-red-600 ml-1">
-                    주변압기 부족 {noCap.mtr}
-                  </span>
+                  <span className="text-red-600">주변압기 <span className="font-semibold">{noCap.mtr}</span></span>
                 )}
                 {noCap.dl > 0 && (
-                  <span className="text-red-600 ml-1">
-                    선로 부족 {noCap.dl}
-                  </span>
+                  <span className="text-red-600">선로 <span className="font-semibold">{noCap.dl}</span></span>
                 )}
+                <span className="text-red-500 text-[10px]">부족</span>
               </>
             )}
           </div>

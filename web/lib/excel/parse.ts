@@ -27,10 +27,6 @@ export interface ParsedRow {
   mtr_no: string;
   dl_nm: string;
 
-  vol_subst: string;
-  vol_mtr: string;
-  vol_dl: string;
-
   subst_capa: number;
   subst_pwr: number;
   g_subst_capa: number;
@@ -177,9 +173,6 @@ function parseRow(
     subst_nm,
     mtr_no,
     dl_nm,
-    vol_subst: s(row[hm.required["변전소여유용량"]]),
-    vol_mtr: s(row[hm.required["주변압기여유용량"]]),
-    vol_dl: s(row[hm.required["배전선로여유용량"]]),
     subst_capa: n(row[hm.required["변전소 접속기준용량(kW)"]]),
     subst_pwr: n(row[hm.required["변전소 접수기준접속용량(kW)"]]),
     g_subst_capa: n(row[hm.required["변전소 접속계획반영접속용량(kW)"]]),

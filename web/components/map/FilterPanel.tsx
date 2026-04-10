@@ -79,15 +79,15 @@ export default function FilterPanel({ totalRows, filters, onChange, isPromisingM
   // 0. 여유용량(1차) 필터 적용
   const volumeFiltered = useMemo(() => {
     return totalRows.filter((r) => {
-      if (!matchesVolumeFilter(r.subst_no_cap, r.total, filters.vol_subst))
+      if (!matchesVolumeFilter(r.subst_no_cap, r.total, filters.cap_subst))
         return false;
-      if (!matchesVolumeFilter(r.mtr_no_cap, r.total, filters.vol_mtr))
+      if (!matchesVolumeFilter(r.mtr_no_cap, r.total, filters.cap_mtr))
         return false;
-      if (!matchesVolumeFilter(r.dl_no_cap, r.total, filters.vol_dl))
+      if (!matchesVolumeFilter(r.dl_no_cap, r.total, filters.cap_dl))
         return false;
       return true;
     });
-  }, [totalRows, filters.vol_subst, filters.vol_mtr, filters.vol_dl]);
+  }, [totalRows, filters.cap_subst, filters.cap_mtr, filters.cap_dl]);
 
   // 1. 시/도 옵션 — 여유용량 필터 결과 기준
   const addrDoOptions = useMemo(() => {
@@ -291,18 +291,18 @@ export default function FilterPanel({ totalRows, filters, onChange, isPromisingM
             )}
             <VolumeToggle
               label="변전소"
-              selected={filters.vol_subst}
-              onChange={(v) => update("vol_subst", v)}
+              selected={filters.cap_subst}
+              onChange={(v) => update("cap_subst", v)}
             />
             <VolumeToggle
               label="주변압기"
-              selected={filters.vol_mtr}
-              onChange={(v) => update("vol_mtr", v)}
+              selected={filters.cap_mtr}
+              onChange={(v) => update("cap_mtr", v)}
             />
             <VolumeToggle
               label="배전선로"
-              selected={filters.vol_dl}
-              onChange={(v) => update("vol_dl", v)}
+              selected={filters.cap_dl}
+              onChange={(v) => update("cap_dl", v)}
             />
           </div>
 
