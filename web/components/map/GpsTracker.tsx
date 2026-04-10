@@ -237,7 +237,7 @@ export default function GpsTracker({
       },
       {
         enableHighAccuracy: true,
-        maximumAge: 2000,
+        maximumAge: 0,
         timeout: 15000,
       }
     );

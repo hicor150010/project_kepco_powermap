@@ -298,8 +298,8 @@ export default function MapClient({ isAdmin, email }: Props) {
     async (row: MapSummaryRow) => {
       if (mapInstance && row.lat != null && row.lng != null) {
         const pos = new window.kakao.maps.LatLng(row.lat, row.lng);
-        mapInstance.setLevel(5, { animate: true });
         mapInstance.setCenter(pos);
+        mapInstance.setLevel(5);
       }
       await openLocationDetail(row.geocode_address);
     },
@@ -323,10 +323,17 @@ export default function MapClient({ isAdmin, email }: Props) {
       const lng = pick.row.lng;
       if (lat == null || lng == null) return;
 
-      // 지도 이동
+      // GPS 추적 중이면 autoFollow 해제 — 검색 이동을 GPS가 덮어쓰지 않도록
+      if (gpsActive && gpsAutoFollow) {
+        setGpsAutoFollow(false);
+      }
+
+      // 지도 이동 — setCenter → setLevel 순서, 애니메이션 없이 즉시 이동
+      // (setLevel animate: true와 setCenter를 동시 호출하면 줌 애니메이션이
+      //  center를 재조정하면서 위치가 어긋날 수 있음)
       const pos = new window.kakao.maps.LatLng(lat, lng);
-      mapInstance.setLevel(5, { animate: true });
       mapInstance.setCenter(pos);
+      mapInstance.setLevel(5);
 
       // 데이터 fetch + 시각 피드백
       if (targetAddr) {
@@ -359,7 +366,7 @@ export default function MapClient({ isAdmin, email }: Props) {
         });
       }
     },
-    [mapInstance, filteredRows, filters, openLocationDetail]
+    [mapInstance, filteredRows, filters, openLocationDetail, gpsActive, gpsAutoFollow]
   );
 
   // 5. 공유 링크 생성 + 클립보드 복사
@@ -674,8 +681,8 @@ export default function MapClient({ isAdmin, email }: Props) {
             onVillageClick={async (addr, lat, lng) => {
               if (mapInstance) {
                 const pos = new window.kakao.maps.LatLng(lat, lng);
-                mapInstance.setLevel(5, { animate: true });
                 mapInstance.setCenter(pos);
+                mapInstance.setLevel(5);
               }
               await openLocationDetail(addr);
             }}
