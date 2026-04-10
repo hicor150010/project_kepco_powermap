@@ -333,6 +333,14 @@ export default function MapClient({ isAdmin, email }: Props) {
               setCompareActive(false);
               setCompareRows([]);
             }}
+            onVillageClick={async (addr, lat, lng) => {
+              if (mapInstance) {
+                const pos = new window.kakao.maps.LatLng(lat, lng);
+                mapInstance.setLevel(5, { animate: true });
+                mapInstance.setCenter(pos);
+              }
+              await openLocationDetail(addr);
+            }}
           />
         )}
 
@@ -379,6 +387,7 @@ export default function MapClient({ isAdmin, email }: Props) {
               setSelectedRows(null);
               setDetailModalOpen(false);
             }}
+            compareRows={compareRows.filter((r) => r.geocode_address === selectedAddr)}
           />
         )}
 

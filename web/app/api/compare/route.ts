@@ -16,6 +16,9 @@ export interface CompareRow {
   addr_gu: string | null;
   addr_dong: string | null;
   addr_li: string | null;
+  addr_jibun: string | null;
+  subst_nm: string | null;
+  dl_nm: string | null;
   // 현재
   cur_vol_subst: string | null;
   cur_vol_mtr: string | null;

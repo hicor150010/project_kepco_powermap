@@ -72,6 +72,9 @@ RETURNS TABLE (
   addr_gu text,
   addr_dong text,
   addr_li text,
+  addr_jibun text,
+  subst_nm text,
+  dl_nm text,
   -- 현재값 (kepco_data는 bigint)
   cur_vol_subst text,
   cur_vol_mtr text,
@@ -98,7 +101,6 @@ RETURNS TABLE (
 BEGIN
   RETURN QUERY
   WITH earliest_change AS (
-    -- 각 kepco_data_id별로 since_date 이후 가장 오래된(= 당시 상태) history 레코드
     SELECT DISTINCT ON (h.kepco_data_id)
       h.kepco_data_id,
       h.old_vol_subst,
@@ -123,32 +125,31 @@ BEGIN
     d.addr_gu,
     d.addr_dong,
     d.addr_li,
-    -- 현재값
-    d.vol_subst   AS cur_vol_subst,
-    d.vol_mtr     AS cur_vol_mtr,
-    d.vol_dl      AS cur_vol_dl,
-    d.subst_capa  AS cur_subst_capa,
-    d.subst_pwr   AS cur_subst_pwr,
-    d.mtr_capa    AS cur_mtr_capa,
-    d.mtr_pwr     AS cur_mtr_pwr,
-    d.dl_capa     AS cur_dl_capa,
-    d.dl_pwr      AS cur_dl_pwr,
-    -- 이전값
-    ec.old_vol_subst  AS prev_vol_subst,
-    ec.old_vol_mtr    AS prev_vol_mtr,
-    ec.old_vol_dl     AS prev_vol_dl,
-    ec.old_subst_capa AS prev_subst_capa,
-    ec.old_subst_pwr  AS prev_subst_pwr,
-    ec.old_mtr_capa   AS prev_mtr_capa,
-    ec.old_mtr_pwr    AS prev_mtr_pwr,
-    ec.old_dl_capa    AS prev_dl_capa,
-    ec.old_dl_pwr     AS prev_dl_pwr,
-    -- 변경 건수 (같은 geocode_address 내)
-    COUNT(*) OVER (PARTITION BY d.geocode_address) AS changed_count
+    d.addr_jibun,
+    d.subst_nm,
+    d.dl_nm,
+    d.vol_subst,
+    d.vol_mtr,
+    d.vol_dl,
+    d.subst_capa,
+    d.subst_pwr,
+    d.mtr_capa,
+    d.mtr_pwr,
+    d.dl_capa,
+    d.dl_pwr,
+    ec.old_vol_subst,
+    ec.old_vol_mtr,
+    ec.old_vol_dl,
+    ec.old_subst_capa,
+    ec.old_subst_pwr,
+    ec.old_mtr_capa,
+    ec.old_mtr_pwr,
+    ec.old_dl_capa,
+    ec.old_dl_pwr,
+    COUNT(*) OVER (PARTITION BY d.geocode_address)
   FROM earliest_change ec
   JOIN kepco_data d ON d.id = ec.kepco_data_id
   WHERE d.lat IS NOT NULL
-  -- 실제로 상태가 달라진 것만 (동일값 변경은 제외)
   AND (
     ec.old_vol_subst IS DISTINCT FROM d.vol_subst
     OR ec.old_vol_mtr IS DISTINCT FROM d.vol_mtr
