@@ -172,6 +172,73 @@ VWORLD_KEY  # 인증키 (서버 전용)
 
 ---
 
+## 5. GitHub Actions
+
+### 개요
+- KEPCO 크롤링 자동 실행 플랫폼
+- 3개 독립 스레드 동시 실행 가능
+- 아키텍처 상세: [CRAWLING.md](CRAWLING.md) 참고
+
+### 리포지토리
+- URL: https://github.com/hicor1/project_kepco_powermap
+- Visibility: **Public** (Actions 무제한 무료)
+
+### 워크플로우
+| 이름 | 파일 | 용도 |
+|------|------|------|
+| KEPCO Crawl | `.github/workflows/crawl.yml` | 크롤링 (스레드 1/2/3) |
+| KEPCO Geocode | `.github/workflows/geocode.yml` | 지오코딩 (레거시, 크롤러에 통합됨) |
+
+### 무료 한도
+| 항목 | 한도 | 비고 |
+|------|------|------|
+| 동시 Job | 20개 | 계정 기준 (3개 사용) |
+| 실행 시간 | 무제한 | Public repo |
+| Job당 최대 | 6시간 | 3시간 체이닝으로 해결 |
+| 스토리지 | 500 MB | Artifacts/Cache |
+
+### GitHub Secrets
+| 시크릿 | 용도 | 비고 |
+|--------|------|------|
+| `SUPABASE_URL` | Supabase API URL | |
+| `SUPABASE_SERVICE_KEY` | Supabase service role 키 | |
+| `KAKAO_REST_KEY` | 카카오 지오코딩 | |
+| `GH_PAT` | Actions 자동 트리거 | **workflow 스코프 필수** |
+
+### 주의사항
+- `GH_PAT`에 **workflow 스코프**가 있어야 crawl.yml 푸시 + dispatch 가능
+- PAT 생성: GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens
+- concurrency group이 스레드별로 분리되어 동시 실행 안전
+
+---
+
+## 6. KEPCO API (크롤링 대상)
+
+### 개요
+- 한국전력공사 배전선로 여유용량 조회 시스템
+- 비공식 API (웹 사이트 내부 API 역호출)
+- **공식 API 제공 없음** — 차단 위험 있음
+
+### 엔드포인트
+- Base URL: `https://online.kepco.co.kr`
+- 주소 조회: `/EWM092D00SJ.do` (POST, JSON)
+
+### 차단 방지 대책
+| 대책 | 설명 |
+|------|------|
+| User-Agent 랜덤 | 7개 브라우저 UA 풀 |
+| 세션 재생성 | 2,000건마다 새 세션 |
+| 주기적 휴식 | 1,000건마다 30초 대기 |
+| 점진적 백오프 | 연속 에러 시 60~180초 대기 |
+| delay 조정 | 0.15초~2.0초 (UI에서 설정) |
+
+### 주의사항
+- 동시 3개 스레드 시 delay를 0.5초 이상 권장
+- 연속 10회 에러 시 자동 중단 (TooManyErrorsException)
+- IP 차단 시 GitHub Actions 러너 IP 변경으로 자연 해제 (재실행)
+
+---
+
 ## 부록 A — 자격증명 관리 원칙
 
 ### 1. 분리 원칙
