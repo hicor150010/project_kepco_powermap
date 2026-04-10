@@ -28,6 +28,12 @@ interface CrawlJob {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  // 멀티수집기
+  thread: number;
+  mode: string;
+  cycle_count: number;
+  max_cycles: number | null;
+  last_heartbeat: string | null;
 }
 
 // ── 상수 ──
@@ -61,6 +67,11 @@ export default function CrawlManager() {
   const [selectedDong, setSelectedDong] = useState("");
   const [selectedLi, setSelectedLi] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // 수집기 / 모드
+  const [selectedThread, setSelectedThread] = useState(1);
+  const [selectedMode, setSelectedMode] = useState<"single" | "recurring">("single");
+  const [maxCycles, setMaxCycles] = useState<number | undefined>(undefined);
 
   // 수집 옵션
   const [optFlushSize, setOptFlushSize] = useState(100);
@@ -224,6 +235,9 @@ export default function CrawlManager() {
           gu: selectedGu || undefined,
           dong: selectedDong || undefined,
           li: selectedLi || undefined,
+          thread: selectedThread,
+          mode: selectedMode,
+          max_cycles: maxCycles || undefined,
           options: {
             flush_size: optFlushSize,
             delay: optDelay,
@@ -299,6 +313,8 @@ export default function CrawlManager() {
           li: job.li,
           options: job.options,
           checkpoint: job.checkpoint,
+          thread: job.thread || 1,
+          mode: job.mode || "single",
         }),
       });
       const data = await res.json();
@@ -381,11 +397,13 @@ export default function CrawlManager() {
       j.status === "pending" ||
       j.status === "stop_requested"
   );
+  const activeInThread = activeJobs.filter((j) => (j.thread || 1) === selectedThread);
   const historyJobs = jobs.filter(
     (j) =>
-      j.status === "completed" ||
+      (j.status === "completed" ||
       j.status === "failed" ||
-      j.status === "stopped"
+      j.status === "stopped") &&
+      (j.thread || 1) === selectedThread
   );
 
   const isPolling = hasActiveJobs;
@@ -428,6 +446,85 @@ export default function CrawlManager() {
         <h3 className="text-base font-bold text-gray-900 mb-4">
           새 수집 시작
         </h3>
+
+        {/* 수집기 + 모드 선택 */}
+        <div className="flex items-center gap-4 mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-600">수집기</span>
+            <div className="flex gap-1">
+              {[1, 2, 3].map((t) => {
+                const threadActive = activeJobs.find((j) => (j.thread || 1) === t);
+                return (
+                  <button
+                    key={t}
+                    onClick={() => setSelectedThread(t)}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${
+                      selectedThread === t
+                        ? "bg-blue-600 text-white"
+                        : threadActive
+                          ? "bg-gray-100 text-gray-500 border border-gray-200"
+                          : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    {t}
+                    {threadActive && (
+                      <span className="ml-1 text-[9px] opacity-75">
+                        {threadActive.status === "running" ? "실행중" : "대기"}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="h-6 w-px bg-gray-200" />
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-600">모드</span>
+            <div className="flex gap-1">
+              <button
+                onClick={() => setSelectedMode("single")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  selectedMode === "single"
+                    ? "bg-green-600 text-white"
+                    : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                }`}
+              >
+                1회 수집
+              </button>
+              <button
+                onClick={() => setSelectedMode("recurring")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  selectedMode === "recurring"
+                    ? "bg-orange-500 text-white"
+                    : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                }`}
+              >
+                반복 수집
+              </button>
+            </div>
+            {selectedMode === "recurring" && (
+              <div className="flex items-center gap-1 ml-2">
+                <input
+                  type="number"
+                  value={maxCycles ?? ""}
+                  onChange={(e) => setMaxCycles(e.target.value ? Number(e.target.value) : undefined)}
+                  placeholder="무제한"
+                  min={1}
+                  className="w-16 border border-gray-300 rounded px-2 py-1 text-xs focus:border-orange-400 focus:outline-none"
+                />
+                <span className="text-[10px] text-gray-400">회 순환</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {selectedMode === "recurring" && (
+          <div className="text-xs text-orange-700 bg-orange-50 rounded px-3 py-2 border border-orange-200 mb-4">
+            선택한 지역을 3시간 단위로 자동 재시작하며 무한 반복 수집합니다. 수동으로 중단하지 않으면 계속됩니다.
+          </div>
+        )}
 
         <div className="grid grid-cols-5 gap-3">
           {/* 시/도 */}
@@ -626,14 +723,14 @@ export default function CrawlManager() {
         <div className="mt-4 flex items-center gap-3">
           <button
             onClick={handleStart}
-            disabled={!selectedSido || submitting || activeJobs.length > 0}
+            disabled={!selectedSido || submitting || activeInThread.length > 0}
             className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {submitting ? "시작 중..." : "수집 시작"}
           </button>
-          {activeJobs.length > 0 ? (
+          {activeInThread.length > 0 ? (
             <span className="text-sm text-amber-600">
-              이미 실행 중인 작업이 있습니다. 기존 작업을 취소하거나 완료된 후 시작할 수 있습니다.
+              수집기 {selectedThread}에 이미 실행 중인 작업이 있습니다. 다른 수집기를 선택하거나 기존 작업을 중단해주세요.
             </span>
           ) : selectedSido ? (
             <span className="text-sm text-gray-600">
@@ -650,17 +747,25 @@ export default function CrawlManager() {
         </div>
       </div>
 
-      {/* ── 실행 중인 작업 ── */}
-      {activeJobs.length > 0 && (
+      {/* ── 실행 중인 작업 (선택한 수집기) ── */}
+      {activeInThread.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-base font-bold text-gray-900">실행 중</h3>
-          {activeJobs.map((job) => (
+          <h3 className="text-base font-bold text-gray-900">수집기 {selectedThread} 실행 중</h3>
+          {activeInThread.map((job) => (
             <div
               key={job.id}
               className="bg-white rounded-xl border-2 border-blue-300 p-6 shadow-sm"
             >
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-bold text-white bg-gray-500 rounded px-1.5 py-0.5">
+                    {job.thread || 1}번
+                  </span>
+                  {(job.mode === "recurring") && (
+                    <span className="text-[10px] font-bold text-orange-700 bg-orange-100 rounded px-1.5 py-0.5">
+                      반복{job.cycle_count > 0 ? ` ${job.cycle_count + 1}회차` : ""}
+                    </span>
+                  )}
                   <StatusBadge status={job.status} />
                   <span className="text-base font-semibold text-gray-900">
                     {formatScope(job)}
@@ -808,7 +913,7 @@ export default function CrawlManager() {
       {/* ── 작업 이력 ── */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100">
-          <h3 className="text-base font-bold text-gray-900">작업 이력</h3>
+          <h3 className="text-base font-bold text-gray-900">수집기 {selectedThread} 작업 이력</h3>
         </div>
 
         {loading ? (
@@ -823,6 +928,7 @@ export default function CrawlManager() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 text-gray-600 text-xs">
+                <th className="text-left px-4 py-2 font-medium w-6"></th>
                 <th className="text-left px-4 py-2 font-medium w-6"></th>
                 <th className="text-left px-4 py-2 font-medium">ID</th>
                 <th className="text-left px-4 py-2 font-medium">지역</th>
