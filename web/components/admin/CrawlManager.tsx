@@ -16,6 +16,7 @@ interface CrawlJob {
     processed?: number;
     found?: number;
     errors?: number;
+    geocoded?: number;
     current_address?: string;
     phase?: string;
   };
@@ -595,12 +596,16 @@ export default function CrawlManager() {
         <div className="mt-4 flex items-center gap-3">
           <button
             onClick={handleStart}
-            disabled={!selectedSido || submitting}
+            disabled={!selectedSido || submitting || activeJobs.length > 0}
             className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {submitting ? "시작 중..." : "수집 시작"}
           </button>
-          {selectedSido && (
+          {activeJobs.length > 0 ? (
+            <span className="text-sm text-amber-600">
+              이미 실행 중인 작업이 있습니다. 기존 작업을 취소하거나 완료된 후 시작할 수 있습니다.
+            </span>
+          ) : selectedSido ? (
             <span className="text-sm text-gray-600">
               대상:{" "}
               {[
@@ -611,7 +616,7 @@ export default function CrawlManager() {
                 selectedLi || "(전체)",
               ].join(" > ")}
             </span>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -658,7 +663,7 @@ export default function CrawlManager() {
               {job.progress.processed != null && (
                 <div className="space-y-3">
                   {/* 통계 카드 */}
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-4 gap-3">
                     <div className="bg-blue-50 rounded-lg px-4 py-3 text-center">
                       <div className="text-xl font-bold text-blue-700">
                         {job.progress.processed?.toLocaleString()}
@@ -670,6 +675,12 @@ export default function CrawlManager() {
                         {job.progress.found?.toLocaleString()}
                       </div>
                       <div className="text-xs text-green-600 mt-0.5">수집한 데이터</div>
+                    </div>
+                    <div className="bg-purple-50 rounded-lg px-4 py-3 text-center">
+                      <div className="text-xl font-bold text-purple-700">
+                        {job.progress.geocoded?.toLocaleString() || 0}
+                      </div>
+                      <div className="text-xs text-purple-600 mt-0.5">좌표 변환</div>
                     </div>
                     <div className={`rounded-lg px-4 py-3 text-center ${(job.progress.errors || 0) > 0 ? "bg-red-50" : "bg-gray-50"}`}>
                       <div className={`text-xl font-bold ${(job.progress.errors || 0) > 0 ? "text-red-700" : "text-gray-400"}`}>

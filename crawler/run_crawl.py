@@ -160,12 +160,13 @@ def build_checkpoint(progress: CrawlProgress) -> dict:
     }
 
 
-def build_progress_json(progress: CrawlProgress) -> dict:
+def build_progress_json(progress: CrawlProgress, geocoded: int = 0) -> dict:
     """CrawlProgress → progress JSONB (모니터링용)"""
     return {
         "processed": progress.processed,
         "found": progress.found,
         "errors": progress.errors,
+        "geocoded": geocoded,
         "current_address": progress.current_address,
         "phase": progress.phase,
     }
@@ -302,7 +303,7 @@ def run(job: dict):
         call_count[0] += 1
         if call_count[0] % progress_interval == 0:
             update_job(job_id, {
-                "progress": build_progress_json(progress),
+                "progress": build_progress_json(progress, db_writer.get_stats().get("geocoded", 0)),
             })
             if check_stop_requested(job_id):
                 logger.info("중단 요청 감지 — 크롤링을 중지합니다.")
@@ -313,7 +314,7 @@ def run(job: dict):
         flushed = db_writer.add(result)
         if flushed:
             update_job(job_id, {
-                "progress": build_progress_json(crawler.progress),
+                "progress": build_progress_json(crawler.progress, db_writer.get_stats().get("geocoded", 0)),
                 "checkpoint": build_checkpoint(crawler.progress),
             })
 

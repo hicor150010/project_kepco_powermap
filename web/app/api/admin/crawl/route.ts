@@ -87,19 +87,20 @@ export async function POST(request: NextRequest) {
 
   const supabase = createAdminClient();
 
-  // 같은 지역에 이미 running/pending인 작업이 있는지 확인
+  // 이미 실행/대기 중인 작업이 있는지 확인 (concurrency group 충돌 방지)
   const { data: existing } = await supabase
     .from("crawl_jobs")
-    .select("id, status")
-    .eq("sido", body.sido)
-    .in("status", ["pending", "running"])
+    .select("id, status, sido")
+    .in("status", ["pending", "running", "stop_requested"])
     .limit(1);
 
   if (existing && existing.length > 0) {
+    const ej = existing[0];
+    const statusLabel = ej.status === "running" ? "실행 중" : ej.status === "pending" ? "대기 중" : "중단 대기";
     return NextResponse.json(
       {
         ok: false,
-        error: `'${body.sido}'에 이미 실행 중인 작업이 있습니다. (Job #${existing[0].id})`,
+        error: `이미 ${statusLabel}인 작업이 있습니다. (Job #${ej.id} — ${ej.sido}) 기존 작업을 취소하거나 완료된 후 다시 시도해주세요.`,
       },
       { status: 409 }
     );
