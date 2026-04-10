@@ -324,8 +324,8 @@ export default function SearchPanel({ onPick, onJibunPin, onFocus }: Props) {
 
       {/* 검색 입력 바 (항상 표시) */}
       <div className="pointer-events-auto mx-2 mb-2 md:mx-3 md:mb-3 pb-[env(safe-area-inset-bottom)] relative">
-        <div className="bg-white/95 backdrop-blur border border-gray-200 rounded-xl px-4 py-2.5 flex items-center gap-2.5 shadow-lg">
-          <span className="text-base text-gray-400">🔍</span>
+        <div className="bg-white/95 backdrop-blur border border-gray-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 rounded-xl px-4 py-2.5 flex items-center gap-2.5 shadow-lg transition-colors">
+          <span className="text-base text-gray-400 flex-shrink-0">🔍</span>
           <input
             ref={inputRef}
             type="text"
@@ -343,7 +343,7 @@ export default function SearchPanel({ onPick, onJibunPin, onFocus }: Props) {
               setTimeout(() => setHistoryOpen(false), 150);
             }}
             placeholder="주소·지번 검색 (예: 용구리 100)"
-            className="flex-1 text-base md:text-sm text-gray-900 placeholder:text-gray-400 outline-none bg-transparent"
+            className="flex-1 text-base md:text-sm text-gray-900 placeholder:text-gray-400 bg-transparent outline-none focus:ring-0"
           />
           {query && (
             <button
