@@ -1,24 +1,37 @@
 name: KEPCO Crawl
+run-name: "KEPCO Crawl (스레드 ${{ inputs.thread || 'cron' }})"
 
 on:
   workflow_dispatch:
     inputs:
       job_id:
-        description: 'crawl_jobs ID'
+        description: 'crawl_jobs ID (0=자동)'
         required: true
         type: string
-  schedule:
-    # 매주 일요일 03:00 KST (18:00 UTC 토요일)
-    - cron: '0 18 * * 0'
+      thread:
+        description: '스레드 번호 (1/2/3)'
+        required: false
+        default: '1'
+        type: string
 
-concurrency:
-  group: kepco-crawl
-  cancel-in-progress: false
+  schedule:
+    # 매 6시간 — 체인 끊김 복구
+    - cron: '0 */6 * * *'
 
 jobs:
   crawl:
     runs-on: ubuntu-latest
     timeout-minutes: 350
+
+    concurrency:
+      group: kepco-crawl-${{ matrix.thread }}
+      cancel-in-progress: false
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # dispatch: 지정 스레드만 / cron: 3개 모두
+        thread: ${{ github.event_name == 'schedule' && fromJSON('[1, 2, 3]') || fromJSON(format('[{0}]', inputs.thread || '1')) }}
 
     steps:
       - name: Checkout
@@ -40,4 +53,4 @@ jobs:
           GH_PAT: ${{ secrets.GH_PAT }}
           GITHUB_REPO: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-        run: cd crawler && python run_crawl.py --job-id=${{ github.event.inputs.job_id || '0' }}
+        run: cd crawler && python run_crawl.py --job-id=${{ inputs.job_id || '0' }} --thread=${{ matrix.thread }}
