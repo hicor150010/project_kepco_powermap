@@ -164,7 +164,7 @@ export default function ComparePanel({ onResults, onClose }: Props) {
           <select
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="flex-1 border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:border-orange-400 focus:ring-1 focus:ring-orange-400 focus:outline-none"
+            className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm font-bold text-gray-900 bg-white focus:border-orange-400 focus:ring-1 focus:ring-orange-400 focus:outline-none"
           >
             {dates.length === 0 && (
               <option value="">기록된 변경이 없습니다</option>
@@ -175,11 +175,11 @@ export default function ComparePanel({ onResults, onClose }: Props) {
               </option>
             ))}
           </select>
-          <span className="text-xs text-gray-400 whitespace-nowrap">~ 오늘</span>
+          <span className="text-sm font-medium text-gray-500 whitespace-nowrap">~ 오늘</span>
           <button
             onClick={handleCompare}
             disabled={!selectedDate || loading}
-            className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium px-3 py-1.5 rounded-md disabled:opacity-50 transition-colors whitespace-nowrap"
+            className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold px-4 py-2 rounded-md disabled:opacity-50 transition-colors whitespace-nowrap"
           >
             {loading ? "분석 중..." : "비교"}
           </button>

@@ -72,17 +72,17 @@ RETURNS TABLE (
   addr_gu text,
   addr_dong text,
   addr_li text,
-  -- 현재값
+  -- 현재값 (kepco_data는 bigint)
   cur_vol_subst text,
   cur_vol_mtr text,
   cur_vol_dl text,
-  cur_subst_capa int,
-  cur_subst_pwr int,
-  cur_mtr_capa int,
-  cur_mtr_pwr int,
-  cur_dl_capa int,
-  cur_dl_pwr int,
-  -- 이전값 (해당 날짜 시점)
+  cur_subst_capa bigint,
+  cur_subst_pwr bigint,
+  cur_mtr_capa bigint,
+  cur_mtr_pwr bigint,
+  cur_dl_capa bigint,
+  cur_dl_pwr bigint,
+  -- 이전값 (history는 int)
   prev_vol_subst text,
   prev_vol_mtr text,
   prev_vol_dl text,
@@ -93,7 +93,7 @@ RETURNS TABLE (
   prev_dl_capa int,
   prev_dl_pwr int,
   -- 변경 건수
-  changed_count int
+  changed_count bigint
 ) AS $$
 BEGIN
   RETURN QUERY
@@ -144,7 +144,7 @@ BEGIN
     ec.old_dl_capa    AS prev_dl_capa,
     ec.old_dl_pwr     AS prev_dl_pwr,
     -- 변경 건수 (같은 geocode_address 내)
-    COUNT(*) OVER (PARTITION BY d.geocode_address)::int AS changed_count
+    COUNT(*) OVER (PARTITION BY d.geocode_address) AS changed_count
   FROM earliest_change ec
   JOIN kepco_data d ON d.id = ec.kepco_data_id
   WHERE d.lat IS NOT NULL
