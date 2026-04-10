@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const GITHUB_PAT = process.env.GITHUB_PAT || "";
+const GITHUB_PAT = process.env.GH_PAT || process.env.GITHUB_PAT || "";
 const GITHUB_REPO = process.env.GITHUB_REPO || ""; // "owner/repo"
 
 // ─────────────────────────────────────────────
