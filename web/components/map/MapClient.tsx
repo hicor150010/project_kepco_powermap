@@ -248,6 +248,10 @@ export default function MapClient({ isAdmin, email }: Props) {
         }
         jibunPinsRef.current = [];
         setJibunPinCount(0);
+        if (jibunBoundCircleRef.current) {
+          jibunBoundCircleRef.current.setMap(null);
+          jibunBoundCircleRef.current = null;
+        }
       }
       setSelectedAddr(addr);
       setDetailModalOpen(false);
@@ -405,7 +409,53 @@ export default function MapClient({ isAdmin, email }: Props) {
   }, [mapInstance, filters, selectedAddr]);
 
   // 6. 지번 핀 — 같은 마을 내 여러 지번 누적 표시
-  const jibunPinsRef = useRef<{ overlay: any; line: any; jibun: string }[]>([]);
+  const jibunPinsRef = useRef<{ overlay: any; line: any; jibun: string; lat: number; lng: number }[]>([]);
+  const jibunBoundCircleRef = useRef<any>(null);
+
+  /** 핀 좌표 + 선택된 마을 마커를 모두 감싸는 붉은 반투명 원 갱신 */
+  function updateBoundCircle(map: any, villageAddr?: string) {
+    // 기존 원 제거
+    if (jibunBoundCircleRef.current) {
+      jibunBoundCircleRef.current.setMap(null);
+      jibunBoundCircleRef.current = null;
+    }
+
+    // 핀이 1개 이상 있어야 원 표시
+    if (jibunPinsRef.current.length === 0) return;
+
+    // 좌표 수집: 핀들 + 해당 마을 마커
+    const points: { lat: number; lng: number }[] = jibunPinsRef.current.map((p) => ({ lat: p.lat, lng: p.lng }));
+    const addr = villageAddr ?? selectedAddr;
+    const village = allRows.find((r) => r.geocode_address === addr);
+    if (village) points.push({ lat: village.lat, lng: village.lng });
+
+    // 중심점 (centroid)
+    const cLat = points.reduce((s, p) => s + p.lat, 0) / points.length;
+    const cLng = points.reduce((s, p) => s + p.lng, 0) / points.length;
+    const center = new window.kakao.maps.LatLng(cLat, cLng);
+
+    // 중심에서 가장 먼 점까지 거리 (미터) + 20% 패딩, 최대 2km
+    const polyline = new window.kakao.maps.Polyline({ path: [] });
+    let maxDist = 0;
+    for (const p of points) {
+      polyline.setPath([center, new window.kakao.maps.LatLng(p.lat, p.lng)]);
+      const d = polyline.getLength();
+      if (d > maxDist) maxDist = d;
+    }
+    const radius = Math.min(Math.max(maxDist * 1.2, 50), 2000);
+
+    jibunBoundCircleRef.current = new window.kakao.maps.Circle({
+      center,
+      radius,
+      strokeWeight: 1.5,
+      strokeColor: "#ef4444",
+      strokeOpacity: 0.35,
+      strokeStyle: "dashed",
+      fillColor: "#ef4444",
+      fillOpacity: 0.06,
+    });
+    jibunBoundCircleRef.current.setMap(map);
+  }
 
   /** 지도 위 핀 오버레이 + 연결선 1개 생성 (공통 헬퍼) */
   function createPinOverlay(
@@ -454,7 +504,7 @@ export default function MapClient({ isAdmin, email }: Props) {
       });
       line.setMap(map);
     }
-    return { overlay, line, jibun };
+    return { overlay, line, jibun, lat, lng };
   }
 
   /** 마을의 지번 중 DB에 좌표가 저장된 것만 핀으로 표시 */
@@ -470,6 +520,7 @@ export default function MapClient({ isAdmin, email }: Props) {
         );
       }
       setJibunPinCount(jibunPinsRef.current.length);
+      updateBoundCircle(map, addr);
       return;
     }
 
@@ -502,6 +553,7 @@ export default function MapClient({ isAdmin, email }: Props) {
         );
       }
       setJibunPinCount(jibunPinsRef.current.length);
+      updateBoundCircle(map, addr);
     } catch {
       // 조회 실패 시 무시
     }
@@ -514,6 +566,10 @@ export default function MapClient({ isAdmin, email }: Props) {
     }
     jibunPinsRef.current = [];
     setJibunPinCount(0);
+    if (jibunBoundCircleRef.current) {
+      jibunBoundCircleRef.current.setMap(null);
+      jibunBoundCircleRef.current = null;
+    }
   }, []);
 
   const handleJibunPin = useCallback(
@@ -552,6 +608,7 @@ export default function MapClient({ isAdmin, email }: Props) {
         );
         jibunPinsRef.current.push(pin);
         setJibunPinCount(jibunPinsRef.current.length);
+        updateBoundCircle(mapInstance, row.geocode_address);
 
         // 세션 캐시에 저장
         const geoAddr = row.geocode_address;

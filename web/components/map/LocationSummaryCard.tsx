@@ -17,6 +17,7 @@
 
 import { useMemo } from "react";
 import type { KepcoDataRow } from "@/lib/types";
+import { hasCapacity } from "@/lib/types";
 import type { CompareRow } from "@/app/api/compare/route";
 import { summarizeLocation, type FacilityCounts } from "@/lib/summarize";
 import AddrLine from "./AddrLine";
@@ -61,7 +62,7 @@ export default function LocationSummaryCard({
     first.addr_si,
     first.addr_gu,
     first.addr_dong,
-    first.addr_li,
+    first.addr_li && !first.addr_li.includes("기타지역") ? first.addr_li : null,
   ].filter(Boolean) as string[];
 
   return (
@@ -218,44 +219,7 @@ function FacilityRatio({
   );
 }
 
-// ── 변경 비교 섹션 ──
-
-const VOL_SHORT: Record<string, string> = {
-  "여유용량 있음": "여유",
-  보통: "보통",
-  주의: "주의",
-  위험: "위험",
-};
-
-function shortVol(v: string | null): string {
-  if (!v) return "-";
-  return VOL_SHORT[v] || v;
-}
-
-function volBadge(v: string | null): string {
-  if (!v) return "bg-gray-100 text-gray-500";
-  if (v.includes("여유")) return "bg-green-100 text-green-700";
-  if (v.includes("보통")) return "bg-blue-100 text-blue-700";
-  if (v.includes("주의")) return "bg-yellow-100 text-yellow-800";
-  if (v.includes("위험")) return "bg-red-100 text-red-700";
-  return "bg-gray-100 text-gray-500";
-}
-
-function volRank(v: string | null): number {
-  if (!v) return 0;
-  if (v.includes("여유")) return 1;
-  if (v.includes("보통")) return 2;
-  if (v.includes("주의")) return 3;
-  if (v.includes("위험")) return 4;
-  return 0;
-}
-
-function ChangeArrow({ prev, cur }: { prev: string | null; cur: string | null }) {
-  const d = volRank(cur) - volRank(prev);
-  if (d > 0) return <span className="text-red-500 font-bold text-xs">&#9660;</span>;
-  if (d < 0) return <span className="text-green-500 font-bold text-xs">&#9650;</span>;
-  return <span className="text-gray-300 text-xs">=</span>;
-}
+// ── 변경 비교 섹션 — KEPCO 수식 기반 ──
 
 /** 모바일용 미니 비율 바 */
 function MiniBar({ label, counts }: { label: string; counts: FacilityCounts }) {
@@ -299,100 +263,40 @@ function CompareSection({ rows }: { rows: CompareRow[] }) {
 }
 
 function CompareDetailRow({ row }: { row: CompareRow }) {
-  const substChanged = row.prev_vol_subst !== row.cur_vol_subst;
-  const mtrChanged = row.prev_vol_mtr !== row.cur_vol_mtr;
-  const dlChanged = row.prev_vol_dl !== row.cur_vol_dl;
+  const prevSubstOk = hasCapacity(row.prev_subst_capa, row.prev_subst_pwr, row.prev_g_subst_capa);
+  const curSubstOk = hasCapacity(row.cur_subst_capa, row.cur_subst_pwr, row.cur_g_subst_capa);
+  const prevMtrOk = hasCapacity(row.prev_mtr_capa, row.prev_mtr_pwr, row.prev_g_mtr_capa);
+  const curMtrOk = hasCapacity(row.cur_mtr_capa, row.cur_mtr_pwr, row.cur_g_mtr_capa);
+  const prevDlOk = hasCapacity(row.prev_dl_capa, row.prev_dl_pwr, row.prev_g_dl_capa);
+  const curDlOk = hasCapacity(row.cur_dl_capa, row.cur_dl_pwr, row.cur_g_dl_capa);
 
   return (
     <div className="bg-orange-50/60 rounded-lg px-3 py-2 border border-orange-100">
-      {/* 지번 + 시설명 */}
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[11px] font-bold text-gray-800">
-          {row.addr_jibun || "-"}
-        </span>
-        <span className="text-[10px] text-gray-400">
-          {row.subst_nm || ""} / {row.dl_nm || ""}
-        </span>
+        <span className="text-[11px] font-bold text-gray-800">{row.addr_jibun || "-"}</span>
+        <span className="text-[10px] text-gray-400">{row.subst_nm || ""} / {row.dl_nm || ""}</span>
       </div>
-
-      {/* 시설별 변화 */}
       <div className="space-y-1">
-        {substChanged && (
-          <FacilityDelta
-            label="변전소"
-            prevVol={row.prev_vol_subst}
-            curVol={row.cur_vol_subst}
-            prevCapa={row.prev_subst_capa}
-            prevPwr={row.prev_subst_pwr}
-            curCapa={row.cur_subst_capa}
-            curPwr={row.cur_subst_pwr}
-          />
-        )}
-        {mtrChanged && (
-          <FacilityDelta
-            label="주변압기"
-            prevVol={row.prev_vol_mtr}
-            curVol={row.cur_vol_mtr}
-            prevCapa={row.prev_mtr_capa}
-            prevPwr={row.prev_mtr_pwr}
-            curCapa={row.cur_mtr_capa}
-            curPwr={row.cur_mtr_pwr}
-          />
-        )}
-        {dlChanged && (
-          <FacilityDelta
-            label="배전선로"
-            prevVol={row.prev_vol_dl}
-            curVol={row.cur_vol_dl}
-            prevCapa={row.prev_dl_capa}
-            prevPwr={row.prev_dl_pwr}
-            curCapa={row.cur_dl_capa}
-            curPwr={row.cur_dl_pwr}
-          />
-        )}
+        {prevSubstOk !== curSubstOk && <CapDelta label="변전소" prevOk={prevSubstOk} curOk={curSubstOk} />}
+        {prevMtrOk !== curMtrOk && <CapDelta label="주변압기" prevOk={prevMtrOk} curOk={curMtrOk} />}
+        {prevDlOk !== curDlOk && <CapDelta label="배전선로" prevOk={prevDlOk} curOk={curDlOk} />}
       </div>
     </div>
   );
 }
 
-function FacilityDelta({
-  label,
-  prevVol,
-  curVol,
-  prevCapa,
-  prevPwr,
-  curCapa,
-  curPwr,
-}: {
-  label: string;
-  prevVol: string | null;
-  curVol: string | null;
-  prevCapa: number | null;
-  prevPwr: number | null;
-  curCapa: number | null;
-  curPwr: number | null;
-}) {
-  const prevRemain = prevCapa != null && prevPwr != null ? prevCapa - prevPwr : null;
-  const curRemain = curCapa != null && curPwr != null ? curCapa - curPwr : null;
-  const delta = prevRemain != null && curRemain != null ? curRemain - prevRemain : null;
-
+function CapDelta({ label, prevOk, curOk }: { label: string; prevOk: boolean; curOk: boolean }) {
+  const improved = !prevOk && curOk;
   return (
     <div className="flex items-center gap-1.5 text-[10px]">
       <span className="text-gray-500 w-12 flex-shrink-0 font-semibold">{label}</span>
-      {/* 상태 변화 */}
-      <span className={`px-1 py-0.5 rounded ${volBadge(prevVol)}`}>
-        {shortVol(prevVol)}
+      <span className={`px-1 py-0.5 rounded ${prevOk ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+        {prevOk ? "여유" : "없음"}
       </span>
-      <ChangeArrow prev={prevVol} cur={curVol} />
-      <span className={`px-1 py-0.5 rounded ${volBadge(curVol)}`}>
-        {shortVol(curVol)}
+      <span className={`font-bold text-xs ${improved ? "text-green-500" : "text-red-500"}`}>→</span>
+      <span className={`px-1 py-0.5 rounded ${curOk ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+        {curOk ? "여유" : "없음"}
       </span>
-      {/* 수치 변화 */}
-      {delta != null && (
-        <span className={`ml-auto font-bold tabular-nums ${delta > 0 ? "text-green-600" : delta < 0 ? "text-red-600" : "text-gray-400"}`}>
-          {delta > 0 ? "+" : ""}{delta.toLocaleString()} kW
-        </span>
-      )}
     </div>
   );
 }

@@ -17,6 +17,7 @@
 
 import { useMemo, useState } from "react";
 import type { KepcoDataRow } from "@/lib/types";
+import { hasCapacity } from "@/lib/types";
 import { FacilityCard, StepBlock } from "./FacilityCard";
 import { formatRemaining } from "@/lib/summarize";
 
@@ -81,9 +82,9 @@ export default function LocationDetailGrouped({ rows, onJibunPin }: Props) {
         map.set(key, g);
       }
       g.rows.push(r);
-      if (r.vol_subst !== "여유용량 있음") g.noCap.subst++;
-      if (r.vol_mtr !== "여유용량 있음") g.noCap.mtr++;
-      if (r.vol_dl !== "여유용량 있음") g.noCap.dl++;
+      if (!hasCapacity(r.subst_capa, r.subst_pwr, r.g_subst_capa)) g.noCap.subst++;
+      if (!hasCapacity(r.mtr_capa, r.mtr_pwr, r.g_mtr_capa)) g.noCap.mtr++;
+      if (!hasCapacity(r.dl_capa, r.dl_pwr, r.g_dl_capa)) g.noCap.dl++;
     }
 
     // 각 그룹 안에서 번지 오름차순, 상태 판정
@@ -325,9 +326,9 @@ function JibunRow({ row, onJibunPin }: { row: KepcoDataRow; onJibunPin?: (row: K
   const substRemain = (row.subst_capa ?? 0) - (row.subst_pwr ?? 0);
   const mtrRemain = (row.mtr_capa ?? 0) - (row.mtr_pwr ?? 0);
   const dlRemain = (row.dl_capa ?? 0) - (row.dl_pwr ?? 0);
-  const substOk = substRemain >= 0;
-  const mtrOk = mtrRemain >= 0;
-  const dlOk = dlRemain >= 0;
+  const substOk = hasCapacity(row.subst_capa, row.subst_pwr, row.g_subst_capa);
+  const mtrOk = hasCapacity(row.mtr_capa, row.mtr_pwr, row.g_mtr_capa);
+  const dlOk = hasCapacity(row.dl_capa, row.dl_pwr, row.g_dl_capa);
 
   return (
     <>
@@ -363,11 +364,11 @@ function JibunRow({ row, onJibunPin }: { row: KepcoDataRow; onJibunPin?: (row: K
               <span className="text-gray-900">{row.addr_jibun || "-"}</span>
             )}
           </span>
-          {/* 시설별 잔여 용량 3개 — 변전소 / 주변압기 / 배전선로 */}
+          {/* 시설별 여유 상태 — KEPCO 수식 계산 */}
           <div className="flex-1 grid grid-cols-3 gap-2 text-[11px]">
-            <RemainInline label="변전소" remaining={substRemain} />
-            <RemainInline label="주변압기" remaining={mtrRemain} />
-            <RemainInline label="배전선로" remaining={dlRemain} />
+            <CapLabel ok={hasCapacity(row.subst_capa, row.subst_pwr, row.g_subst_capa)} />
+            <CapLabel ok={hasCapacity(row.mtr_capa, row.mtr_pwr, row.g_mtr_capa)} />
+            <CapLabel ok={hasCapacity(row.dl_capa, row.dl_pwr, row.g_dl_capa)} />
           </div>
         </button>
       </li>
@@ -446,6 +447,15 @@ function RemainInline({
       <span className={`font-semibold tabular-nums ${color}`}>
         {formatRemaining(remaining)}
       </span>
+    </span>
+  );
+}
+
+/** 여유/없음 배지 — KEPCO 수식 기반 */
+function CapLabel({ ok }: { ok: boolean }) {
+  return (
+    <span className={`text-[11px] font-semibold ${ok ? "text-blue-600" : "text-red-600"}`}>
+      {ok ? "여유" : "없음"}
     </span>
   );
 }

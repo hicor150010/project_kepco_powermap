@@ -17,6 +17,7 @@
 
 import { useState } from "react";
 import type { KepcoDataRow } from "@/lib/types";
+import { hasCapacity } from "@/lib/types";
 import type { SearchRiResult } from "@/lib/search/searchKepco";
 import { FacilityCard, StepBlock } from "./FacilityCard";
 
@@ -40,7 +41,8 @@ function joinAddress(parts: {
   addr_dong: string | null;
   addr_li: string | null;
 }): string {
-  return [parts.addr_do, parts.addr_si, parts.addr_gu, parts.addr_dong, parts.addr_li]
+  return [parts.addr_do, parts.addr_si, parts.addr_gu, parts.addr_dong,
+    parts.addr_li && !parts.addr_li.includes("기타지역") ? parts.addr_li : null]
     .filter((s) => s && s.trim())
     .join(" ");
 }
@@ -198,7 +200,7 @@ function JibunDetail({ row }: { row: KepcoDataRow }) {
         <FacilityCard
           title="변전소"
           name={row.subst_nm ?? "-"}
-          ok={row.vol_subst === "여유용량 있음"}
+          ok={hasCapacity(row.subst_capa, row.subst_pwr, row.g_subst_capa)}
           base={row.subst_capa}
           received={row.subst_pwr}
           planned={row.g_subst_capa}
@@ -206,7 +208,7 @@ function JibunDetail({ row }: { row: KepcoDataRow }) {
         <FacilityCard
           title="주변압기"
           name={`#${row.mtr_no ?? "-"}`}
-          ok={row.vol_mtr === "여유용량 있음"}
+          ok={hasCapacity(row.mtr_capa, row.mtr_pwr, row.g_mtr_capa)}
           base={row.mtr_capa}
           received={row.mtr_pwr}
           planned={row.g_mtr_capa}
@@ -214,7 +216,7 @@ function JibunDetail({ row }: { row: KepcoDataRow }) {
         <FacilityCard
           title="배전선로"
           name={row.dl_nm ?? "-"}
-          ok={row.vol_dl === "여유용량 있음"}
+          ok={hasCapacity(row.dl_capa, row.dl_pwr, row.g_dl_capa)}
           base={row.dl_capa}
           received={row.dl_pwr}
           planned={row.g_dl_capa}

@@ -2,9 +2,9 @@
 
 import { useMemo, useState, useEffect } from "react";
 import type { KepcoDataRow } from "@/lib/types";
+import { hasCapacity } from "@/lib/types";
 import { FacilityCard, StepBlock } from "./FacilityCard";
 import LocationDetailGrouped from "./LocationDetailGrouped";
-import { formatRemaining } from "@/lib/summarize";
 import AddrLine from "./AddrLine";
 
 /**
@@ -23,11 +23,11 @@ interface Props {
 type SortKey =
   | "addr_jibun"
   | "subst_nm"
-  | "vol_subst"
+  | "cap_subst"
   | "mtr_no"
-  | "vol_mtr"
+  | "cap_mtr"
   | "dl_nm"
-  | "vol_dl";
+  | "cap_dl";
 type SortDir = "asc" | "desc";
 const PAGE_SIZE = 50;
 
@@ -72,7 +72,7 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
     { label: "시/군", value: first?.addr_si },
     { label: "구", value: first?.addr_gu },
     { label: "동/읍/면", value: first?.addr_dong },
-    { label: "리", value: first?.addr_li },
+    { label: "리", value: first?.addr_li && !first.addr_li.includes("기타지역") ? first.addr_li : null },
   ];
   const locationName = addrFields
     .map((f) => f.value)
@@ -101,9 +101,9 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
     }
     const sorted = [...arr].sort((a, b) => {
       // 수치형 잔여 컬럼은 숫자 비교
-      if (sortKey === "vol_subst" || sortKey === "vol_mtr" || sortKey === "vol_dl") {
+      if (sortKey === "cap_subst" || sortKey === "cap_mtr" || sortKey === "cap_dl") {
         const kind =
-          sortKey === "vol_subst" ? "subst" : sortKey === "vol_mtr" ? "mtr" : "dl";
+          sortKey === "cap_subst" ? "subst" : sortKey === "cap_mtr" ? "mtr" : "dl";
         const an = remaining(a, kind);
         const bn = remaining(b, kind);
         return sortDir === "asc" ? an - bn : bn - an;
@@ -252,21 +252,21 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
                       <SortHeaderInline label="변전소" col="subst_nm" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
                     </th>
                     <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-blue-800 bg-blue-50 border-l md:border-l-0 border-r border-blue-200" rowSpan={2}>
-                      <SortHeaderInline label="🏭" col="vol_subst" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" />
+                      <SortHeaderInline label="🏭" col="cap_subst" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" />
                       <span className="md:hidden block text-[9px] font-normal text-blue-600">변전소</span>
                     </th>
                     <th className="hidden md:table-cell px-3 py-1.5 text-center text-[10px] font-bold text-emerald-800 bg-emerald-50 border-l border-emerald-200" rowSpan={2}>
                       <SortHeaderInline label="주변압기" col="mtr_no" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
                     </th>
                     <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-emerald-800 bg-emerald-50 border-l md:border-l-0 border-r border-emerald-200" rowSpan={2}>
-                      <SortHeaderInline label="⚡" col="vol_mtr" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" />
+                      <SortHeaderInline label="⚡" col="cap_mtr" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" />
                       <span className="md:hidden block text-[9px] font-normal text-emerald-600">주변압기</span>
                     </th>
                     <th className="hidden md:table-cell px-3 py-1.5 text-center text-[10px] font-bold text-amber-800 bg-amber-50 border-l border-amber-200" rowSpan={2}>
                       <SortHeaderInline label="배전선로" col="dl_nm" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
                     </th>
                     <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-amber-800 bg-amber-50 border-l md:border-l-0 border-r border-amber-200" rowSpan={2}>
-                      <SortHeaderInline label="📡" col="vol_dl" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" />
+                      <SortHeaderInline label="📡" col="cap_dl" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" />
                       <span className="md:hidden block text-[9px] font-normal text-amber-600">배전선로</span>
                     </th>
                   </tr>
@@ -354,29 +354,11 @@ function SortHeaderInline({
   );
 }
 
-/**
- * 잔여 용량 셀 — 기준-접수 차이를 부호 색상 글자로 표시.
- * 양수(여유) 파랑, 음수(초과) 빨강. kW/MW 자동 변환.
- * vol_xxx 플래그는 참조하지 않고 잔여 수치로만 상태 판단.
- */
-function RemainingCell({
-  base,
-  received,
-}: {
-  base: number | null;
-  received: number | null;
-}) {
-  const remaining = (base ?? 0) - (received ?? 0);
-  const positive = remaining > 0;
-  return (
-    <span
-      className={`text-xs font-semibold tabular-nums ${
-        positive ? "text-blue-600" : remaining < 0 ? "text-red-600" : "text-gray-400"
-      }`}
-    >
-      {formatRemaining(remaining)}
-    </span>
-  );
+/** KEPCO 수식 기반 여유 판정 배지 */
+function CapBadge({ ok }: { ok: boolean }) {
+  return ok
+    ? <span className="text-xs font-semibold text-blue-600">여유</span>
+    : <span className="text-xs font-semibold text-red-600">없음</span>;
 }
 
 /** 한 행 + 펼친 상세 영역 */
@@ -431,15 +413,15 @@ function FragmentRow({
         </td>
         <td className="hidden md:table-cell px-3 py-2.5 text-gray-700">{it.subst_nm}</td>
         <td className="px-2 md:px-3 py-2.5 text-right">
-          <RemainingCell base={it.subst_capa} received={it.subst_pwr} />
+          <CapBadge ok={hasCapacity(it.subst_capa, it.subst_pwr, it.g_subst_capa)} />
         </td>
         <td className="hidden md:table-cell px-3 py-2.5 text-gray-700">#{it.mtr_no}</td>
         <td className="px-2 md:px-3 py-2.5 text-right">
-          <RemainingCell base={it.mtr_capa} received={it.mtr_pwr} />
+          <CapBadge ok={hasCapacity(it.mtr_capa, it.mtr_pwr, it.g_mtr_capa)} />
         </td>
         <td className="hidden md:table-cell px-3 py-2.5 text-gray-700">{it.dl_nm}</td>
         <td className="px-2 md:px-3 py-2.5 text-right">
-          <RemainingCell base={it.dl_capa} received={it.dl_pwr} />
+          <CapBadge ok={hasCapacity(it.dl_capa, it.dl_pwr, it.g_dl_capa)} />
         </td>
       </tr>
       {isOpen && (
@@ -459,7 +441,7 @@ function DetailContent({ it }: { it: KepcoDataRow }) {
     it.addr_si,
     it.addr_gu,
     it.addr_dong,
-    it.addr_li,
+    it.addr_li && !it.addr_li.includes("기타지역") ? it.addr_li : null,
     it.addr_jibun,
   ].filter(Boolean) as string[];
 
@@ -483,7 +465,7 @@ function DetailContent({ it }: { it: KepcoDataRow }) {
         <FacilityCard
           title="변전소"
           name={it.subst_nm ?? "-"}
-          ok={it.vol_subst === "여유용량 있음"}
+          ok={hasCapacity(it.subst_capa, it.subst_pwr, it.g_subst_capa)}
           base={it.subst_capa}
           received={it.subst_pwr}
           planned={it.g_subst_capa}
@@ -491,7 +473,7 @@ function DetailContent({ it }: { it: KepcoDataRow }) {
         <FacilityCard
           title="주변압기"
           name={`#${it.mtr_no ?? "-"}`}
-          ok={it.vol_mtr === "여유용량 있음"}
+          ok={hasCapacity(it.mtr_capa, it.mtr_pwr, it.g_mtr_capa)}
           base={it.mtr_capa}
           received={it.mtr_pwr}
           planned={it.g_mtr_capa}
@@ -499,7 +481,7 @@ function DetailContent({ it }: { it: KepcoDataRow }) {
         <FacilityCard
           title="배전선로"
           name={it.dl_nm ?? "-"}
-          ok={it.vol_dl === "여유용량 있음"}
+          ok={hasCapacity(it.dl_capa, it.dl_pwr, it.g_dl_capa)}
           base={it.dl_capa}
           received={it.dl_pwr}
           planned={it.g_dl_capa}
@@ -522,65 +504,3 @@ function DetailContent({ it }: { it: KepcoDataRow }) {
   );
 }
 
-/** 모바일 카드 — 한 지번의 3시설 요약을 세로로 표시 */
-function MobileCard({
-  it,
-  isOpen,
-  onToggle,
-  onJibunPin,
-}: {
-  it: KepcoDataRow;
-  isOpen: boolean;
-  onToggle: () => void;
-  onJibunPin?: (row: KepcoDataRow) => void;
-}) {
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={onToggle}
-        className={`w-full text-left px-4 py-3 flex items-start gap-3 active:bg-blue-50 transition-colors ${
-          isOpen ? "bg-blue-50/60" : ""
-        }`}
-      >
-        <span className={`text-gray-400 mt-0.5 transition-transform ${isOpen ? "rotate-90 text-blue-600" : ""}`}>▶</span>
-        <div className="flex-1 min-w-0">
-          {/* 지번 */}
-          <div className="text-sm font-semibold text-gray-900 mb-1.5">
-            {onJibunPin && it.addr_jibun ? (
-              <span
-                role="button"
-                onClick={(e) => { e.stopPropagation(); onJibunPin(it); }}
-                className="text-blue-600"
-              >
-                📍 {it.addr_jibun}
-              </span>
-            ) : (
-              it.addr_jibun || "-"
-            )}
-          </div>
-          {/* 3시설 요약 — 한 줄씩 */}
-          <div className="space-y-1 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-500">🏭 {it.subst_nm || "-"}</span>
-              <RemainingCell base={it.subst_capa} received={it.subst_pwr} />
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-gray-500">⚡ #{it.mtr_no || "-"}</span>
-              <RemainingCell base={it.mtr_capa} received={it.mtr_pwr} />
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-gray-500">📡 {it.dl_nm || "-"}</span>
-              <RemainingCell base={it.dl_capa} received={it.dl_pwr} />
-            </div>
-          </div>
-        </div>
-      </button>
-      {isOpen && (
-        <div className="px-4 py-3 bg-blue-50/30 border-t border-blue-100">
-          <DetailContent it={it} />
-        </div>
-      )}
-    </div>
-  );
-}

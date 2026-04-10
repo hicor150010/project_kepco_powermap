@@ -75,10 +75,7 @@ def _to_row(result: CrawlResult) -> dict:
         "subst_nm": _empty_to_none(result.subst_nm),
         "mtr_no": _empty_to_none(result.mtr_no),
         "dl_nm": _empty_to_none(result.dl_nm),
-        "vol_subst": _empty_to_none(result.vol_1),
-        "vol_mtr": _empty_to_none(result.vol_2),
-        "vol_dl": _empty_to_none(result.vol_3),
-        # 변전소 용량
+        # 변전소 용량 (여유 판정은 수식으로 계산: capa-pwr≤0 OR capa-g_capa≤0 = 없음)
         "subst_capa": _parse_int(result.subst_capa),
         "subst_pwr": _parse_int(result.subst_pwr),
         "g_subst_capa": _parse_int(result.g_subst_capa),

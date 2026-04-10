@@ -3,6 +3,23 @@
  */
 
 // ──────────────────────────────────────────
+// KEPCO 여유용량 판정 (프론트엔드 공통)
+//   없음 = (capa - pwr ≤ 0) OR (capa - g_capa ≤ 0)
+//   있음 = (capa - pwr > 0) AND (capa - g_capa > 0)
+// ──────────────────────────────────────────
+
+/** KEPCO 수식 기반 여유 판정 — true = 여유 있음 */
+export function hasCapacity(
+  capa: number | null,
+  pwr: number | null,
+  gCapa: number | null,
+): boolean {
+  const r1 = (capa ?? 0) - (pwr ?? 0);
+  const r2 = (capa ?? 0) - (gCapa ?? 0);
+  return r1 > 0 && r2 > 0;
+}
+
+// ──────────────────────────────────────────
 // DB 스키마와 1:1 매핑
 // ──────────────────────────────────────────
 
@@ -21,9 +38,6 @@ export interface KepcoDataRow {
   subst_nm: string | null;
   mtr_no: string | null;
   dl_nm: string | null;
-  vol_subst: string | null;
-  vol_mtr: string | null;
-  vol_dl: string | null;
   subst_capa: number | null;
   subst_pwr: number | null;
   g_subst_capa: number | null;
@@ -99,7 +113,7 @@ export interface ColumnFilters {
   addr_li: Set<string>;
   subst_nm: Set<string>;
   dl_nm: Set<string>;
-  /** "전체" / "있음" / "없음" — 단일 선택 */
+  /** 마을 단위 여유 상태: "전부 여유" / "일부 부족" / "전부 부족" */
   vol_subst: Set<string>;
   vol_mtr: Set<string>;
   vol_dl: Set<string>;

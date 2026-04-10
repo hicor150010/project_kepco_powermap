@@ -80,7 +80,7 @@ export default function TopRemainingList({
             <ol className="space-y-1">
               {top.map((row, i) => {
                 const placeParts =
-                  [row.addr_gu, row.addr_dong, row.addr_li]
+                  [row.addr_gu, row.addr_dong, row.addr_li && !row.addr_li.includes("기타지역") ? row.addr_li : null]
                     .filter(Boolean) as string[];
                 return (
                   <li key={row.geocode_address}>

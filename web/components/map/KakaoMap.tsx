@@ -357,8 +357,9 @@ export default function KakaoMap({
     //   zoom_changed 이벤트로 토글한다.
     // ─────────────────────────────────────────────
     labelOverlaysRef.current = filtered.map((row) => {
-      // "리"를 우선 표시, 없으면 "동/면" 폴백
-      const placeName = row.addr_li || row.addr_dong || "";
+      // "리"를 우선 표시, 기타지역이면 "동" 폴백
+      const li = row.addr_li && !row.addr_li.includes("기타지역") ? row.addr_li : "";
+      const placeName = li || row.addr_dong || "";
       // 잔여 용량 — 사업자가 가장 알고 싶은 정보. kW/MW 자동 변환
       const kw = row.max_remaining_kw ?? 0;
       const remainText =

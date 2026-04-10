@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { CompareRow } from "@/app/api/compare/route";
+import { hasCapacity } from "@/lib/types";
 
 interface Props {
   onResults: (rows: CompareRow[]) => void;
@@ -9,27 +10,33 @@ interface Props {
   onVillageClick?: (geocodeAddress: string, lat: number, lng: number) => void;
 }
 
-// ── 유틸 ──
+// ── 유틸: KEPCO 수식 기반 판정 ──
 
-function volRank(vol: string | null): number {
-  if (!vol) return 0;
-  if (vol.includes("여유")) return 1;
-  if (vol.includes("보통")) return 2;
-  if (vol.includes("주의")) return 3;
-  if (vol.includes("위험")) return 4;
-  return 0;
+/** 수치로 여유 여부 판정 (true=여유, false=없음) */
+function capOk(capa: number | null, pwr: number | null, gCapa: number | null): boolean {
+  return hasCapacity(capa, pwr, gCapa);
 }
 
-function volDelta(prev: string | null, cur: string | null): number {
-  return volRank(cur) - volRank(prev);
+/** 시설 하나의 변화 방향: -1=개선, 0=변동없음, +1=악화 */
+function capDelta(
+  prevCapa: number | null, prevPwr: number | null, prevGCapa: number | null,
+  curCapa: number | null, curPwr: number | null, curGCapa: number | null,
+): number {
+  const prevOk = capOk(prevCapa, prevPwr, prevGCapa);
+  const curOk = capOk(curCapa, curPwr, curGCapa);
+  if (prevOk === curOk) return 0;
+  return curOk ? -1 : 1; // 없음→여유 = 개선(-1), 여유→없음 = 악화(+1)
 }
 
 export type ChangeDirection = "improved" | "worsened" | "mixed";
 
 export function getChangeDirection(row: CompareRow): ChangeDirection {
-  const d1 = volDelta(row.prev_vol_subst, row.cur_vol_subst);
-  const d2 = volDelta(row.prev_vol_mtr, row.cur_vol_mtr);
-  const d3 = volDelta(row.prev_vol_dl, row.cur_vol_dl);
+  const d1 = capDelta(row.prev_subst_capa, row.prev_subst_pwr, row.prev_g_subst_capa,
+                       row.cur_subst_capa, row.cur_subst_pwr, row.cur_g_subst_capa);
+  const d2 = capDelta(row.prev_mtr_capa, row.prev_mtr_pwr, row.prev_g_mtr_capa,
+                       row.cur_mtr_capa, row.cur_mtr_pwr, row.cur_g_mtr_capa);
+  const d3 = capDelta(row.prev_dl_capa, row.prev_dl_pwr, row.prev_g_dl_capa,
+                       row.cur_dl_capa, row.cur_dl_pwr, row.cur_g_dl_capa);
   const sum = d1 + d2 + d3;
   if (sum < 0) return "improved";
   if (sum > 0) return "worsened";
@@ -41,26 +48,9 @@ export function getChangeDirection(row: CompareRow): ChangeDirection {
   return "mixed";
 }
 
-const VOL_SHORT: Record<string, string> = {
-  "여유용량 있음": "여유",
-  보통: "보통",
-  주의: "주의",
-  위험: "위험",
-};
-
-function shortVol(v: string | null): string {
-  if (!v) return "-";
-  return VOL_SHORT[v] || v;
-}
-
-function volColor(v: string | null): string {
-  if (!v) return "text-gray-400";
-  if (v.includes("여유")) return "text-green-600";
-  if (v.includes("보통")) return "text-blue-600";
-  if (v.includes("주의")) return "text-yellow-600";
-  if (v.includes("위험")) return "text-red-600";
-  return "text-gray-400";
-}
+/** 여유/없음 라벨 */
+function capLabel(ok: boolean): string { return ok ? "여유" : "없음"; }
+function capColor(ok: boolean): string { return ok ? "text-green-600" : "text-red-600"; }
 
 // 마을 단위 잔여 kW 변화 계산
 interface VillageStats {
@@ -88,13 +78,22 @@ function analyzeVillage(rows: CompareRow[]): VillageStats {
   if (hasWorsen && !hasImprove) direction = "worsened";
   else if (hasImprove && !hasWorsen) direction = "improved";
 
-  // 시설별 대표 패턴 (가장 많은 패턴)
-  function getPattern(prevKey: keyof CompareRow, curKey: keyof CompareRow): string | null {
-    const changed = rows.filter((r) => r[prevKey] !== r[curKey]);
+  // 시설별 대표 패턴 (여유→없음, 없음→여유 등)
+  function getCapPattern(
+    prevCapaKey: keyof CompareRow, prevPwrKey: keyof CompareRow, prevGKey: keyof CompareRow,
+    curCapaKey: keyof CompareRow, curPwrKey: keyof CompareRow, curGKey: keyof CompareRow,
+  ): string | null {
+    const changed = rows.filter((r) => {
+      const prev = capOk(r[prevCapaKey] as number, r[prevPwrKey] as number, r[prevGKey] as number);
+      const cur = capOk(r[curCapaKey] as number, r[curPwrKey] as number, r[curGKey] as number);
+      return prev !== cur;
+    });
     if (changed.length === 0) return null;
     const counts = new Map<string, number>();
     for (const r of changed) {
-      const k = `${shortVol(r[prevKey] as string | null)} → ${shortVol(r[curKey] as string | null)}`;
+      const prev = capOk(r[prevCapaKey] as number, r[prevPwrKey] as number, r[prevGKey] as number);
+      const cur = capOk(r[curCapaKey] as number, r[curPwrKey] as number, r[curGKey] as number);
+      const k = `${capLabel(prev)} → ${capLabel(cur)}`;
       counts.set(k, (counts.get(k) || 0) + 1);
     }
     let best = "";
@@ -109,9 +108,9 @@ function analyzeVillage(rows: CompareRow[]): VillageStats {
     addr_li: first.addr_li,
     rows,
     direction,
-    substPattern: getPattern("prev_vol_subst", "cur_vol_subst"),
-    mtrPattern: getPattern("prev_vol_mtr", "cur_vol_mtr"),
-    dlPattern: getPattern("prev_vol_dl", "cur_vol_dl"),
+    substPattern: getCapPattern("prev_subst_capa", "prev_subst_pwr", "prev_g_subst_capa", "cur_subst_capa", "cur_subst_pwr", "cur_g_subst_capa"),
+    mtrPattern: getCapPattern("prev_mtr_capa", "prev_mtr_pwr", "prev_g_mtr_capa", "cur_mtr_capa", "cur_mtr_pwr", "cur_g_mtr_capa"),
+    dlPattern: getCapPattern("prev_dl_capa", "prev_dl_pwr", "prev_g_dl_capa", "cur_dl_capa", "cur_dl_pwr", "cur_g_dl_capa"),
     totalChanged: rows.length,
   };
 }
@@ -345,13 +344,13 @@ function VillageCard({ village: v, onClick }: { village: VillageStats; onClick?:
       {/* 시설별 변화 */}
       <div className="space-y-1">
         {v.substPattern && (
-          <FacilityLine label="변전소" pattern={v.substPattern} rows={v.rows} prevKey="prev_vol_subst" curKey="cur_vol_subst" />
+          <FacilityLine label="변전소" pattern={v.substPattern} />
         )}
         {v.mtrPattern && (
-          <FacilityLine label="주변압기" pattern={v.mtrPattern} rows={v.rows} prevKey="prev_vol_mtr" curKey="cur_vol_mtr" />
+          <FacilityLine label="주변압기" pattern={v.mtrPattern} />
         )}
         {v.dlPattern && (
-          <FacilityLine label="배전선로" pattern={v.dlPattern} rows={v.rows} prevKey="prev_vol_dl" curKey="cur_vol_dl" />
+          <FacilityLine label="배전선로" pattern={v.dlPattern} />
         )}
       </div>
 
@@ -363,38 +362,11 @@ function VillageCard({ village: v, onClick }: { village: VillageStats; onClick?:
   );
 }
 
-function FacilityLine({
-  label,
-  pattern,
-  rows,
-  prevKey,
-  curKey,
-}: {
-  label: string;
-  pattern: string;
-  rows: CompareRow[];
-  prevKey: keyof CompareRow;
-  curKey: keyof CompareRow;
-}) {
-  // 대표 row에서 이전/현재 상태 추출
-  const changed = rows.filter((r) => r[prevKey] !== r[curKey]);
-  if (changed.length === 0) return null;
-  const sample = changed[0];
-  const prev = sample[prevKey] as string | null;
-  const cur = sample[curKey] as string | null;
-  const delta = volDelta(prev, cur);
-
+function FacilityLine({ label, pattern }: { label: string; pattern: string }) {
   return (
     <div className="flex items-center gap-1.5 text-[11px]">
       <span className="text-gray-500 font-medium w-12 flex-shrink-0">{label}</span>
-      <span className={`font-bold ${volColor(prev)}`}>{shortVol(prev)}</span>
-      <span className={`text-xs font-bold ${delta > 0 ? "text-red-500" : delta < 0 ? "text-green-500" : "text-gray-400"}`}>
-        →
-      </span>
-      <span className={`font-bold ${volColor(cur)}`}>{shortVol(cur)}</span>
-      {changed.length > 1 && (
-        <span className="text-[10px] text-gray-400 ml-auto">{changed.length}건</span>
-      )}
+      <span className="font-bold text-gray-700">{pattern}</span>
     </div>
   );
 }

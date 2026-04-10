@@ -2,6 +2,7 @@
  * 마을(geocode_address) 단위 raw 데이터를 시설별로 집계
  */
 import type { KepcoDataRow } from "./types";
+import { hasCapacity } from "./types";
 
 export interface FacilityStat {
   name: string;
@@ -37,11 +38,8 @@ export interface LocationSummary {
   hasStepData: boolean;
 }
 
-const hasCap = (v: string | null) => v === "여유용량 있음";
-
 interface AggKeys {
   nameKey: keyof KepcoDataRow;
-  volKey: keyof KepcoDataRow;
   capaKey: keyof KepcoDataRow;
   pwrKey: keyof KepcoDataRow;
   gCapaKey: keyof KepcoDataRow;
@@ -62,7 +60,11 @@ function aggregate(items: KepcoDataRow[], k: AggKeys) {
       entry = {
         name,
         count: 0,
-        hasCapacity: hasCap(it[k.volKey] as string | null),
+        hasCapacity: hasCapacity(
+          Number(it[k.capaKey] ?? 0),
+          Number(it[k.pwrKey] ?? 0),
+          Number(it[k.gCapaKey] ?? 0),
+        ),
         baseCapacity: Number(it[k.capaKey] ?? 0),
         receivedCapacity: Number(it[k.pwrKey] ?? 0),
         plannedCapacity: Number(it[k.gCapaKey] ?? 0),
@@ -92,14 +94,12 @@ export function summarizeLocation(items: KepcoDataRow[]): LocationSummary {
   const total = items.length;
   const substations = aggregate(items, {
     nameKey: "subst_nm",
-    volKey: "vol_subst",
     capaKey: "subst_capa",
     pwrKey: "subst_pwr",
     gCapaKey: "g_subst_capa",
   });
   const transformers = aggregate(items, {
     nameKey: "mtr_no",
-    volKey: "vol_mtr",
     capaKey: "mtr_capa",
     pwrKey: "mtr_pwr",
     gCapaKey: "g_mtr_capa",
@@ -107,7 +107,6 @@ export function summarizeLocation(items: KepcoDataRow[]): LocationSummary {
   });
   const distributionLines = aggregate(items, {
     nameKey: "dl_nm",
-    volKey: "vol_dl",
     capaKey: "dl_capa",
     pwrKey: "dl_pwr",
     gCapaKey: "g_dl_capa",
@@ -117,10 +116,18 @@ export function summarizeLocation(items: KepcoDataRow[]): LocationSummary {
    * 행 단위 카운트 — 각 row의 vol_xxx 컬럼을 직접 세서 정확하게 집계.
    * (시설명 집계는 첫 행의 상태만 저장하는 한계가 있어 별도로 계산)
    */
-  const countsFor = (volKey: keyof KepcoDataRow): FacilityCounts => {
+  const countsFor = (
+    capaKey: keyof KepcoDataRow,
+    pwrKey: keyof KepcoDataRow,
+    gCapaKey: keyof KepcoDataRow,
+  ): FacilityCounts => {
     let okCount = 0;
     for (const it of items) {
-      if (hasCap(it[volKey] as string | null)) okCount++;
+      if (hasCapacity(
+        Number(it[capaKey] ?? 0),
+        Number(it[pwrKey] ?? 0),
+        Number(it[gCapaKey] ?? 0),
+      )) okCount++;
     }
     const noCount = total - okCount;
     return {
@@ -142,9 +149,9 @@ export function summarizeLocation(items: KepcoDataRow[]): LocationSummary {
     substations,
     transformers,
     distributionLines,
-    substCounts: countsFor("vol_subst"),
-    mtrCounts: countsFor("vol_mtr"),
-    dlCounts: countsFor("vol_dl"),
+    substCounts: countsFor("subst_capa", "subst_pwr", "g_subst_capa"),
+    mtrCounts: countsFor("mtr_capa", "mtr_pwr", "g_mtr_capa"),
+    dlCounts: countsFor("dl_capa", "dl_pwr", "g_dl_capa"),
     hasStepData,
   };
 }

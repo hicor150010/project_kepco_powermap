@@ -1,7 +1,10 @@
 /**
  * GET /api/compare?date=2026-04-01
- * 특정 날짜 이후 상태(vol_subst/mtr/dl)가 변경된 지번 목록 반환
+ * 특정 날짜 이후 용량 수치가 변경된 지번 목록 반환
  * → 마을(geocode_address) 단위로 집계하여 지도에 표시
+ *
+ * 여유 판정은 KEPCO 수식으로 계산:
+ *   없음 = (capa - pwr ≤ 0) OR (capa - g_capa ≤ 0)
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
@@ -19,26 +22,26 @@ export interface CompareRow {
   addr_jibun: string | null;
   subst_nm: string | null;
   dl_nm: string | null;
-  // 현재
-  cur_vol_subst: string | null;
-  cur_vol_mtr: string | null;
-  cur_vol_dl: string | null;
+  // 현재 수치
   cur_subst_capa: number | null;
   cur_subst_pwr: number | null;
+  cur_g_subst_capa: number | null;
   cur_mtr_capa: number | null;
   cur_mtr_pwr: number | null;
+  cur_g_mtr_capa: number | null;
   cur_dl_capa: number | null;
   cur_dl_pwr: number | null;
-  // 이전
-  prev_vol_subst: string | null;
-  prev_vol_mtr: string | null;
-  prev_vol_dl: string | null;
+  cur_g_dl_capa: number | null;
+  // 이전 수치
   prev_subst_capa: number | null;
   prev_subst_pwr: number | null;
+  prev_g_subst_capa: number | null;
   prev_mtr_capa: number | null;
   prev_mtr_pwr: number | null;
+  prev_g_mtr_capa: number | null;
   prev_dl_capa: number | null;
   prev_dl_pwr: number | null;
+  prev_g_dl_capa: number | null;
   changed_count: number;
 }
 

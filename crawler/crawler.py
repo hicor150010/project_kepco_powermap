@@ -76,9 +76,6 @@ class CrawlResult:
     subst_nm: str = ""        # 변전소명
     mtr_no: str = ""          # 주변압기
     dl_nm: str = ""           # 배전선로명
-    vol_1: str = ""           # 변전소 여유용량 상태
-    vol_2: str = ""           # 주변압기 여유용량 상태
-    vol_3: str = ""           # 배전선로 여유용량 상태
     subst_capa: str = ""      # 변전소 접속기준용량
     subst_pwr: str = ""       # 변전소 접수기준접속용량
     g_subst_capa: str = ""    # 변전소 접속계획반영접속용량
@@ -468,13 +465,6 @@ class KepcoСrawler:
 
             if results:
                 for item in results:
-                    # VOL_1/2/3은 여유용량(kW) 수치. 양수=있음, 0이하=없음
-                    def vol_status(val):
-                        try:
-                            return "여유용량 있음" if int(val) > 0 else "여유용량 없음"
-                        except (ValueError, TypeError):
-                            return ""
-
                     result = CrawlResult(
                         addr_do=addr_do,
                         addr_si=excel_si,
@@ -485,9 +475,6 @@ class KepcoСrawler:
                         subst_nm=item.get("SUBST_NM", ""),
                         mtr_no=str(item.get("MTR_NO", "")),
                         dl_nm=item.get("DL_NM", ""),
-                        vol_1=vol_status(item.get("VOL_1", "")),
-                        vol_2=vol_status(item.get("VOL_2", "")),
-                        vol_3=vol_status(item.get("VOL_3", "")),
                         subst_capa=str(item.get("SUBST_CAPA", "")),
                         subst_pwr=str(item.get("SUBST_PWR", "")),
                         g_subst_capa=str(item.get("G_SUBST_CAPA", "")),
