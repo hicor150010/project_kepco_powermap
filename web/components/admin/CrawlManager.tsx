@@ -1005,7 +1005,7 @@ export default function CrawlManager() {
                     {isExpanded && (
                       <tr>
                         <td colSpan={8} className="bg-gray-50 px-6 py-4 border-t border-gray-100">
-                          <div className="grid grid-cols-2 gap-6">
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             {/* 왼쪽: 수집 결과 + 수집 일시 */}
                             <div className="space-y-4">
                               {/* 수집 결과 */}
@@ -1017,7 +1017,7 @@ export default function CrawlManager() {
                                   const hErrors = job.progress.errors || 0;
                                   const hNoData = Math.max(0, hProcessed - hFound - hErrors);
                                   return (
-                                    <div className="grid grid-cols-5 gap-2">
+                                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                                       <div className="bg-green-50 rounded-lg px-3 py-2 text-center">
                                         <div className="text-lg font-bold text-green-700">{hFound.toLocaleString()}</div>
                                         <div className="text-[10px] text-green-600">수집</div>
@@ -1239,6 +1239,7 @@ export default function CrawlManager() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>
