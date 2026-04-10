@@ -19,6 +19,14 @@ interface CrawlJob {
     geocoded?: number;
     current_address?: string;
     phase?: string;
+    addr_parts?: {
+      sido?: string;
+      si?: string;
+      gu?: string;
+      dong?: string;
+      li?: string;
+      jibun?: string;
+    };
     recent_errors?: { addr: string; error: string }[];
   };
   checkpoint: Record<string, unknown> | null;
@@ -858,16 +866,27 @@ export default function CrawlManager() {
 
                   {/* 현재 위치 */}
                   <div className="bg-gray-50 rounded-lg px-4 py-3">
-                    {job.progress.current_address && (
+                    {job.progress.addr_parts ? (
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                        {[
+                          { label: "시/도", value: job.progress.addr_parts.sido },
+                          { label: "시/군", value: job.progress.addr_parts.si },
+                          { label: "구", value: job.progress.addr_parts.gu },
+                          { label: "동/읍/면", value: job.progress.addr_parts.dong },
+                          { label: "리", value: job.progress.addr_parts.li },
+                          { label: "번지", value: job.progress.addr_parts.jibun },
+                        ].filter(item => item.value).map(item => (
+                          <div key={item.label}>
+                            <span className="text-gray-400">{item.label}</span>{" "}
+                            <span className="font-semibold text-gray-800">{item.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : job.progress.current_address ? (
                       <div className="text-sm text-gray-700">
                         현재: <span className="font-medium">{job.progress.current_address}</span>
                       </div>
-                    )}
-                    {job.progress.phase && (
-                      <div className="text-sm text-blue-600 font-medium mt-1">
-                        {job.progress.phase}
-                      </div>
-                    )}
+                    ) : null}
                   </div>
 
                   {/* 설정 + 동작 안내 */}
@@ -1163,11 +1182,29 @@ export default function CrawlManager() {
                                 </div>
                               )}
 
-                              {/* 현재 주소 */}
-                              {job.progress.current_address && (
+                              {/* 마지막 처리 주소 */}
+                              {(job.progress.addr_parts || job.progress.current_address) && (
                                 <div>
                                   <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">마지막 처리 주소</h4>
-                                  <span className="text-xs text-gray-700">{job.progress.current_address}</span>
+                                  {job.progress.addr_parts ? (
+                                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                                      {[
+                                        { label: "시/도", value: job.progress.addr_parts.sido },
+                                        { label: "시/군", value: job.progress.addr_parts.si },
+                                        { label: "구", value: job.progress.addr_parts.gu },
+                                        { label: "동/읍/면", value: job.progress.addr_parts.dong },
+                                        { label: "리", value: job.progress.addr_parts.li },
+                                        { label: "번지", value: job.progress.addr_parts.jibun },
+                                      ].filter(item => item.value).map(item => (
+                                        <div key={item.label}>
+                                          <span className="text-gray-400">{item.label}</span>{" "}
+                                          <span className="font-medium text-gray-700">{item.value}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-gray-700">{job.progress.current_address}</span>
+                                  )}
                                 </div>
                               )}
                             </div>

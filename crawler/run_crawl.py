@@ -212,6 +212,14 @@ def build_progress_json(progress: CrawlProgress, geocoded: int = 0) -> dict:
         "geocoded": geocoded,
         "current_address": progress.current_address,
         "phase": progress.phase,
+        "addr_parts": {
+            "sido": progress.do_name,
+            "si": progress.si_name,
+            "gu": progress.gu_name,
+            "dong": progress.dong_name,
+            "li": progress.li_name,
+            "jibun": progress.jibun_name,
+        },
     }
     if progress.recent_errors:
         result["recent_errors"] = progress.recent_errors
