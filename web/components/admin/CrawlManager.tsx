@@ -828,7 +828,7 @@ export default function CrawlManager() {
                 <th className="text-left px-4 py-2 font-medium">지역</th>
                 <th className="text-left px-4 py-2 font-medium">상태</th>
                 <th className="text-right px-4 py-2 font-medium">결과</th>
-                <th className="text-right px-4 py-2 font-medium">시간</th>
+                <th className="text-right px-4 py-2 font-medium">수집 일시</th>
                 <th className="text-right px-4 py-2 font-medium">작업</th>
               </tr>
             </thead>
@@ -880,7 +880,7 @@ export default function CrawlManager() {
                       <tr>
                         <td colSpan={7} className="bg-gray-50 px-6 py-4 border-t border-gray-100">
                           <div className="grid grid-cols-2 gap-6">
-                            {/* 왼쪽: 수집 결과 + 시간 */}
+                            {/* 왼쪽: 수집 결과 + 수집 일시 */}
                             <div className="space-y-4">
                               {/* 수집 결과 */}
                               <div>
@@ -919,7 +919,7 @@ export default function CrawlManager() {
 
                               {/* 시간 정보 */}
                               <div>
-                                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">시간</h4>
+                                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">수집 일시</h4>
                                 <table className="w-full text-xs">
                                   <tbody>
                                     <tr>
