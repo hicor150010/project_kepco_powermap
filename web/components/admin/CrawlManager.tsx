@@ -417,7 +417,7 @@ export default function CrawlManager() {
   const isPolling = hasActiveJobs;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0">
       {/* 상태 바 */}
       {isPolling && (
         <div className="flex items-center gap-2">

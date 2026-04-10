@@ -4,7 +4,7 @@ export const metadata = { title: "데이터 수집 — 관리자" };
 
 export default function CrawlPage() {
   return (
-    <main className="max-w-4xl mx-auto px-6 py-8">
+    <main className="max-w-5xl mx-auto px-6 py-8">
       <div className="mb-6">
         <h2 className="text-xl font-bold text-gray-900">데이터 수집</h2>
         <p className="text-sm text-gray-500 mt-1">
