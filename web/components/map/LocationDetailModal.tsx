@@ -238,26 +238,37 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
               </button>
             </div>
 
-            {/* ── 데스크톱: 테이블 뷰 ── */}
-            <div className="hidden md:block overflow-auto flex-1 min-h-0">
-              <table className="w-full text-xs min-w-[640px]">
+            <div className="overflow-auto flex-1 min-h-0">
+              <table className="w-full text-xs">
+                {/* 2단 헤더 — 모바일에서는 시설 이름 컬럼 숨김 */}
                 <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                   <tr className="border-b border-gray-200">
-                    <th className="w-8 px-2 py-2 bg-gray-100" rowSpan={2}></th>
-                    <th className="px-3 py-2 bg-gray-100" rowSpan={2}>
+                    <th className="w-8 px-1 md:px-2 py-2 bg-gray-100" rowSpan={2}></th>
+                    <th className="px-2 md:px-3 py-2 bg-gray-100" rowSpan={2}>
                       <SortHeaderInline label="번지" col="addr_jibun" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
                     </th>
-                    <th colSpan={2} className="px-3 py-1.5 text-center text-[10px] font-bold text-blue-800 bg-blue-50 border-l border-r border-blue-200">🏭 변전소</th>
-                    <th colSpan={2} className="px-3 py-1.5 text-center text-[10px] font-bold text-emerald-800 bg-emerald-50 border-l border-r border-emerald-200">⚡ 주변압기</th>
-                    <th colSpan={2} className="px-3 py-1.5 text-center text-[10px] font-bold text-amber-800 bg-amber-50 border-l border-r border-amber-200">📡 배전선로</th>
-                  </tr>
-                  <tr className="border-b-2 border-gray-300">
-                    <th className="px-3 py-2 text-left bg-blue-50/40 border-l border-blue-200"><SortHeaderInline label="이름" col="subst_nm" sortKey={sortKey} sortDir={sortDir} onSort={setSort} /></th>
-                    <th className="px-3 py-2 text-right bg-blue-50/40 border-r border-blue-200"><SortHeaderInline label="여유" col="vol_subst" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" /></th>
-                    <th className="px-3 py-2 text-left bg-emerald-50/40 border-l border-emerald-200"><SortHeaderInline label="번호" col="mtr_no" sortKey={sortKey} sortDir={sortDir} onSort={setSort} /></th>
-                    <th className="px-3 py-2 text-right bg-emerald-50/40 border-r border-emerald-200"><SortHeaderInline label="여유" col="vol_mtr" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" /></th>
-                    <th className="px-3 py-2 text-left bg-amber-50/40 border-l border-amber-200"><SortHeaderInline label="이름" col="dl_nm" sortKey={sortKey} sortDir={sortDir} onSort={setSort} /></th>
-                    <th className="px-3 py-2 text-right bg-amber-50/40 border-r border-amber-200"><SortHeaderInline label="여유" col="vol_dl" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" /></th>
+                    {/* 모바일: 1열씩, 데스크톱: 2열씩 */}
+                    <th className="hidden md:table-cell px-3 py-1.5 text-center text-[10px] font-bold text-blue-800 bg-blue-50 border-l border-blue-200" rowSpan={2}>
+                      <SortHeaderInline label="변전소" col="subst_nm" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
+                    </th>
+                    <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-blue-800 bg-blue-50 border-l md:border-l-0 border-r border-blue-200" rowSpan={2}>
+                      <SortHeaderInline label="🏭" col="vol_subst" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" />
+                      <span className="md:hidden block text-[9px] font-normal text-blue-600">변전소</span>
+                    </th>
+                    <th className="hidden md:table-cell px-3 py-1.5 text-center text-[10px] font-bold text-emerald-800 bg-emerald-50 border-l border-emerald-200" rowSpan={2}>
+                      <SortHeaderInline label="주변압기" col="mtr_no" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
+                    </th>
+                    <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-emerald-800 bg-emerald-50 border-l md:border-l-0 border-r border-emerald-200" rowSpan={2}>
+                      <SortHeaderInline label="⚡" col="vol_mtr" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" />
+                      <span className="md:hidden block text-[9px] font-normal text-emerald-600">주변압기</span>
+                    </th>
+                    <th className="hidden md:table-cell px-3 py-1.5 text-center text-[10px] font-bold text-amber-800 bg-amber-50 border-l border-amber-200" rowSpan={2}>
+                      <SortHeaderInline label="배전선로" col="dl_nm" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
+                    </th>
+                    <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-amber-800 bg-amber-50 border-l md:border-l-0 border-r border-amber-200" rowSpan={2}>
+                      <SortHeaderInline label="📡" col="vol_dl" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" />
+                      <span className="md:hidden block text-[9px] font-normal text-amber-600">배전선로</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -270,19 +281,6 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
                   )}
                 </tbody>
               </table>
-            </div>
-
-            {/* ── 모바일: 카드 리스트 ── */}
-            <div className="md:hidden overflow-auto flex-1 min-h-0">
-              {pageItems.length === 0 ? (
-                <div className="px-4 py-8 text-center text-gray-400 text-xs">결과 없음</div>
-              ) : (
-                <div className="divide-y divide-gray-100">
-                  {pageItems.map((it) => (
-                    <MobileCard key={it.id} it={it} isOpen={expanded.has(it.id)} onToggle={() => toggleExpand(it.id)} onJibunPin={onJibunPin} />
-                  ))}
-                </div>
-              )}
             </div>
 
             {totalPages > 1 && (
@@ -405,7 +403,7 @@ function FragmentRow({
         }`}
         onClick={onToggle}
       >
-        <td className="px-2 py-2.5 text-center">
+        <td className="px-1 md:px-2 py-2.5 text-center">
           <span
             className={`inline-block text-gray-400 transition-transform ${
               isOpen ? "rotate-90 text-blue-600" : ""
@@ -414,7 +412,7 @@ function FragmentRow({
             ▶
           </span>
         </td>
-        <td className="px-3 py-2.5 font-semibold text-gray-900">
+        <td className="px-2 md:px-3 py-2.5 font-semibold text-gray-900">
           {onJibunPin && it.addr_jibun ? (
             <button
               type="button"
@@ -431,16 +429,16 @@ function FragmentRow({
             it.addr_jibun || "-"
           )}
         </td>
-        <td className="px-3 py-2.5 text-gray-700">{it.subst_nm}</td>
-        <td className="px-3 py-2.5 text-right">
+        <td className="hidden md:table-cell px-3 py-2.5 text-gray-700">{it.subst_nm}</td>
+        <td className="px-2 md:px-3 py-2.5 text-right">
           <RemainingCell base={it.subst_capa} received={it.subst_pwr} />
         </td>
-        <td className="px-3 py-2.5 text-gray-700">#{it.mtr_no}</td>
-        <td className="px-3 py-2.5 text-right">
+        <td className="hidden md:table-cell px-3 py-2.5 text-gray-700">#{it.mtr_no}</td>
+        <td className="px-2 md:px-3 py-2.5 text-right">
           <RemainingCell base={it.mtr_capa} received={it.mtr_pwr} />
         </td>
-        <td className="px-3 py-2.5 text-gray-700">{it.dl_nm}</td>
-        <td className="px-3 py-2.5 text-right">
+        <td className="hidden md:table-cell px-3 py-2.5 text-gray-700">{it.dl_nm}</td>
+        <td className="px-2 md:px-3 py-2.5 text-right">
           <RemainingCell base={it.dl_capa} received={it.dl_pwr} />
         </td>
       </tr>

@@ -153,7 +153,7 @@ export default function LocationDetailGrouped({ rows, onJibunPin }: Props) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="번지, 변전소, 배전선로명 검색..."
-          className="flex-1 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-md bg-white focus:outline-none focus:border-blue-500"
+          className="flex-1 px-3 py-2 text-base md:text-sm text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-md bg-white focus:outline-none focus:border-blue-500"
         />
         <label className="inline-flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer whitespace-nowrap select-none">
           <input
@@ -259,12 +259,13 @@ function GroupBlock({
           ▶
         </span>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold text-gray-900 flex items-center gap-1.5 flex-wrap">
+          <div className="text-xs md:text-sm font-bold text-gray-900 flex items-center gap-1 md:gap-1.5 flex-wrap">
             <span>변전소 {substNm}</span>
             <span className="text-gray-400">·</span>
             <span>주변압기 #{mtrNo}</span>
-            <span className="text-gray-400">·</span>
-            <span>배전선로 {dlNm}</span>
+          </div>
+          <div className="text-xs md:text-sm font-bold text-gray-900">
+            배전선로 {dlNm}
           </div>
           <div className="text-[11px] text-gray-600 mt-0.5">
             {total.toLocaleString()}건
@@ -293,9 +294,19 @@ function GroupBlock({
         {statusBadge}
       </button>
 
-      {/* 그룹 본문 — 지번 목록 */}
+      {/* 그룹 본문 — 컬럼 헤더 + 지번 목록 */}
       {!collapsed && (
         <div className="bg-white">
+          {/* 컬럼 헤더 */}
+          <div className="flex items-center gap-3 px-3 py-1.5 bg-gray-50 border-b border-gray-100 text-[10px] font-bold text-gray-500">
+            <span className="w-3"></span>
+            <span className="min-w-[60px]">번지</span>
+            <div className="flex-1 grid grid-cols-3 gap-2">
+              <span className="text-blue-600">🏭 변전소</span>
+              <span className="text-emerald-600">⚡ 주변압기</span>
+              <span className="text-amber-600">📡 배전선로</span>
+            </div>
+          </div>
           <ul className="divide-y divide-gray-100">
             {rows.map((r) => (
               <JibunRow key={r.id} row={r} onJibunPin={onJibunPin} />
@@ -431,7 +442,7 @@ function RemainInline({
         : "text-gray-400";
   return (
     <span className="inline-flex items-center gap-1 min-w-0 truncate">
-      <span className="text-gray-400 flex-shrink-0">{label}</span>
+      <span className="hidden md:inline text-gray-400 flex-shrink-0">{label}</span>
       <span className={`font-semibold tabular-nums ${color}`}>
         {formatRemaining(remaining)}
       </span>
