@@ -349,17 +349,17 @@ function JibunRow({ row, onJibunPin }: { row: KepcoDataRow; onJibunPin?: (row: K
           </span>
           <span className="text-xs font-semibold min-w-[60px]">
             {onJibunPin && row.addr_jibun ? (
-              <button
-                type="button"
+              <span
+                role="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onJibunPin(row);
                 }}
-                className="text-blue-600 hover:text-blue-800 hover:underline"
+                className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
                 title="지도에서 이 지번 위치 보기"
               >
                 📍 {row.addr_jibun}
-              </button>
+              </span>
             ) : (
               <span className="text-gray-900">{row.addr_jibun || "-"}</span>
             )}
