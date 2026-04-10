@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 
 // ── 타입 ──
 
@@ -71,6 +71,7 @@ export default function CrawlManager() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [expandedJobId, setExpandedJobId] = useState<number | null>(null);
 
   // ── 작업 목록 조회 ──
 
@@ -347,6 +348,28 @@ export default function CrawlManager() {
     if (hours < 24) return `${hours}시간 전`;
     const days = Math.floor(hours / 24);
     return `${days}일 전`;
+  }
+
+  function formatDateTime(iso: string): string {
+    return new Date(iso).toLocaleString("ko-KR", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  }
+
+  function formatDuration(startIso: string, endIso: string): string {
+    const ms = new Date(endIso).getTime() - new Date(startIso).getTime();
+    if (ms < 0) return "-";
+    const secs = Math.floor(ms / 1000);
+    const mins = Math.floor(secs / 60);
+    const hours = Math.floor(mins / 60);
+    if (hours > 0) return `${hours}시간 ${mins % 60}분`;
+    if (mins > 0) return `${mins}분 ${secs % 60}초`;
+    return `${secs}초`;
   }
 
   // ── 렌더링 ──
@@ -762,6 +785,7 @@ export default function CrawlManager() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 text-gray-600 text-xs">
+                <th className="text-left px-4 py-2 font-medium w-6"></th>
                 <th className="text-left px-4 py-2 font-medium">ID</th>
                 <th className="text-left px-4 py-2 font-medium">지역</th>
                 <th className="text-left px-4 py-2 font-medium">상태</th>
@@ -771,51 +795,232 @@ export default function CrawlManager() {
               </tr>
             </thead>
             <tbody>
-              {historyJobs.map((job, idx) => (
-                <tr
-                  key={job.id}
-                  className={idx % 2 === 1 ? "bg-gray-50/40" : ""}
-                >
-                  <td className="px-4 py-2.5 text-gray-500">#{job.id}</td>
-                  <td className="px-4 py-2.5 font-medium text-gray-900">
-                    {formatScope(job)}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <StatusBadge status={job.status} />
-                  </td>
-                  <td className="px-4 py-2.5 text-right text-gray-600">
-                    {job.progress.found != null
-                      ? `${job.progress.found.toLocaleString()}건`
-                      : "-"}
-                  </td>
-                  <td className="px-4 py-2.5 text-right text-gray-500 text-xs">
-                    {job.completed_at
-                      ? relativeTime(job.completed_at)
-                      : job.created_at
-                        ? relativeTime(job.created_at)
-                        : "-"}
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      {job.status === "stopped" && job.checkpoint && (
+              {historyJobs.map((job, idx) => {
+                const isExpanded = expandedJobId === job.id;
+                const opts = (job.options || {}) as Record<string, any>;
+                const cp = (job.checkpoint || {}) as Record<string, any>;
+                const cpPos = cp.position as Record<string, any> | undefined;
+                const cpStats = cp.stats as Record<string, any> | undefined;
+                return (
+                  <Fragment key={job.id}>
+                    <tr
+                      className={`cursor-pointer hover:bg-blue-50/50 transition-colors ${idx % 2 === 1 ? "bg-gray-50/40" : ""}`}
+                      onClick={() => setExpandedJobId(isExpanded ? null : job.id)}
+                    >
+                      <td className="px-4 py-2.5 text-gray-400 text-xs">
+                        {isExpanded ? "▼" : "▶"}
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-500">#{job.id}</td>
+                      <td className="px-4 py-2.5 font-medium text-gray-900">
+                        {formatScope(job)}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <StatusBadge status={job.status} />
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-gray-600">
+                        {job.progress.found != null
+                          ? `${job.progress.found.toLocaleString()}건`
+                          : "-"}
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-gray-500 text-xs">
+                        {job.completed_at
+                          ? relativeTime(job.completed_at)
+                          : job.created_at
+                            ? relativeTime(job.created_at)
+                            : "-"}
+                      </td>
+                      <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                         <button
-                          onClick={() => handleResume(job)}
-                          disabled={submitting}
-                          className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+                          onClick={() => handleDelete(job.id)}
+                          className="text-xs text-gray-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors"
                         >
-                          이어서 추출
+                          삭제
                         </button>
-                      )}
-                      <button
-                        onClick={() => handleDelete(job.id)}
-                        className="text-xs text-gray-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors"
-                      >
-                        삭제
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan={7} className="bg-gray-50 px-6 py-4 border-t border-gray-100">
+                          <div className="grid grid-cols-2 gap-6">
+                            {/* 왼쪽: 수집 결과 + 시간 */}
+                            <div className="space-y-4">
+                              {/* 수집 결과 */}
+                              <div>
+                                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">수집 결과</h4>
+                                <div className="grid grid-cols-4 gap-2">
+                                  <div className="bg-blue-50 rounded-lg px-3 py-2 text-center">
+                                    <div className="text-lg font-bold text-blue-700">{job.progress.processed?.toLocaleString() ?? "-"}</div>
+                                    <div className="text-[10px] text-blue-600">조회</div>
+                                  </div>
+                                  <div className="bg-green-50 rounded-lg px-3 py-2 text-center">
+                                    <div className="text-lg font-bold text-green-700">{job.progress.found?.toLocaleString() ?? "-"}</div>
+                                    <div className="text-[10px] text-green-600">수집</div>
+                                  </div>
+                                  <div className="bg-purple-50 rounded-lg px-3 py-2 text-center">
+                                    <div className="text-lg font-bold text-purple-700">{job.progress.geocoded?.toLocaleString() ?? 0}</div>
+                                    <div className="text-[10px] text-purple-600">좌표</div>
+                                  </div>
+                                  <div className={`rounded-lg px-3 py-2 text-center ${(job.progress.errors || 0) > 0 ? "bg-red-50" : "bg-gray-100"}`}>
+                                    <div className={`text-lg font-bold ${(job.progress.errors || 0) > 0 ? "text-red-700" : "text-gray-400"}`}>{job.progress.errors ?? 0}</div>
+                                    <div className={`text-[10px] ${(job.progress.errors || 0) > 0 ? "text-red-600" : "text-gray-400"}`}>오류</div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* 시간 정보 */}
+                              <div>
+                                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">시간</h4>
+                                <table className="w-full text-xs">
+                                  <tbody>
+                                    <tr>
+                                      <td className="py-1 text-gray-500 w-20">생성</td>
+                                      <td className="py-1 text-gray-700 font-medium">{formatDateTime(job.created_at)}</td>
+                                    </tr>
+                                    {job.started_at && (
+                                      <tr>
+                                        <td className="py-1 text-gray-500">시작</td>
+                                        <td className="py-1 text-gray-700 font-medium">{formatDateTime(job.started_at)}</td>
+                                      </tr>
+                                    )}
+                                    {job.completed_at && (
+                                      <tr>
+                                        <td className="py-1 text-gray-500">완료</td>
+                                        <td className="py-1 text-gray-700 font-medium">{formatDateTime(job.completed_at)}</td>
+                                      </tr>
+                                    )}
+                                    {job.started_at && job.completed_at && (
+                                      <tr>
+                                        <td className="py-1 text-gray-500">소요</td>
+                                        <td className="py-1 text-gray-700 font-bold">{formatDuration(job.started_at, job.completed_at)}</td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              {/* 에러 메시지 */}
+                              {job.error_message && (
+                                <div>
+                                  <h4 className="text-xs font-bold text-red-500 uppercase tracking-wider mb-1">오류 메시지</h4>
+                                  <div className="text-xs text-red-700 bg-red-50 rounded px-3 py-2 border border-red-200 break-all">
+                                    {job.error_message}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* 오른쪽: 옵션 + 체크포인트 */}
+                            <div className="space-y-4">
+                              {/* 수집 옵션 */}
+                              <div>
+                                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">수집 옵션</h4>
+                                <table className="w-full text-xs">
+                                  <tbody>
+                                    <tr>
+                                      <td className="py-1 text-gray-500 w-28">API 호출 간격</td>
+                                      <td className="py-1 text-gray-700 font-medium">{opts.delay ?? 0.5}초</td>
+                                    </tr>
+                                    <tr>
+                                      <td className="py-1 text-gray-500">배치 크기</td>
+                                      <td className="py-1 text-gray-700 font-medium">{opts.flush_size ?? 100}건</td>
+                                    </tr>
+                                    <tr>
+                                      <td className="py-1 text-gray-500">갱신 주기</td>
+                                      <td className="py-1 text-gray-700 font-medium">{opts.progress_interval ?? 10}건마다</td>
+                                    </tr>
+                                    <tr>
+                                      <td className="py-1 text-gray-500">STEP 데이터</td>
+                                      <td className="py-1 text-gray-700 font-medium">{opts.fetch_step_data ? "사용" : "미사용"}</td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              {/* 체크포인트 */}
+                              {cpPos && (
+                                <div>
+                                  <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">체크포인트 (마지막 위치)</h4>
+                                  <table className="w-full text-xs">
+                                    <tbody>
+                                      {cpPos.do_name && (
+                                        <tr>
+                                          <td className="py-0.5 text-gray-500 w-28">도/시</td>
+                                          <td className="py-0.5 text-gray-700 font-medium">{cpPos.do_name} ({(cpPos.do_idx ?? 0) + 1}/{cpPos.do_total ?? "?"})</td>
+                                        </tr>
+                                      )}
+                                      {cpPos.si_name && (
+                                        <tr>
+                                          <td className="py-0.5 text-gray-500">시</td>
+                                          <td className="py-0.5 text-gray-700 font-medium">{cpPos.si_name} ({(cpPos.si_idx ?? 0) + 1}/{cpPos.si_total ?? "?"})</td>
+                                        </tr>
+                                      )}
+                                      {cpPos.gu_name && (
+                                        <tr>
+                                          <td className="py-0.5 text-gray-500">구/군</td>
+                                          <td className="py-0.5 text-gray-700 font-medium">{cpPos.gu_name} ({(cpPos.gu_idx ?? 0) + 1}/{cpPos.gu_total ?? "?"})</td>
+                                        </tr>
+                                      )}
+                                      {cpPos.dong_name && (
+                                        <tr>
+                                          <td className="py-0.5 text-gray-500">동/면</td>
+                                          <td className="py-0.5 text-gray-700 font-medium">{cpPos.dong_name} ({(cpPos.dong_idx ?? 0) + 1}/{cpPos.dong_total ?? "?"})</td>
+                                        </tr>
+                                      )}
+                                      {cpPos.li_name && (
+                                        <tr>
+                                          <td className="py-0.5 text-gray-500">리</td>
+                                          <td className="py-0.5 text-gray-700 font-medium">{cpPos.li_name} ({(cpPos.li_idx ?? 0) + 1}/{cpPos.li_total ?? "?"})</td>
+                                        </tr>
+                                      )}
+                                      {cpPos.jibun_name && (
+                                        <tr>
+                                          <td className="py-0.5 text-gray-500">지번</td>
+                                          <td className="py-0.5 text-gray-700 font-medium">{cpPos.jibun_name} ({(cpPos.jibun_idx ?? 0) + 1}/{cpPos.jibun_total ?? "?"})</td>
+                                        </tr>
+                                      )}
+                                    </tbody>
+                                  </table>
+                                  {cpStats && (
+                                    <div className="mt-1.5 text-[10px] text-gray-400">
+                                      체크포인트 시점: 조회 {cpStats.processed?.toLocaleString() ?? 0} / 수집 {cpStats.found?.toLocaleString() ?? 0} / 오류 {cpStats.errors ?? 0}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* 현재 주소 */}
+                              {job.progress.current_address && (
+                                <div>
+                                  <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">마지막 처리 주소</h4>
+                                  <span className="text-xs text-gray-700">{job.progress.current_address}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* 이어서 추출 버튼 */}
+                          {job.status === "stopped" && job.checkpoint && (
+                            <div className="mt-4 pt-4 border-t border-gray-200 flex justify-end">
+                              <button
+                                onClick={() => handleResume(job)}
+                                disabled={submitting || activeJobs.length > 0}
+                                className="text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2 rounded-md font-medium transition-colors"
+                              >
+                                {submitting ? "시작 중..." : "이어서 추출"}
+                              </button>
+                              {activeJobs.length > 0 && (
+                                <span className="ml-3 text-xs text-amber-600 self-center">
+                                  실행 중인 작업이 완료된 후 이어서 추출할 수 있습니다.
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         )}
