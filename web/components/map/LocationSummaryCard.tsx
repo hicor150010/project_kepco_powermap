@@ -65,44 +65,57 @@ export default function LocationSummaryCard({
   ].filter(Boolean) as string[];
 
   return (
-    <div className="absolute left-2 right-2 bottom-16 md:left-4 md:right-auto md:bottom-20 md:w-[380px] max-w-[calc(100%-16px)] md:max-w-[calc(100%-32px)] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden z-10 flex flex-col max-h-[calc(100vh-180px)] kepco-slide-up">
-      {/* 헤더 — 위치명 + 총 건수 */}
-      <div className="px-4 py-3 border-b bg-gray-50 flex items-start justify-between gap-2 flex-shrink-0">
+    <div className="absolute left-2 right-2 bottom-14 md:left-4 md:right-auto md:bottom-20 md:w-[380px] max-w-[calc(100%-16px)] md:max-w-[calc(100%-32px)] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden z-10 flex flex-col max-h-[calc(100vh-180px)] kepco-slide-up">
+      {/* 헤더 — 위치명 + 총 건수 + 상세보기 */}
+      <div className="px-3 py-2.5 md:px-4 md:py-3 border-b bg-gray-50 flex items-center justify-between gap-2 flex-shrink-0">
         <div className="flex-1 min-w-0">
-          <div className="text-[11px] text-gray-500 mb-0.5">이 마을 요약</div>
-          <div className="font-semibold text-sm text-gray-900 truncate">
+          <div className="font-semibold text-xs md:text-sm text-gray-900 truncate">
             <AddrLine parts={locationParts} />
           </div>
-          <div className="text-xs text-gray-500 mt-0.5">
-            데이터{" "}
-            <span className="font-bold text-gray-900">
-              {summary.total.toLocaleString()}건
-            </span>
+          <div className="text-[11px] text-gray-500 mt-0.5">
+            {summary.total.toLocaleString()}건
+            {summary.substCounts.noCount > 0 && (
+              <span className="text-red-500 ml-1.5">
+                부족 {summary.substCounts.noCount}
+              </span>
+            )}
           </div>
         </div>
         <button
+          onClick={onShowDetail}
+          className="flex-shrink-0 md:hidden bg-blue-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg"
+        >
+          상세 &rsaquo;
+        </button>
+        <button
           onClick={onClose}
-          className="text-gray-400 hover:text-gray-600 text-xl leading-none flex-shrink-0"
+          className="text-gray-400 hover:text-gray-600 text-lg leading-none flex-shrink-0"
           aria-label="닫기"
         >
           ×
         </button>
       </div>
 
-      {/* 본문 — 시설 종류별 비율 막대 3개 */}
-      <div className="overflow-y-auto flex-1 px-4 py-4 space-y-4">
+      {/* 본문 — 데스크톱에서만 시설 비율 표시 */}
+      <div className="hidden md:block overflow-y-auto flex-1 px-4 py-4 space-y-4">
         <FacilityRatio title="변전소" counts={summary.substCounts} />
         <FacilityRatio title="주변압기" counts={summary.mtrCounts} />
         <FacilityRatio title="배전선로" counts={summary.dlCounts} />
 
-        {/* 변경 비교 — compareRows가 있을 때만 */}
         {compareRows.length > 0 && (
           <CompareSection rows={compareRows} />
         )}
       </div>
 
-      {/* 푸터 — 상세 보기 버튼 */}
-      <div className="px-4 py-3 border-t bg-gray-50 flex-shrink-0">
+      {/* 모바일 — 간략 비율 바 */}
+      <div className="md:hidden px-3 py-2 flex gap-1.5">
+        <MiniBar label="변전소" counts={summary.substCounts} />
+        <MiniBar label="주변압기" counts={summary.mtrCounts} />
+        <MiniBar label="배전선로" counts={summary.dlCounts} />
+      </div>
+
+      {/* 푸터 — 데스크톱 상세 보기 버튼 */}
+      <div className="hidden md:block px-4 py-3 border-t bg-gray-50 flex-shrink-0">
         <button
           onClick={onShowDetail}
           className="w-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium py-2 rounded-md transition-colors flex items-center justify-center gap-1.5"
@@ -242,6 +255,20 @@ function ChangeArrow({ prev, cur }: { prev: string | null; cur: string | null })
   if (d > 0) return <span className="text-red-500 font-bold text-xs">&#9660;</span>;
   if (d < 0) return <span className="text-green-500 font-bold text-xs">&#9650;</span>;
   return <span className="text-gray-300 text-xs">=</span>;
+}
+
+/** 모바일용 미니 비율 바 */
+function MiniBar({ label, counts }: { label: string; counts: FacilityCounts }) {
+  const { okPct, noPct } = counts;
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="text-[9px] text-gray-500 mb-0.5 truncate">{label}</div>
+      <div className="h-1.5 rounded-full overflow-hidden bg-gray-100 flex">
+        {okPct > 0 && <div className="bg-blue-500 h-full" style={{ width: `${okPct}%` }} />}
+        {noPct > 0 && <div className="bg-red-500 h-full" style={{ width: `${noPct}%` }} />}
+      </div>
+    </div>
+  );
 }
 
 function CompareSection({ rows }: { rows: CompareRow[] }) {

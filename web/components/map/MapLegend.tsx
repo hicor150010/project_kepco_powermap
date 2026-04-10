@@ -12,10 +12,7 @@ import { useState } from "react";
 import { STATUS_RED, STATUS_BLUE } from "@/lib/markerColor";
 
 export default function MapLegend() {
-  // 모바일에서는 기본 접힘
-  const [open, setOpen] = useState(
-    typeof window !== "undefined" ? window.innerWidth >= 768 : true
-  );
+  const [open, setOpen] = useState(false);
 
   return (
     <div>

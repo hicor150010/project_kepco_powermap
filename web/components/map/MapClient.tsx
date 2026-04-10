@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
+import { useIsMobile } from "@/lib/useIsMobile";
 import KakaoMap from "./KakaoMap";
 import Sidebar from "./Sidebar";
 import LocationSummaryCard from "./LocationSummaryCard";
@@ -40,10 +41,16 @@ export default function MapClient({ isAdmin, email }: Props) {
     new Set(["red", "yellow", "green", "blue"])
   );
   const [fitBoundsKey, setFitBoundsKey] = useState(0);
-  // 모바일(md 미만)에서는 사이드바 기본 닫힘
-  const [sidebarOpen, setSidebarOpen] = useState(
-    typeof window !== "undefined" ? window.innerWidth >= 768 : true
-  );
+  const isMobile = useIsMobile();
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // 모바일 첫 진입 시 사이드바 닫기
+  const mobileInitRef = useRef(false);
+  useEffect(() => {
+    if (isMobile && !mobileInitRef.current) {
+      mobileInitRef.current = true;
+      setSidebarOpen(false);
+    }
+  }, [isMobile]);
 
   // 마커 클릭 → 마을 상세 데이터
   const [selectedAddr, setSelectedAddr] = useState<string | null>(null);

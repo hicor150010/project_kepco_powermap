@@ -47,8 +47,7 @@ const EMPTY_STATE: SearchState = {
 // 결과 패널 높이(px) — 사용자가 드래그로 조절. 최소/최대/기본값.
 const PANEL_MIN = 140;
 const PANEL_MAX_RATIO = 0.85; // 화면 높이의 85%
-const PANEL_DEFAULT_MOBILE = 200;
-const PANEL_DEFAULT_DESKTOP = 280;
+const PANEL_DEFAULT = 240;
 
 /**
  * 탭 버튼 — 카운트가 0보다 크면 파란색 pill로 강조.
@@ -120,11 +119,7 @@ export default function SearchPanel({ onPick, onJibunPin, onFocus }: Props) {
   const [state, setState] = useState<SearchState>(EMPTY_STATE);
   const [tab, setTab] = useState<"ri" | "ji">("ri");
   const [open, setOpen] = useState(false); // 결과 패널 펼침 여부
-  const [panelHeight, setPanelHeight] = useState(
-    typeof window !== "undefined" && window.innerWidth < 768
-      ? PANEL_DEFAULT_MOBILE
-      : PANEL_DEFAULT_DESKTOP
-  );
+  const [panelHeight, setPanelHeight] = useState(PANEL_DEFAULT);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
