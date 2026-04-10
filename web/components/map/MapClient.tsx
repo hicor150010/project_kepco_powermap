@@ -40,6 +40,7 @@ export default function MapClient({ isAdmin, email }: Props) {
     new Set(["red", "yellow", "green", "blue"])
   );
   const [fitBoundsKey, setFitBoundsKey] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   // 마커 클릭 → 마을 상세 데이터
   const [selectedAddr, setSelectedAddr] = useState<string | null>(null);
@@ -62,6 +63,20 @@ export default function MapClient({ isAdmin, email }: Props) {
   // GPS 실시간 추적
   const [gpsActive, setGpsActive] = useState(false);
   const [gpsAutoFollow, setGpsAutoFollow] = useState(true);
+
+  // 사이드바 토글 시 카카오맵 relayout (컨테이너 크기 변경 반영)
+  useEffect(() => {
+    if (!mapInstance) return;
+    const timer = setTimeout(() => {
+      mapInstance.relayout();
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [sidebarOpen, mapInstance]);
+
+  // 지번 핀 마커 — 같은 마을 내 클릭한 지번들 누적 표시
+  const [jibunPinCount, setJibunPinCount] = useState(0);
+  // 마을별 지번 좌표 캐시 — 마을 재선택 시 즉시 복원
+  const [jibunCache] = useState<Map<string, { lat: number; lng: number; jibun: string }[]>>(new Map());
 
   // 범용 토스트 (공유 링크 등)
   const [simpleToast, setSimpleToast] = useState<string | null>(null);
@@ -214,6 +229,16 @@ export default function MapClient({ isAdmin, email }: Props) {
   //    마커 클릭 / 검색 결과 클릭 양쪽이 공유하는 핵심 로직
   const openLocationDetail = useCallback(
     async (addr: string) => {
+      // 다른 마을이면 기존 핀 제거
+      const villageChanged = addr !== selectedAddr;
+      if (villageChanged) {
+        for (const pin of jibunPinsRef.current) {
+          pin.overlay.setMap(null);
+          if (pin.line) pin.line.setMap(null);
+        }
+        jibunPinsRef.current = [];
+        setJibunPinCount(0);
+      }
       setSelectedAddr(addr);
       setDetailModalOpen(false);
 
@@ -221,6 +246,10 @@ export default function MapClient({ isAdmin, email }: Props) {
       const cached = detailCache.get(addr);
       if (cached) {
         setSelectedRows(cached);
+        // detailCache가 있으므로 핀 복원 가능
+        if ((villageChanged || jibunPinsRef.current.length === 0) && mapInstance) {
+          restoreCachedPins(addr, mapInstance);
+        }
         return;
       }
 
@@ -235,13 +264,15 @@ export default function MapClient({ isAdmin, email }: Props) {
         const rows: KepcoDataRow[] = data.rows ?? [];
         detailCache.set(addr, rows);
         setSelectedRows(rows);
+        // 데이터 로드 완료 후 핀 복원
+        if (mapInstance) restoreCachedPins(addr, mapInstance);
       } catch (err) {
         console.error("[location] 조회 실패", err);
       } finally {
         setDetailLoading(false);
       }
     },
-    [detailCache]
+    [detailCache, selectedAddr, mapInstance]
   );
 
   // 마커 클릭 (측정 모드일 때는 KakaoMap이 직접 처리하므로 여기로 안 옴)
@@ -276,21 +307,18 @@ export default function MapClient({ isAdmin, email }: Props) {
     (pick: SearchPick) => {
       if (!mapInstance) return;
 
-      const lat = pick.row.lat;
-      const lng = pick.row.lng;
-      if (lat == null || lng == null) return;
-
-      // 지도 이동
-      const pos = new window.kakao.maps.LatLng(lat, lng);
-      mapInstance.setLevel(5, { animate: true });
-      mapInstance.setCenter(pos);
-
-      // 해당 마을의 geocode_address 파악 — 지번 결과면 바로, 리 결과면 allRows에서 매칭
+      // 해당 마을의 geocode_address + 좌표 파악
       let targetAddr: string | null = null;
+      let lat = pick.row.lat;
+      let lng = pick.row.lng;
+
+      // allRows에서 매칭해 실제 마커 좌표 + geocode_address 사용
+      let match: MapSummaryRow | undefined;
       if (pick.kind === "ji") {
         targetAddr = pick.row.geocode_address;
+        match = allRows.find((r) => r.geocode_address === targetAddr);
       } else {
-        const match = allRows.find(
+        match = allRows.find(
           (r) =>
             r.addr_do === pick.row.addr_do &&
             r.addr_si === pick.row.addr_si &&
@@ -300,10 +328,21 @@ export default function MapClient({ isAdmin, email }: Props) {
         );
         targetAddr = match?.geocode_address ?? null;
       }
+      if (match?.lat != null && match?.lng != null) {
+        lat = match.lat;
+        lng = match.lng;
+      }
 
-      // 마커 클릭과 동일한 "선택" 시각 피드백
+      if (lat == null || lng == null) return;
+
+      // 지도 이동
+      const pos = new window.kakao.maps.LatLng(lat, lng);
+      mapInstance.setLevel(5, { animate: true });
+      mapInstance.setCenter(pos);
+
+      // 마커 클릭과 동일 — 데이터 fetch + 시각 피드백
       if (targetAddr) {
-        setSelectedAddr(targetAddr);
+        openLocationDetail(targetAddr);
       }
 
       // 필터에 가려졌는지 검사
@@ -332,7 +371,7 @@ export default function MapClient({ isAdmin, email }: Props) {
         });
       }
     },
-    [mapInstance, filteredRows, filters, allRows]
+    [mapInstance, filteredRows, filters, allRows, openLocationDetail]
   );
 
   // 5. 공유 링크 생성 + 클립보드 복사
@@ -370,6 +409,172 @@ export default function MapClient({ isAdmin, email }: Props) {
     });
   }, [mapInstance, filters, selectedAddr]);
 
+  // 6. 지번 핀 — 같은 마을 내 여러 지번 누적 표시
+  const jibunPinsRef = useRef<{ overlay: any; line: any; jibun: string }[]>([]);
+
+  /** 지도 위 핀 오버레이 + 연결선 1개 생성 (공통 헬퍼) */
+  function createPinOverlay(
+    map: any,
+    lat: number,
+    lng: number,
+    jibun: string,
+    villageLat?: number | null,
+    villageLng?: number | null,
+  ) {
+    const pos = new window.kakao.maps.LatLng(lat, lng);
+    const pinHtml = `
+      <div style="position:relative;width:0;height:0;pointer-events:none;">
+        <div style="
+          position:absolute;left:-16px;top:-42px;
+          width:32px;height:42px;
+          filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+        ">
+          <svg width="32" height="42" viewBox="0 0 32 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M16 0C7.16 0 0 7.16 0 16c0 12 16 26 16 26s16-14 16-26C32 7.16 24.84 0 16 0z" fill="#e53e3e"/>
+            <circle cx="16" cy="16" r="8" fill="white"/>
+            <circle cx="16" cy="16" r="5" fill="#e53e3e"/>
+          </svg>
+        </div>
+        <div style="
+          position:absolute;left:20px;top:-40px;
+          background:white;border:1px solid #e53e3e;
+          border-radius:6px;padding:3px 8px;
+          font-size:11px;font-weight:bold;color:#c53030;
+          white-space:nowrap;
+          box-shadow:0 2px 6px rgba(0,0,0,0.15);
+        ">${jibun}</div>
+      </div>`;
+
+    const overlay = new window.kakao.maps.CustomOverlay({
+      position: pos, content: pinHtml, yAnchor: 0.5, xAnchor: 0.5, zIndex: 300,
+    });
+    overlay.setMap(map);
+
+    let line: any = null;
+    if (villageLat != null && villageLng != null) {
+      const villagePos = new window.kakao.maps.LatLng(villageLat, villageLng);
+      line = new window.kakao.maps.Polyline({
+        path: [villagePos, pos],
+        strokeWeight: 1.5, strokeColor: "#e53e3e", strokeOpacity: 0.4, strokeStyle: "dashed",
+      });
+      line.setMap(map);
+    }
+    return { overlay, line, jibun };
+  }
+
+  /** 마을의 지번 중 DB에 좌표가 저장된 것만 핀으로 표시 */
+  async function restoreCachedPins(addr: string, map: any) {
+    // 세션 캐시 히트 → DB 재조회 불필요
+    const sessionCached = jibunCache.get(addr);
+    if (sessionCached) {
+      if (sessionCached.length === 0) return;
+      const village = allRows.find((r) => r.geocode_address === addr);
+      for (const c of sessionCached) {
+        jibunPinsRef.current.push(
+          createPinOverlay(map, c.lat, c.lng, c.jibun, village?.lat, village?.lng)
+        );
+      }
+      setJibunPinCount(jibunPinsRef.current.length);
+      return;
+    }
+
+    // DB 조회용 prefix 구성 — 기타지역 제거 (저장 형식과 일치시킴)
+    const rows = detailCache.get(addr);
+    let villagePrefix = addr; // fallback
+    if (rows && rows.length > 0) {
+      const first = rows[0];
+      villagePrefix = [first.addr_do, first.addr_si, first.addr_gu, first.addr_dong, first.addr_li]
+        .filter(Boolean)
+        .filter((p) => !p!.includes("기타지역"))
+        .join(" ");
+    }
+
+    try {
+      const res = await fetch(
+        `/api/geocode-cached?village=${encodeURIComponent(villagePrefix)}`
+      );
+      const data = await res.json();
+      const pins: { jibun: string; lat: number; lng: number }[] = data.pins ?? [];
+
+      // 세션 캐시에 저장 (빈 배열도 저장 → 다음엔 DB 재조회 안 함)
+      jibunCache.set(addr, pins);
+
+      if (pins.length === 0) return;
+      const village = allRows.find((r) => r.geocode_address === addr);
+      for (const p of pins) {
+        jibunPinsRef.current.push(
+          createPinOverlay(map, p.lat, p.lng, p.jibun, village?.lat, village?.lng)
+        );
+      }
+      setJibunPinCount(jibunPinsRef.current.length);
+    } catch {
+      // 조회 실패 시 무시
+    }
+  }
+
+  const clearJibunPin = useCallback(() => {
+    for (const pin of jibunPinsRef.current) {
+      pin.overlay.setMap(null);
+      if (pin.line) pin.line.setMap(null);
+    }
+    jibunPinsRef.current = [];
+    setJibunPinCount(0);
+  }, []);
+
+  const handleJibunPin = useCallback(
+    async (row: KepcoDataRow) => {
+      if (!mapInstance) return;
+
+      // 이미 같은 지번이 표시되어 있으면 무시
+      if (jibunPinsRef.current.some((p) => p.jibun === row.addr_jibun)) {
+        setSimpleToast(`📍 ${row.addr_jibun}은 이미 표시되어 있어요`);
+        return;
+      }
+
+      const fullAddr = [
+        row.addr_do, row.addr_si, row.addr_gu, row.addr_dong, row.addr_li, row.addr_jibun,
+      ]
+        .filter(Boolean)
+        .filter((p) => !p!.includes("기타지역"))
+        .join(" ");
+
+      setDetailModalOpen(false);
+      setSimpleToast(`📍 ${row.addr_jibun} 위치를 찾는 중...`);
+
+      try {
+        const res = await fetch(`/api/geocode?address=${encodeURIComponent(fullAddr)}`);
+        const data = await res.json();
+
+        if (data.lat == null || data.lng == null) {
+          setSimpleToast(`⚠️ ${row.addr_jibun} 위치를 찾을 수 없어요`);
+          return;
+        }
+
+        const village = allRows.find((r) => r.geocode_address === row.geocode_address);
+        const pin = createPinOverlay(
+          mapInstance, data.lat, data.lng, row.addr_jibun || "",
+          village?.lat, village?.lng,
+        );
+        jibunPinsRef.current.push(pin);
+        setJibunPinCount(jibunPinsRef.current.length);
+
+        // 세션 캐시에 저장
+        const geoAddr = row.geocode_address;
+        const list = jibunCache.get(geoAddr) ?? [];
+        list.push({ lat: data.lat, lng: data.lng, jibun: row.addr_jibun || "" });
+        jibunCache.set(geoAddr, list);
+
+        mapInstance.panTo(new window.kakao.maps.LatLng(data.lat, data.lng));
+
+        const cnt = jibunPinsRef.current.length;
+        setSimpleToast(`📍 ${row.addr_jibun} 표시 (총 ${cnt}개 핀)`);
+      } catch {
+        setSimpleToast(`⚠️ 위치 조회 중 오류가 발생했어요`);
+      }
+    },
+    [mapInstance, allRows, jibunCache]
+  );
+
   return (
     <div className="flex h-screen overflow-hidden relative">
       <Sidebar
@@ -379,9 +584,11 @@ export default function MapClient({ isAdmin, email }: Props) {
         filteredRows={filteredRows}
         filters={filters}
         onFiltersChange={setFilters}
+        isOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen((v) => !v)}
       />
 
-      <main className="flex-1 relative">
+      <main className="flex-1 relative min-w-0">
         {loading && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70">
             <div className="bg-white rounded-lg shadow-lg px-6 py-4 border border-gray-200">
@@ -417,8 +624,24 @@ export default function MapClient({ isAdmin, email }: Props) {
           compareRows={compareRows}
         />
 
-        {/* 좌상단 마커 색상 범례 */}
-        <MapLegend />
+        {/* 좌상단: 사이드바 열기 버튼 + 범례 */}
+        <div className="absolute top-3 left-3 z-10 flex flex-col gap-2">
+          {!sidebarOpen && (
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="bg-white rounded-lg shadow-md border border-gray-200
+                         p-2.5 hover:bg-gray-50 transition-colors group self-start"
+              aria-label="사이드바 열기"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600 group-hover:text-gray-900">
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="15" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
+          )}
+          <MapLegend />
+        </div>
 
         {/* 우상단 도구 패널 (거리재기 / 유망 부지 TOP) */}
         <MapToolbar
@@ -497,7 +720,15 @@ export default function MapClient({ isAdmin, email }: Props) {
         />
 
         {/* 화면 하단 검색 패널 (주소·지번 → 업로드된 데이터 검색) */}
-        <SearchPanel onPick={handleSearchPick} />
+        <SearchPanel
+          onPick={handleSearchPick}
+          onJibunPin={handleJibunPin}
+          onFocus={() => {
+            setSelectedAddr(null);
+            setSelectedRows(null);
+            clearJibunPin();
+          }}
+        />
 
         {/* 필터 자동 해제 시 토스트 (되돌리기 가능) */}
         {toast && (
@@ -529,6 +760,7 @@ export default function MapClient({ isAdmin, email }: Props) {
               setSelectedAddr(null);
               setSelectedRows(null);
               setDetailModalOpen(false);
+              clearJibunPin();
             }}
             compareRows={compareRows.filter((r) => r.geocode_address === selectedAddr)}
           />
@@ -538,7 +770,10 @@ export default function MapClient({ isAdmin, email }: Props) {
         {detailModalOpen && selectedRows && (
           <LocationDetailModal
             rows={selectedRows}
-            onClose={() => setDetailModalOpen(false)}
+            onClose={() => {
+              setDetailModalOpen(false);
+            }}
+            onJibunPin={handleJibunPin}
           />
         )}
 

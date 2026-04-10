@@ -17,6 +17,7 @@ type ViewMode = "table" | "group";
 interface Props {
   rows: KepcoDataRow[];
   onClose: () => void;
+  onJibunPin?: (row: KepcoDataRow) => void;
 }
 
 type SortKey =
@@ -30,7 +31,7 @@ type SortKey =
 type SortDir = "asc" | "desc";
 const PAGE_SIZE = 50;
 
-export default function LocationDetailModal({ rows, onClose }: Props) {
+export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("addr_jibun");
@@ -211,7 +212,7 @@ export default function LocationDetailModal({ rows, onClose }: Props) {
         {/* 그룹 보기 모드 — flex 영역 안에 넣어 overflow가 부모 경계를 넘지 않도록 */}
         {viewMode === "group" && (
           <div className="flex flex-col flex-1 min-h-0">
-            <LocationDetailGrouped rows={rows} />
+            <LocationDetailGrouped rows={rows} onJibunPin={onJibunPin} />
           </div>
         )}
 
@@ -353,6 +354,7 @@ export default function LocationDetailModal({ rows, onClose }: Props) {
                           idx={idx}
                           isOpen={isOpen}
                           onToggle={() => toggleExpand(it.id)}
+                          onJibunPin={onJibunPin}
                         />
                       );
                     })
@@ -463,11 +465,13 @@ function FragmentRow({
   idx,
   isOpen,
   onToggle,
+  onJibunPin,
 }: {
   it: KepcoDataRow;
   idx: number;
   isOpen: boolean;
   onToggle: () => void;
+  onJibunPin?: (row: KepcoDataRow) => void;
 }) {
   const zebraBg = idx % 2 === 0 ? "bg-white" : "bg-gray-50/60";
 
@@ -489,7 +493,21 @@ function FragmentRow({
           </span>
         </td>
         <td className="px-3 py-2.5 font-semibold text-gray-900">
-          {it.addr_jibun || "-"}
+          {onJibunPin && it.addr_jibun ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onJibunPin(it);
+              }}
+              className="text-blue-600 hover:text-blue-800 hover:underline"
+              title="지도에서 이 지번 위치 보기"
+            >
+              📍 {it.addr_jibun}
+            </button>
+          ) : (
+            it.addr_jibun || "-"
+          )}
         </td>
         <td className="px-3 py-2.5 text-gray-700">{it.subst_nm}</td>
         <td className="px-3 py-2.5 text-right">

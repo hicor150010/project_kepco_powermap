@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { kv } from "@vercel/kv";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 const KAKAO_REST_KEY = process.env.KAKAO_REST_KEY || "";
 const VWORLD_KEY = process.env.VWORLD_KEY || "";
@@ -131,10 +132,27 @@ export async function GET(request: NextRequest) {
   const cached = await getCached(address);
   if (cached) return NextResponse.json(cached);
 
+  // Supabase geocode_cache 조회
+  const supabase = createAdminClient();
+  const { data: dbRow } = await supabase
+    .from("geocode_cache")
+    .select("lat, lng")
+    .eq("address", address)
+    .single();
+  if (dbRow) {
+    await setCached(address, dbRow); // KV에도 저장
+    return NextResponse.json(dbRow);
+  }
+
   // 카카오 메인 + VWorld fallback
   const result = await geocode(address);
   if (result.lat !== null) {
     await setCached(address, result);
+    // Supabase에도 영구 저장
+    await supabase
+      .from("geocode_cache")
+      .upsert({ address, lat: result.lat, lng: result.lng, source: "kakao" })
+      .select();
   }
   return NextResponse.json(result);
 }

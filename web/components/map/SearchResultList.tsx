@@ -29,6 +29,7 @@ interface Props {
   ri: SearchRiResult[];
   ji: KepcoDataRow[];
   onPick: (pick: SearchPick) => void;
+  onJibunPin?: (row: KepcoDataRow) => void;
 }
 
 /** 행정구역 5개 컬럼을 한 줄 주소 텍스트로 합친다 */
@@ -60,7 +61,7 @@ function AddrSpan({ text }: { text: string }) {
   );
 }
 
-export default function SearchResultList({ mode, ri, ji, onPick }: Props) {
+export default function SearchResultList({ mode, ri, ji, onPick, onJibunPin }: Props) {
   // 지번 행 펼침 상태 (id 집합)
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
@@ -150,6 +151,19 @@ export default function SearchResultList({ mode, ri, ji, onPick }: Props) {
                 <div className="text-xs font-medium text-gray-900 truncate">
                   <AddrSpan text={joinAddress(row)} />{" "}
                   <span className="text-blue-600 font-semibold">{row.addr_jibun}</span>
+                  {onJibunPin && row.addr_jibun && (
+                    <span
+                      role="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onJibunPin(row);
+                      }}
+                      className="ml-1.5 text-[10px] text-red-400 hover:text-red-600 align-middle cursor-pointer"
+                      title="지도에서 이 지번 위치 보기"
+                    >
+                      📍
+                    </span>
+                  )}
                 </div>
                 <div className="text-[10px] text-gray-500 mt-0.5 truncate">
                   {[row.subst_nm, row.mtr_no, row.dl_nm].filter(Boolean).join(" · ") || "-"}

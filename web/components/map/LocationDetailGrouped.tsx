@@ -22,6 +22,7 @@ import { formatRemaining } from "@/lib/summarize";
 
 interface Props {
   rows: KepcoDataRow[];
+  onJibunPin?: (row: KepcoDataRow) => void;
 }
 
 interface FacilityGroup {
@@ -48,7 +49,7 @@ function jibunSortKey(jibun: string | null): number {
   return m ? parseInt(m[0], 10) : Number.MAX_SAFE_INTEGER;
 }
 
-export default function LocationDetailGrouped({ rows }: Props) {
+export default function LocationDetailGrouped({ rows, onJibunPin }: Props) {
   // 기본 "모두 접힘" — 사용자가 그룹 전체 구조를 먼저 파악하도록.
   // null = 모두 접힘, Set = 열린 그룹들(화이트리스트)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
@@ -189,6 +190,7 @@ export default function LocationDetailGrouped({ rows }: Props) {
               group={g}
               collapsed={!expandedKeys.has(g.key)}
               onToggle={() => toggleGroup(g.key)}
+              onJibunPin={onJibunPin}
             />
           ))
         )}
@@ -202,10 +204,12 @@ function GroupBlock({
   group,
   collapsed,
   onToggle,
+  onJibunPin,
 }: {
   group: FacilityGroup;
   collapsed: boolean;
   onToggle: () => void;
+  onJibunPin?: (row: KepcoDataRow) => void;
 }) {
   const { substNm, mtrNo, dlNm, rows, noCap, status } = group;
   const total = rows.length;
@@ -294,7 +298,7 @@ function GroupBlock({
         <div className="bg-white">
           <ul className="divide-y divide-gray-100">
             {rows.map((r) => (
-              <JibunRow key={r.id} row={r} />
+              <JibunRow key={r.id} row={r} onJibunPin={onJibunPin} />
             ))}
           </ul>
         </div>
@@ -304,7 +308,7 @@ function GroupBlock({
 }
 
 /** 지번 1줄 — 번지 + 시설별 잔여 용량 숫자, 클릭 시 상세 펼침 */
-function JibunRow({ row }: { row: KepcoDataRow }) {
+function JibunRow({ row, onJibunPin }: { row: KepcoDataRow; onJibunPin?: (row: KepcoDataRow) => void }) {
   const [open, setOpen] = useState(false);
 
   const substRemain = (row.subst_capa ?? 0) - (row.subst_pwr ?? 0);
@@ -328,8 +332,22 @@ function JibunRow({ row }: { row: KepcoDataRow }) {
           >
             ▶
           </span>
-          <span className="text-xs font-semibold text-gray-900 min-w-[60px]">
-            {row.addr_jibun || "-"}
+          <span className="text-xs font-semibold min-w-[60px]">
+            {onJibunPin && row.addr_jibun ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onJibunPin(row);
+                }}
+                className="text-blue-600 hover:text-blue-800 hover:underline"
+                title="지도에서 이 지번 위치 보기"
+              >
+                📍 {row.addr_jibun}
+              </button>
+            ) : (
+              <span className="text-gray-900">{row.addr_jibun || "-"}</span>
+            )}
           </span>
           {/* 시설별 잔여 용량 3개 — 변전소 / 주변압기 / 배전선로 */}
           <div className="flex-1 grid grid-cols-3 gap-2 text-[11px]">
