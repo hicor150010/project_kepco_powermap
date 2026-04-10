@@ -317,18 +317,13 @@ export default function MapClient({ isAdmin, email }: Props) {
     (pick: SearchPick) => {
       if (!mapInstance) return;
 
-      // 해당 마을의 geocode_address + 좌표 파악
+      // geocode_address 결정
       let targetAddr: string | null = null;
-      let lat = pick.row.lat;
-      let lng = pick.row.lng;
-
-      // allRows에서 매칭해 실제 마커 좌표 + geocode_address 사용
-      let match: MapSummaryRow | undefined;
       if (pick.kind === "ji") {
         targetAddr = pick.row.geocode_address;
-        match = allRows.find((r) => r.geocode_address === targetAddr);
       } else {
-        match = allRows.find(
+        // ri → allRows에서 geocode_address만 찾기
+        const match = allRows.find(
           (r) =>
             r.addr_do === pick.row.addr_do &&
             r.addr_si === pick.row.addr_si &&
@@ -338,11 +333,10 @@ export default function MapClient({ isAdmin, email }: Props) {
         );
         targetAddr = match?.geocode_address ?? null;
       }
-      if (match?.lat != null && match?.lng != null) {
-        lat = match.lat;
-        lng = match.lng;
-      }
 
+      // 좌표는 검색 결과에서 직접 사용 (같은 DB 출처)
+      const lat = pick.row.lat;
+      const lng = pick.row.lng;
       if (lat == null || lng == null) return;
 
       // 지도 이동
@@ -350,7 +344,7 @@ export default function MapClient({ isAdmin, email }: Props) {
       mapInstance.setLevel(5, { animate: true });
       mapInstance.setCenter(pos);
 
-      // 마커 클릭과 동일 — 데이터 fetch + 시각 피드백
+      // 데이터 fetch + 시각 피드백
       if (targetAddr) {
         openLocationDetail(targetAddr);
       }
