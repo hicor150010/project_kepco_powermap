@@ -1211,22 +1211,25 @@ export default function CrawlManager() {
                           </div>
 
                           {/* 이어서 추출 버튼 */}
-                          {job.status === "stopped" && job.checkpoint && (
-                            <div className="mt-4 pt-4 border-t border-gray-200 flex justify-end">
-                              <button
-                                onClick={() => handleResume(job)}
-                                disabled={submitting || activeJobs.length > 0}
-                                className="text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2 rounded-md font-medium transition-colors"
-                              >
-                                {submitting ? "시작 중..." : "이어서 추출"}
-                              </button>
-                              {activeJobs.length > 0 && (
-                                <span className="ml-3 text-xs text-amber-600 self-center">
-                                  실행 중인 작업이 완료된 후 이어서 추출할 수 있습니다.
-                                </span>
-                              )}
-                            </div>
-                          )}
+                          {job.status === "stopped" && job.checkpoint && (() => {
+                            const threadBusy = activeJobs.some((j) => (j.thread || 1) === (job.thread || 1));
+                            return (
+                              <div className="mt-4 pt-4 border-t border-gray-200 flex justify-end">
+                                <button
+                                  onClick={() => handleResume(job)}
+                                  disabled={submitting || threadBusy}
+                                  className="text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2 rounded-md font-medium transition-colors"
+                                >
+                                  {submitting ? "시작 중..." : "이어서 추출"}
+                                </button>
+                                {threadBusy && (
+                                  <span className="ml-3 text-xs text-amber-600 self-center">
+                                    수집기 {job.thread || 1}에서 실행 중인 작업이 완료된 후 이어서 추출할 수 있습니다.
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                       </tr>
                     )}
