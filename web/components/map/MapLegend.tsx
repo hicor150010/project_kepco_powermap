@@ -15,7 +15,7 @@ export default function MapLegend() {
   const [open, setOpen] = useState(true);
 
   return (
-    <div className="absolute top-4 left-4 z-10">
+    <div>
       <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
         <button
           type="button"

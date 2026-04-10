@@ -12,6 +12,8 @@ interface Props {
   filteredRows: MapSummaryRow[];   // 필터 적용된
   filters: ColumnFilters;
   onFiltersChange: (f: ColumnFilters) => void;
+  isOpen: boolean;
+  onToggle: () => void;
 }
 
 export default function Sidebar({
@@ -21,6 +23,8 @@ export default function Sidebar({
   filteredRows,
   filters,
   onFiltersChange,
+  isOpen,
+  onToggle,
 }: Props) {
   // 통계
   const totalMarkers = filteredRows.length;
@@ -59,14 +63,47 @@ export default function Sidebar({
   };
 
   return (
-    <aside className="w-80 max-w-[85vw] bg-white border-r border-gray-200 flex flex-col h-full shadow-lg md:shadow-none">
-      {/* 헤더 */}
-      <div className="px-5 py-4 border-b border-gray-200">
-        <h1 className="text-base font-bold text-gray-900">
-          배전선로 여유용량 지도
-        </h1>
-        <p className="text-xs text-gray-500 mt-0.5">KEPCO 데이터 시각화</p>
-      </div>
+    <>
+      {/* 모바일 오버레이 백드롭 */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-40 md:hidden"
+          onClick={onToggle}
+        />
+      )}
+
+      <aside
+        className={`
+          w-80 max-w-[85vw] bg-white border-r border-gray-200
+          flex flex-col h-full shadow-lg md:shadow-none flex-shrink-0
+          transition-all duration-300 ease-in-out
+
+          fixed inset-y-0 left-0 z-50
+          ${isOpen ? "translate-x-0" : "-translate-x-full"}
+
+          md:static md:z-auto md:translate-x-0
+          ${isOpen ? "md:ml-0" : "md:-ml-80"}
+        `}
+      >
+        {/* 헤더 + 닫기 버튼 */}
+        <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between">
+          <div>
+            <h1 className="text-base font-bold text-gray-900">
+              배전선로 여유용량 지도
+            </h1>
+            <p className="text-xs text-gray-500 mt-0.5">KEPCO 데이터 시각화</p>
+          </div>
+          <button
+            onClick={onToggle}
+            className="ml-2 mt-0.5 p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            aria-label="사이드바 닫기"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="11 17 6 12 11 7" />
+              <polyline points="18 17 13 12 18 7" />
+            </svg>
+          </button>
+        </div>
 
       {/* 사용자 정보 + 관리 메뉴 */}
       <div className="px-5 py-3 border-b border-gray-200">
@@ -151,5 +188,6 @@ export default function Sidebar({
         <LogoutButton />
       </div>
     </aside>
+    </>
   );
 }
