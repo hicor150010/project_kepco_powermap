@@ -18,6 +18,7 @@
 import { useMemo } from "react";
 import type { KepcoDataRow } from "@/lib/types";
 import { summarizeLocation, type FacilityCounts } from "@/lib/summarize";
+import AddrLine from "./AddrLine";
 
 interface Props {
   rows: KepcoDataRow[] | null;
@@ -52,15 +53,13 @@ export default function LocationSummaryCard({
 
   const summary = useMemo(() => summarizeLocation(rows), [rows]);
   const first = rows[0];
-  const locationName = [
+  const locationParts = [
     first.addr_do,
     first.addr_si,
     first.addr_gu,
     first.addr_dong,
     first.addr_li,
-  ]
-    .filter((p) => p && p !== "-기타지역")
-    .join(" ");
+  ].filter(Boolean) as string[];
 
   return (
     <div className="absolute left-4 bottom-4 w-[380px] max-w-[calc(100%-32px)] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden z-10 flex flex-col max-h-[calc(100vh-120px)] kepco-slide-up">
@@ -69,7 +68,7 @@ export default function LocationSummaryCard({
         <div className="flex-1 min-w-0">
           <div className="text-[11px] text-gray-500 mb-0.5">이 마을 요약</div>
           <div className="font-semibold text-sm text-gray-900 truncate">
-            {locationName}
+            <AddrLine parts={locationParts} />
           </div>
           <div className="text-xs text-gray-500 mt-0.5">
             데이터{" "}

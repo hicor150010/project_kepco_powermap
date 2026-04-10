@@ -14,6 +14,7 @@
 
 import { useMemo } from "react";
 import type { MapSummaryRow } from "@/lib/types";
+import AddrLine from "./AddrLine";
 
 interface Props {
   /** 필터 적용된 마을 목록 (이미 필터링된 결과) */
@@ -78,10 +79,9 @@ export default function TopRemainingList({
           ) : (
             <ol className="space-y-1">
               {top.map((row, i) => {
-                const placeName =
+                const placeParts =
                   [row.addr_gu, row.addr_dong, row.addr_li]
-                    .filter((p) => p && p !== "-기타지역")
-                    .join(" ") || row.geocode_address;
+                    .filter(Boolean) as string[];
                 return (
                   <li key={row.geocode_address}>
                     <button
@@ -105,7 +105,7 @@ export default function TopRemainingList({
                       </span>
                       {/* 마을명 */}
                       <span className="flex-1 min-w-0 text-[11px] font-medium text-gray-800 truncate">
-                        {placeName}
+                        {placeParts.length > 0 ? <AddrLine parts={placeParts} /> : row.geocode_address}
                       </span>
                       {/* 잔여 용량 */}
                       <span className="text-[11px] font-bold text-blue-600 tabular-nums whitespace-nowrap">

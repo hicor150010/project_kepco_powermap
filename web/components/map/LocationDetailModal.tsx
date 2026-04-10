@@ -5,6 +5,7 @@ import type { KepcoDataRow } from "@/lib/types";
 import { FacilityCard, StepBlock } from "./FacilityCard";
 import LocationDetailGrouped from "./LocationDetailGrouped";
 import { formatRemaining } from "@/lib/summarize";
+import AddrLine from "./AddrLine";
 
 /**
  * 보기 모드.
@@ -65,14 +66,16 @@ export default function LocationDetailModal({ rows, onClose }: Props) {
   };
 
   const first = rows[0];
-  const locationName = [
-    first?.addr_do,
-    first?.addr_si,
-    first?.addr_gu,
-    first?.addr_dong,
-    first?.addr_li,
-  ]
-    .filter((p) => p && p !== "-기타지역")
+  const addrFields: { label: string; value: string | null | undefined }[] = [
+    { label: "시/도", value: first?.addr_do },
+    { label: "시/군", value: first?.addr_si },
+    { label: "구", value: first?.addr_gu },
+    { label: "동/읍/면", value: first?.addr_dong },
+    { label: "리", value: first?.addr_li },
+  ];
+  const locationName = addrFields
+    .map((f) => f.value)
+    .filter(Boolean)
     .join(" ");
 
   // 여유 컬럼은 잔여 수치(kW) 기준으로 정렬한다 — 문자열 "여유/없음"은
@@ -138,8 +141,21 @@ export default function LocationDetailModal({ rows, onClose }: Props) {
         <div className="px-5 py-4 border-b flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="text-xs text-gray-500 mb-0.5">상세 목록</div>
-            <div className="font-semibold text-base text-gray-900 truncate">
-              {locationName}
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+              {addrFields
+                .filter((f) => f.value)
+                .map((f) => (
+                  <div key={f.label} className="flex items-baseline gap-1">
+                    <span className="text-[10px] text-gray-400">{f.label}</span>
+                    <span className={`text-sm font-semibold ${
+                      f.value?.includes("기타지역")
+                        ? "text-gray-400 font-normal"
+                        : "text-gray-900"
+                    }`}>
+                      {f.value}
+                    </span>
+                  </div>
+                ))}
             </div>
             <div className="text-xs text-gray-500 mt-0.5">
               {viewMode === "table"
@@ -500,16 +516,14 @@ function FragmentRow({
 }
 
 function DetailContent({ it }: { it: KepcoDataRow }) {
-  const fullAddr = [
+  const fullAddrParts = [
     it.addr_do,
     it.addr_si,
     it.addr_gu,
     it.addr_dong,
     it.addr_li,
     it.addr_jibun,
-  ]
-    .filter((p) => p && p !== "-기타지역")
-    .join(" ");
+  ].filter(Boolean) as string[];
 
   const hasStep =
     it.step1_cnt != null ||
@@ -524,7 +538,7 @@ function DetailContent({ it }: { it: KepcoDataRow }) {
         <span className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide flex-shrink-0">
           전체 주소
         </span>
-        <span className="font-semibold text-gray-900 truncate">{fullAddr}</span>
+        <span className="font-semibold text-gray-900 truncate"><AddrLine parts={fullAddrParts} /></span>
       </div>
 
       <div className="grid grid-cols-3 gap-3">

@@ -40,8 +40,24 @@ function joinAddress(parts: {
   addr_li: string | null;
 }): string {
   return [parts.addr_do, parts.addr_si, parts.addr_gu, parts.addr_dong, parts.addr_li]
-    .filter((s) => s && s.trim() && s !== "-기타지역")
+    .filter((s) => s && s.trim())
     .join(" ");
+}
+
+/** "-기타지역" 부분을 회색 작은 글씨로 렌더링 */
+function AddrSpan({ text }: { text: string }) {
+  const parts = text.split(/(\S*기타지역\S*)/g);
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.includes("기타지역") ? (
+          <span key={i} className="text-[10px] text-gray-400 font-normal">{p}</span>
+        ) : (
+          <span key={i}>{p}</span>
+        )
+      )}
+    </>
+  );
 }
 
 export default function SearchResultList({ mode, ri, ji, onPick }: Props) {
@@ -75,7 +91,7 @@ export default function SearchResultList({ mode, ri, ji, onPick }: Props) {
             >
               <div className="min-w-0">
                 <div className="text-xs font-medium text-gray-900 truncate">
-                  {joinAddress(r)}
+                  <AddrSpan text={joinAddress(r)} />
                 </div>
                 <div className="text-[10px] text-gray-500 mt-0.5">
                   총 <span className="font-semibold text-blue-600">{r.cnt.toLocaleString()}건</span>
@@ -132,7 +148,7 @@ export default function SearchResultList({ mode, ri, ji, onPick }: Props) {
             >
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-medium text-gray-900 truncate">
-                  {joinAddress(row)}{" "}
+                  <AddrSpan text={joinAddress(row)} />{" "}
                   <span className="text-blue-600 font-semibold">{row.addr_jibun}</span>
                 </div>
                 <div className="text-[10px] text-gray-500 mt-0.5 truncate">
