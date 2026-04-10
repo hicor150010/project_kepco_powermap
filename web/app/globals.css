@@ -35,3 +35,18 @@ body.measure-mode,
 body.measure-mode * {
   cursor: crosshair !important;
 }
+
+/* 카드/패널 등장 — 아래에서 슬라이드 업 + 페이드 인 */
+.kepco-slide-up {
+  animation: kepcoSlideUp 0.3s ease-out both;
+}
+@keyframes kepcoSlideUp {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

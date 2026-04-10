@@ -82,27 +82,27 @@ export default function Sidebar({
           <div className="flex gap-2 mt-3">
             <Link
               href="/admin/upload"
-              className="flex-1 text-[11px] text-center py-1.5 rounded-md font-medium
-                         bg-blue-50 text-blue-600 hover:bg-blue-100
-                         border border-blue-100 hover:border-blue-200 transition-colors"
+              className="flex-1 text-xs text-center py-2 rounded-md font-bold
+                         bg-blue-100/60 text-blue-700 hover:bg-blue-100
+                         border border-blue-300 transition-colors"
             >
-              <span className="opacity-70 mr-0.5">&#8593;</span> 업로드
+              &#8593; 업로드
             </Link>
             <Link
               href="/admin/crawl"
-              className="flex-1 text-[11px] text-center py-1.5 rounded-md font-medium
-                         bg-emerald-50 text-emerald-600 hover:bg-emerald-100
-                         border border-emerald-100 hover:border-emerald-200 transition-colors"
+              className="flex-1 text-xs text-center py-2 rounded-md font-bold
+                         bg-emerald-100/60 text-emerald-700 hover:bg-emerald-100
+                         border border-emerald-300 transition-colors"
             >
-              <span className="opacity-70 mr-0.5">&#8635;</span> 수집
+              &#8635; 수집
             </Link>
             <Link
               href="/admin/users"
-              className="flex-1 text-[11px] text-center py-1.5 rounded-md font-medium
-                         bg-gray-50 text-gray-600 hover:bg-gray-100
-                         border border-gray-200 hover:border-gray-300 transition-colors"
+              className="flex-1 text-xs text-center py-2 rounded-md font-bold
+                         bg-gray-100/60 text-gray-700 hover:bg-gray-100
+                         border border-gray-300 transition-colors"
             >
-              <span className="opacity-70 mr-0.5">&#9881;</span> 계정
+              &#9881; 계정
             </Link>
           </div>
         )}

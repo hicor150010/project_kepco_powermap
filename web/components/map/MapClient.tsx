@@ -347,6 +347,7 @@ export default function MapClient({ isAdmin, email }: Props) {
         {/* 마커 클릭 시 카드 */}
         {selectedAddr && (
           <LocationSummaryCard
+            key={selectedAddr}
             rows={selectedRows}
             loading={detailLoading}
             onShowDetail={() => setDetailModalOpen(true)}
