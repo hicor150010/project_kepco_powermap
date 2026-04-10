@@ -53,6 +53,7 @@ export default function MapClient({ isAdmin, email }: Props) {
   const [measureActive, setMeasureActive] = useState(false);
   const [topListOpen, setTopListOpen] = useState(false);
   const [mapType, setMapType] = useState<"roadmap" | "skyview" | "hybrid">("roadmap");
+  const [zoomLevel, setZoomLevel] = useState<number | undefined>(undefined);
 
   // 비교 모드
   const [compareActive, setCompareActive] = useState(false);
@@ -61,6 +62,9 @@ export default function MapClient({ isAdmin, email }: Props) {
   // GPS 실시간 추적
   const [gpsActive, setGpsActive] = useState(false);
   const [gpsAutoFollow, setGpsAutoFollow] = useState(true);
+
+  // 범용 토스트 (공유 링크 등)
+  const [simpleToast, setSimpleToast] = useState<string | null>(null);
 
   // 검색 결과가 필터에 가려졌을 때 자동 해제하면서 띄우는 토스트.
   // filterSnapshot은 "되돌리기" 시 복원할 이전 필터.
@@ -108,6 +112,74 @@ export default function MapClient({ isAdmin, email }: Props) {
       cancelled = true;
     };
   }, []);
+
+  // 줌 레벨 실시간 추적
+  useEffect(() => {
+    if (!mapInstance) return;
+    setZoomLevel(mapInstance.getLevel());
+    const handler = () => setZoomLevel(mapInstance.getLevel());
+    window.kakao.maps.event.addListener(mapInstance, "zoom_changed", handler);
+    return () => {
+      window.kakao.maps.event.removeListener(mapInstance, "zoom_changed", handler);
+    };
+  }, [mapInstance]);
+
+  // 공유 링크 복원 — 데이터 로드 + 맵 준비 후 URL 파라미터 적용 (1회)
+  const sharedAppliedRef = useRef(false);
+  useEffect(() => {
+    if (sharedAppliedRef.current || !mapInstance || allRows.length === 0) return;
+    sharedAppliedRef.current = true;
+
+    const params = new URLSearchParams(window.location.search);
+    const lat = params.get("lat");
+    const lng = params.get("lng");
+    const zoom = params.get("zoom");
+
+    if (lat && lng) {
+      const pos = new window.kakao.maps.LatLng(parseFloat(lat), parseFloat(lng));
+      mapInstance.setCenter(pos);
+      if (zoom) mapInstance.setLevel(parseInt(zoom, 10));
+    }
+
+    // 필터 복원
+    const filterKeys: (keyof ColumnFilters)[] = [
+      "addr_do", "addr_gu", "addr_dong", "addr_li",
+      "subst_nm", "dl_nm", "vol_subst", "vol_mtr", "vol_dl",
+    ];
+    let hasFilter = false;
+    const restored = emptyFilters();
+    for (const key of filterKeys) {
+      const val = params.get(key);
+      if (val) {
+        restored[key] = new Set(val.split(","));
+        hasFilter = true;
+      }
+    }
+    if (hasFilter) {
+      setFilters(restored);
+    }
+
+    // 선택된 마커 복원
+    const addr = params.get("addr");
+    if (addr) {
+      setSelectedAddr(addr);
+      setDetailLoading(true);
+      fetch(`/api/location?addr=${encodeURIComponent(addr)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          const rows = data.rows ?? [];
+          detailCache.set(addr, rows);
+          setSelectedRows(rows);
+        })
+        .catch(() => {})
+        .finally(() => setDetailLoading(false));
+    }
+
+    // URL 정리 — 파라미터 제거해서 깔끔하게
+    if (params.toString()) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [mapInstance, allRows, detailCache]);
 
   // 2. 필터 적용 (메모리)
   const filteredRows = useMemo(() => {
@@ -263,6 +335,41 @@ export default function MapClient({ isAdmin, email }: Props) {
     [mapInstance, filteredRows, filters, allRows]
   );
 
+  // 5. 공유 링크 생성 + 클립보드 복사
+  const handleShare = useCallback(() => {
+    if (!mapInstance) return;
+
+    const center = mapInstance.getCenter();
+    const params = new URLSearchParams();
+    params.set("lat", center.getLat().toFixed(6));
+    params.set("lng", center.getLng().toFixed(6));
+    params.set("zoom", String(mapInstance.getLevel()));
+
+    // 필터 — 값이 있는 것만 직렬화
+    const filterKeys: (keyof ColumnFilters)[] = [
+      "addr_do", "addr_gu", "addr_dong", "addr_li",
+      "subst_nm", "dl_nm", "vol_subst", "vol_mtr", "vol_dl",
+    ];
+    for (const key of filterKeys) {
+      const s = filters[key];
+      if (s.size > 0) {
+        params.set(key, [...s].join(","));
+      }
+    }
+
+    // 선택된 마커
+    if (selectedAddr) {
+      params.set("addr", selectedAddr);
+    }
+
+    const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setSimpleToast("링크가 복사되었습니다");
+    }).catch(() => {
+      setSimpleToast("링크 복사에 실패했어요");
+    });
+  }, [mapInstance, filters, selectedAddr]);
+
   return (
     <div className="flex h-screen overflow-hidden relative">
       <Sidebar
@@ -335,10 +442,12 @@ export default function MapClient({ isAdmin, email }: Props) {
             }
           }}
           onGpsRecenter={() => setGpsAutoFollow(true)}
+          zoomLevel={zoomLevel}
           mapType={mapType}
           onMapTypeChange={setMapType}
           onZoomIn={() => mapInstance?.setLevel(mapInstance.getLevel() - 1)}
           onZoomOut={() => mapInstance?.setLevel(mapInstance.getLevel() + 1)}
+          onShare={handleShare}
         />
 
         {/* 비교 패널 */}
@@ -397,6 +506,15 @@ export default function MapClient({ isAdmin, email }: Props) {
             actionLabel="되돌리기"
             onAction={() => setFilters(toast.snapshot)}
             onClose={() => setToast(null)}
+          />
+        )}
+
+        {/* 범용 토스트 (공유 링크 등) */}
+        {simpleToast && (
+          <Toast
+            message={simpleToast}
+            onClose={() => setSimpleToast(null)}
+            duration={3000}
           />
         )}
 

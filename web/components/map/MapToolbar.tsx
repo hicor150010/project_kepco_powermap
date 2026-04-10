@@ -27,9 +27,13 @@ interface Props {
   onGpsRecenter: () => void;
   mapType: MapType;
   onMapTypeChange: (type: MapType) => void;
+  /** 줌 레벨 (1~14, 숫자 작을수록 확대) */
+  zoomLevel?: number;
   /** 줌 인/아웃 콜백 */
   onZoomIn?: () => void;
   onZoomOut?: () => void;
+  /** 공유 링크 복사 */
+  onShare?: () => void;
 }
 
 export default function MapToolbar({
@@ -43,10 +47,12 @@ export default function MapToolbar({
   gpsAutoFollow,
   onToggleGps,
   onGpsRecenter,
+  zoomLevel,
   mapType,
   onMapTypeChange,
   onZoomIn,
   onZoomOut,
+  onShare,
 }: Props) {
   return (
     <div className="absolute top-3 right-3 z-10 flex flex-col items-end gap-2">
@@ -168,6 +174,21 @@ export default function MapToolbar({
             <line x1="13" y1="8" x2="15.5" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
         </button>
+        <button
+          type="button"
+          onClick={onShare}
+          title="현재 지도 상태 링크 복사"
+          className="w-8 h-8 rounded flex items-center justify-center text-sm
+                     transition-colors bg-white text-gray-700 hover:bg-gray-100"
+        >
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+            <circle cx="12" cy="3" r="2" stroke="currentColor" strokeWidth="1.5" />
+            <circle cx="4" cy="8" r="2" stroke="currentColor" strokeWidth="1.5" />
+            <circle cx="12" cy="13" r="2" stroke="currentColor" strokeWidth="1.5" />
+            <line x1="5.8" y1="7" x2="10.2" y2="4" stroke="currentColor" strokeWidth="1.5" />
+            <line x1="5.8" y1="9" x2="10.2" y2="12" stroke="currentColor" strokeWidth="1.5" />
+          </svg>
+        </button>
       </div>
 
       {/* ── 4. 줌 +/- ── */}
@@ -182,6 +203,17 @@ export default function MapToolbar({
           +
         </button>
         <div className="h-px bg-gray-200" />
+        {zoomLevel != null && (
+          <>
+            <div
+              className="w-8 h-5 flex items-center justify-center text-[10px] font-bold text-gray-500 tabular-nums select-none"
+              title={`줌 레벨 ${zoomLevel}`}
+            >
+              {zoomLevel}
+            </div>
+            <div className="h-px bg-gray-200" />
+          </>
+        )}
         <button
           type="button"
           onClick={onZoomOut}
