@@ -272,21 +272,21 @@ export default function SearchPanel({ onPick }: Props) {
       )}
 
       {/* 검색 입력 바 (항상 표시) */}
-      <div className="pointer-events-auto bg-white border-t border-gray-200 px-3 py-2 flex items-center gap-2 shadow-md">
-        <span className="text-sm text-gray-400">🔍</span>
+      <div className="pointer-events-auto bg-white/95 backdrop-blur border border-gray-200 rounded-xl px-4 py-2.5 mx-3 mb-3 flex items-center gap-2.5 shadow-lg">
+        <span className="text-base text-gray-400">🔍</span>
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="주소·지번 검색 (예: 용구리 100)"
-          className="flex-1 text-xs text-gray-900 placeholder:text-gray-400 outline-none bg-transparent"
+          className="flex-1 text-sm text-gray-900 placeholder:text-gray-400 outline-none bg-transparent"
         />
         {query && (
           <button
             type="button"
             onClick={handleClear}
-            className="text-gray-300 hover:text-gray-500 text-xs"
+            className="text-gray-300 hover:text-gray-500 text-sm"
             title="지우기"
           >
             ✕
@@ -296,7 +296,7 @@ export default function SearchPanel({ onPick }: Props) {
           type="button"
           onClick={runSearch}
           disabled={!query.trim() || state.loading}
-          className="text-xs px-3 py-1 rounded-md bg-blue-500 text-white hover:bg-blue-600
+          className="text-sm px-4 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600
                      disabled:opacity-40 disabled:cursor-not-allowed font-medium"
         >
           검색
