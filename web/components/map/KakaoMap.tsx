@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { MapSummaryRow, MarkerColor } from "@/lib/types";
+import type { CompareRow } from "@/app/api/compare/route";
+import { getChangeDirection } from "./ComparePanel";
 import {
   colorForMarker,
   ratiosForMarker,
@@ -39,6 +41,8 @@ interface Props {
   selectedAddr?: string | null;
   /** 지도 타입: "roadmap" | "skyview" | "hybrid" */
   mapType?: "roadmap" | "skyview" | "hybrid";
+  /** 비교 결과 — 값이 있으면 변경 마커 오버레이 표시 */
+  compareRows?: CompareRow[];
 }
 
 /**
@@ -69,8 +73,8 @@ function makeMarkerSvg(
   const outlineWidth = selected ? 2.5 : 1;
 
   const showBadge = count > 1;
-  const badgeText = count > 999 ? "999+" : String(count);
-  const badgeWidth = badgeText.length <= 2 ? 18 : badgeText.length === 3 ? 22 : 28;
+  const badgeText = count > 9999 ? "9999+" : String(count);
+  const badgeWidth = badgeText.length <= 2 ? 18 : badgeText.length === 3 ? 22 : badgeText.length === 4 ? 28 : 34;
   const badgeH = 14;
   const badgeGap = 2; // 카드와 배지 사이 간격
   // 배지는 카드 우측 옆에 분리해 둬서 줄 위에 안 겹치게
@@ -150,8 +154,8 @@ function markerSize(count: number): { w: number; h: number } {
   const arrowH = 8;
   const badgeGap = 2;
   const showBadge = count > 1;
-  const badgeText = count > 999 ? "999+" : String(count);
-  const badgeWidth = badgeText.length <= 2 ? 18 : badgeText.length === 3 ? 22 : 28;
+  const badgeText = count > 9999 ? "9999+" : String(count);
+  const badgeWidth = badgeText.length <= 2 ? 18 : badgeText.length === 3 ? 22 : badgeText.length === 4 ? 28 : 34;
   return {
     w: showBadge ? cardW + badgeGap + badgeWidth : cardW,
     h: cardH + arrowH,
@@ -168,6 +172,7 @@ export default function KakaoMap({
   measureAddPointRef,
   selectedAddr = null,
   mapType = "roadmap",
+  compareRows = [],
 }: Props) {
   // 측정 모드 여부를 클릭 핸들러에서 참조하기 위한 ref
   // (state로 전달하면 마커 재생성이 발생하므로 ref로 우회)
@@ -545,6 +550,84 @@ export default function KakaoMap({
     }
     prevSelectedRef.current = selectedAddr;
   }, [loaded, selectedAddr]);
+
+  // ── 비교 오버레이 ──
+  const compareOverlaysRef = useRef<any[]>([]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !loaded) return;
+
+    // 기존 오버레이 제거
+    compareOverlaysRef.current.forEach((o) => o.setMap(null));
+    compareOverlaysRef.current = [];
+
+    if (compareRows.length === 0) return;
+
+    // geocode_address별로 그룹핑 → 마을 단위 오버레이
+    const byAddr = new Map<string, { rows: CompareRow[]; lat: number; lng: number }>();
+    for (const r of compareRows) {
+      if (!byAddr.has(r.geocode_address)) {
+        byAddr.set(r.geocode_address, { rows: [], lat: r.lat, lng: r.lng });
+      }
+      byAddr.get(r.geocode_address)!.rows.push(r);
+    }
+
+    byAddr.forEach(({ rows: cRows, lat, lng }, addr) => {
+      // 마을 내 방향 판단
+      const dirs = cRows.map(getChangeDirection);
+      const hasWorsen = dirs.includes("worsened");
+      const hasImprove = dirs.includes("improved");
+
+      let color: string;
+      let arrow: string;
+      let ringColor: string;
+      if (hasWorsen && hasImprove) {
+        color = "#f59e0b"; // amber — mixed
+        arrow = "&#8693;"; // ⇅
+        ringColor = "rgba(245,158,11,0.3)";
+      } else if (hasWorsen) {
+        color = "#ef4444"; // red — worsened
+        arrow = "&#9660;"; // ▼
+        ringColor = "rgba(239,68,68,0.3)";
+      } else {
+        color = "#22c55e"; // green — improved
+        arrow = "&#9650;"; // ▲
+        ringColor = "rgba(34,197,94,0.3)";
+      }
+
+      const html = `
+        <div style="position:relative;width:0;height:0;pointer-events:none;">
+          <div style="
+            position:absolute;left:-16px;top:-16px;
+            width:32px;height:32px;border-radius:50%;
+            background:${ringColor};
+            border:2.5px solid ${color};
+            display:flex;align-items:center;justify-content:center;
+            font-size:14px;color:${color};font-weight:bold;
+            pointer-events:auto;cursor:pointer;
+            animation:kepcoCompPulse 2.5s ease-out infinite;
+          ">${arrow}<span style="font-size:9px;margin-left:1px;">${cRows.length}</span></div>
+          <style>
+            @keyframes kepcoCompPulse {
+              0% { box-shadow: 0 0 0 0 ${ringColor}; }
+              70% { box-shadow: 0 0 0 12px rgba(0,0,0,0); }
+              100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
+            }
+          </style>
+        </div>`;
+
+      const overlay = new window.kakao.maps.CustomOverlay({
+        position: new window.kakao.maps.LatLng(lat, lng),
+        content: html,
+        yAnchor: 0.5,
+        xAnchor: 0.5,
+        zIndex: 100,
+      });
+      overlay.setMap(map);
+      compareOverlaysRef.current.push(overlay);
+    });
+  }, [loaded, compareRows]);
 
   return <div ref={mapRef} className="w-full h-full" />;
 }

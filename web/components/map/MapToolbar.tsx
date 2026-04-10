@@ -19,6 +19,8 @@ interface Props {
   onToggleMeasure: () => void;
   topListActive: boolean;
   onToggleTopList: () => void;
+  compareActive: boolean;
+  onToggleCompare: () => void;
   mapType: MapType;
   onMapTypeChange: (type: MapType) => void;
   /** 줌 인/아웃 콜백 */
@@ -31,6 +33,8 @@ export default function MapToolbar({
   onToggleMeasure,
   topListActive,
   onToggleTopList,
+  compareActive,
+  onToggleCompare,
   mapType,
   onMapTypeChange,
   onZoomIn,
@@ -85,8 +89,23 @@ export default function MapToolbar({
         </label>
       )}
 
-      {/* ── 3. 도구 버튼 (유망 부지 / 거리재기) ── */}
+      {/* ── 3. 도구 버튼 (비교 / 유망 부지 / 거리재기) ── */}
       <div className="flex flex-col gap-px bg-white rounded-lg shadow border border-gray-200 p-1">
+        <button
+          type="button"
+          onClick={onToggleCompare}
+          title={compareActive ? "비교 모드 종료" : "변경 비교"}
+          className={`w-8 h-8 rounded flex items-center justify-center text-sm
+                     transition-colors ${
+                       compareActive
+                         ? "bg-orange-500 text-white hover:bg-orange-600"
+                         : "bg-white text-gray-700 hover:bg-gray-100"
+                     }`}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 1v14M3 4l2-2 2 2M11 12l2 2 2-2M3 5v6M13 5v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
         <button
           type="button"
           onClick={onToggleTopList}

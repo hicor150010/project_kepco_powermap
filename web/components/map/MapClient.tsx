@@ -12,6 +12,8 @@ import SearchPanel from "./SearchPanel";
 import MapLegend from "./MapLegend";
 import Toast from "./Toast";
 import TopRemainingList from "./TopRemainingList";
+import ComparePanel, { getChangeDirection, type ChangeDirection } from "./ComparePanel";
+import type { CompareRow } from "@/app/api/compare/route";
 import type { SearchPick } from "./SearchResultList";
 import {
   emptyFilters,
@@ -50,6 +52,10 @@ export default function MapClient({ isAdmin, email }: Props) {
   const [measureActive, setMeasureActive] = useState(false);
   const [topListOpen, setTopListOpen] = useState(false);
   const [mapType, setMapType] = useState<"roadmap" | "skyview" | "hybrid">("roadmap");
+
+  // 비교 모드
+  const [compareActive, setCompareActive] = useState(false);
+  const [compareRows, setCompareRows] = useState<CompareRow[]>([]);
 
   // 검색 결과가 필터에 가려졌을 때 자동 해제하면서 띄우는 토스트.
   // filterSnapshot은 "되돌리기" 시 복원할 이전 필터.
@@ -237,7 +243,7 @@ export default function MapClient({ isAdmin, email }: Props) {
           pick.row.addr_dong,
           pick.row.addr_li,
         ]
-          .filter((p) => p && p !== "-기타지역")
+          .filter(Boolean)
           .join(" ");
 
         // 스냅샷 저장 후 필터 초기화
@@ -296,6 +302,7 @@ export default function MapClient({ isAdmin, email }: Props) {
           measureAddPointRef={measureAddPointRef}
           selectedAddr={selectedAddr}
           mapType={mapType}
+          compareRows={compareRows}
         />
 
         {/* 좌상단 마커 색상 범례 */}
@@ -307,11 +314,27 @@ export default function MapClient({ isAdmin, email }: Props) {
           onToggleMeasure={() => setMeasureActive((v) => !v)}
           topListActive={topListOpen}
           onToggleTopList={() => setTopListOpen((v) => !v)}
+          compareActive={compareActive}
+          onToggleCompare={() => {
+            setCompareActive((v) => !v);
+            if (compareActive) setCompareRows([]);
+          }}
           mapType={mapType}
           onMapTypeChange={setMapType}
           onZoomIn={() => mapInstance?.setLevel(mapInstance.getLevel() - 1)}
           onZoomOut={() => mapInstance?.setLevel(mapInstance.getLevel() + 1)}
         />
+
+        {/* 비교 패널 */}
+        {compareActive && (
+          <ComparePanel
+            onResults={setCompareRows}
+            onClose={() => {
+              setCompareActive(false);
+              setCompareRows([]);
+            }}
+          />
+        )}
 
         {/* 유망 부지 TOP 플로팅 패널 — open 일 때만 마운트 */}
         {topListOpen && (
