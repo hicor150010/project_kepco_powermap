@@ -65,8 +65,11 @@ export async function POST(request: NextRequest) {
       delay?: number;
       flush_size?: number;
     };
-    // 재개용: 이전 job의 checkpoint 복사
     checkpoint?: Record<string, unknown>;
+    // 멀티스레드
+    thread?: number;
+    mode?: "single" | "recurring";
+    max_cycles?: number;
   };
 
   try {
@@ -85,28 +88,42 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const thread = body.thread || 1;
+  if (![1, 2, 3].includes(thread)) {
+    return NextResponse.json(
+      { ok: false, error: "스레드 번호는 1, 2, 3 중 하나여야 합니다." },
+      { status: 400 }
+    );
+  }
+
   const supabase = createAdminClient();
 
-  // 이미 실행/대기 중인 작업이 있는지 확인 (concurrency group 충돌 방지)
+  // 같은 스레드 내에서 이미 실행/대기 중인 작업이 있는지 확인
   const { data: existing } = await supabase
     .from("crawl_jobs")
     .select("id, status, sido")
     .in("status", ["pending", "running", "stop_requested"])
+    .eq("thread", thread)
     .limit(1);
 
   if (existing && existing.length > 0) {
     const ej = existing[0];
-    const statusLabel = ej.status === "running" ? "실행 중" : ej.status === "pending" ? "대기 중" : "중단 대기";
+    const statusLabel =
+      ej.status === "running"
+        ? "실행 중"
+        : ej.status === "pending"
+          ? "대기 중"
+          : "중단 대기";
     return NextResponse.json(
       {
         ok: false,
-        error: `이미 ${statusLabel}인 작업이 있습니다. (Job #${ej.id} — ${ej.sido}) 기존 작업을 취소하거나 완료된 후 다시 시도해주세요.`,
+        error: `스레드 ${thread}에 이미 ${statusLabel}인 작업이 있습니다. (Job #${ej.id} — ${ej.sido})`,
       },
       { status: 409 }
     );
   }
 
-  // crawl_jobs 생성 (-기타지역도 그대로 저장, 크롤러가 처리)
+  // crawl_jobs 생성
   const { data: job, error: insertErr } = await supabase
     .from("crawl_jobs")
     .insert({
@@ -118,6 +135,10 @@ export async function POST(request: NextRequest) {
       options: body.options || {},
       checkpoint: body.checkpoint || null,
       requested_by: me.id,
+      thread,
+      mode: body.mode || "single",
+      cycle_count: 0,
+      max_cycles: body.max_cycles || null,
     })
     .select()
     .single();
@@ -143,7 +164,10 @@ export async function POST(request: NextRequest) {
           },
           body: JSON.stringify({
             ref: "main",
-            inputs: { job_id: String(job.id) },
+            inputs: {
+              job_id: String(job.id),
+              thread: String(thread),
+            },
           }),
         }
       );
@@ -154,7 +178,6 @@ export async function POST(request: NextRequest) {
           `[GitHub Actions] dispatch 실패 (${ghResp.status}):`,
           errText
         );
-        // 작업은 이미 생성됨 — 삭제하지 않고 경고만
         return NextResponse.json({
           ok: true,
           job,
