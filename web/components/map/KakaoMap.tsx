@@ -61,6 +61,37 @@ interface Props {
 /** 고해상도(Retina) 디스플레이에서 선명하게 렌더링하기 위한 스케일 */
 const DPR = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 3) : 1;
 
+/**
+ * SVG data-URI → Canvas(DPR 해상도) → PNG data-URI 변환.
+ * 카카오맵 SDK가 MarkerImage를 CSS 픽셀 크기로 래스터화하기 때문에
+ * 미리 고해상도 비트맵(PNG)으로 변환해 전달해야 레티나 디스플레이에서 선명하다.
+ */
+const _pngCache = new Map<string, string>();
+
+function svgToPng(
+  svgDataUri: string,
+  logicalW: number,
+  logicalH: number,
+): Promise<string> {
+  if (_pngCache.has(svgDataUri)) return Promise.resolve(_pngCache.get(svgDataUri)!);
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(logicalW * DPR);
+      canvas.height = Math.round(logicalH * DPR);
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const png = canvas.toDataURL("image/png");
+      _pngCache.set(svgDataUri, png);
+      resolve(png);
+    };
+    img.onerror = () => resolve(svgDataUri); // fallback: SVG 그대로
+    img.src = svgDataUri;
+  });
+}
+
 function makeMarkerSvg(
   ratios: MarkerRatios,
   count: number,
@@ -288,7 +319,11 @@ export default function KakaoMap({
     // 이전 마커 맵 초기화 — 새로 그리는 마커들로 교체
     markersByAddrRef.current.clear();
 
-    const markers = filtered.map((row) => {
+    // SVG → PNG 변환이 비동기이므로, effect 재실행 시 이전 작업 무시
+    let cancelled = false;
+
+    (async () => {
+    const markers = await Promise.all(filtered.map(async (row) => {
       const position = new window.kakao.maps.LatLng(row.lat, row.lng);
       const ratios = ratiosForMarker(row);
       const count = row.total;
@@ -297,10 +332,13 @@ export default function KakaoMap({
       const cardCenterX = 14; // cardW(28)/2
       const isSelected = row.geocode_address === selectedAddr;
 
+      const svgUri = makeMarkerSvg(ratios, count, isSelected);
+      const pngUri = await svgToPng(svgUri, imgW, imgH);
+
       const marker = new window.kakao.maps.Marker({
         position,
         image: new window.kakao.maps.MarkerImage(
-          makeMarkerSvg(ratios, count, isSelected),
+          pngUri,
           new window.kakao.maps.Size(imgW, imgH),
           { offset: new window.kakao.maps.Point(cardCenterX, imgH) }
         ),
@@ -321,7 +359,9 @@ export default function KakaoMap({
       });
 
       return marker;
-    });
+    }));
+
+    if (cancelled) return;
 
     clustererRef.current = new window.kakao.maps.MarkerClusterer({
       map,
@@ -450,6 +490,9 @@ export default function KakaoMap({
       map.setBounds(bounds);
       lastFitKeyRef.current = fitBoundsKey;
     }
+    })(); // async IIFE 끝
+
+    return () => { cancelled = true; };
     // selectedAddr은 의도적으로 deps에서 제외 — 전체 재생성 X, 아래 별도 effect에서 해당 마커만 이미지 교체
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, rows, colorFilter, fitBoundsKey, onMarkerClick]);
@@ -464,16 +507,18 @@ export default function KakaoMap({
     if (!loaded) return;
     const map = mapInstanceRef.current;
 
-    const rebuildImage = (addr: string | null, selected: boolean) => {
+    const rebuildImage = async (addr: string | null, selected: boolean) => {
       if (!addr) return;
       const entry = markersByAddrRef.current.get(addr);
       if (!entry) return;
       const { marker, row } = entry;
       const ratios = ratiosForMarker(row);
       const { w: imgW, h: imgH } = markerSize(row.total);
+      const svgUri = makeMarkerSvg(ratios, row.total, selected);
+      const pngUri = await svgToPng(svgUri, imgW, imgH);
       marker.setImage(
         new window.kakao.maps.MarkerImage(
-          makeMarkerSvg(ratios, row.total, selected),
+          pngUri,
           new window.kakao.maps.Size(imgW, imgH),
           { offset: new window.kakao.maps.Point(14, imgH) }
         )
