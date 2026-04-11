@@ -216,8 +216,8 @@ export default function FilterPanel({
   }, [filteredRows, showResults, sortKey]);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-3 py-3 space-y-3 flex-shrink-0">
+    <div className="overflow-y-auto h-full">
+      <div className="px-3 py-3 space-y-3">
         {/* 헤더 */}
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-gray-700">조건 설정</span>
@@ -342,8 +342,8 @@ export default function FilterPanel({
 
       {/* 결과 리스트 */}
       {showResults && (
-        <div className="flex-1 overflow-y-auto min-h-0 border-t border-gray-200">
-          <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 flex items-center justify-between sticky top-0 z-10">
+        <div className="border-t border-gray-200">
+          <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
             <span className="text-[11px] font-semibold text-gray-600">
               결과 {conditionResults.length.toLocaleString()}개 마을
             </span>
