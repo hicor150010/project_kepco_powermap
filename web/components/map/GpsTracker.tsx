@@ -69,6 +69,7 @@ export default function GpsTracker({
     emaPos: null as { lat: number; lng: number } | null,
     gpsStartTime: 0,
     filterStats: { total: 0, accepted: 0, rejectedAccuracy: 0, rejectedSpeed: 0, rejectedDistance: 0 },
+    lowAccuracyWarned: false,
   });
   stateRef.current.autoFollow = autoFollow;
 
@@ -115,6 +116,7 @@ export default function GpsTracker({
       s.emaPos = null;
       s.gpsStartTime = 0;
       s.filterStats = { total: 0, accepted: 0, rejectedAccuracy: 0, rejectedSpeed: 0, rejectedDistance: 0 };
+      s.lowAccuracyWarned = false;
     }
 
     if (!active || !map) {
@@ -192,12 +194,16 @@ export default function GpsTracker({
         if (!s.filterStats) s.filterStats = { total: 0, accepted: 0, rejectedAccuracy: 0, rejectedSpeed: 0, rejectedDistance: 0 };
         s.filterStats.total++;
 
-        // ── [필터 1] 정확도 필터 (firstFix 전에는 시간 경과에 따라 완화) ──
+        // ── [필터 1] 정확도 필터 (firstFix 전에는 시간 경과에 따라 완화, 최대 200m) ──
         let accThreshold = FILTER_ACCURACY_THRESHOLD;
         if (!s.firstFix) {
           const elapsed = (Date.now() - s.gpsStartTime) / 1000;
-          if (elapsed > 20) accThreshold = Infinity;
+          if (elapsed > 20) accThreshold = 200;
           else if (elapsed > 10) accThreshold = 100;
+        }
+        if (accuracy > 1000 && !s.lowAccuracyWarned) {
+          s.lowAccuracyWarned = true;
+          onErrorRef.current?.("위치 정확도가 매우 낮아요. 브라우저 주소창 왼쪽 아이콘 → 위치 → '정확한 위치 사용'을 켜 주세요.");
         }
         if (accuracy > accThreshold) {
           s.filterStats.rejectedAccuracy++;
