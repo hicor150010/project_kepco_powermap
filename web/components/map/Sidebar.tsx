@@ -15,7 +15,6 @@ interface Props {
   isAdmin: boolean;
   email: string;
   totalRows: MapSummaryRow[];
-  filteredRows: MapSummaryRow[];
   filters: ColumnFilters;
   onFiltersChange: (f: ColumnFilters) => void;
   isOpen: boolean;
@@ -62,7 +61,6 @@ export default function Sidebar({
   isAdmin,
   email,
   totalRows,
-  filteredRows,
   filters,
   onFiltersChange,
   isOpen,
@@ -102,10 +100,8 @@ export default function Sidebar({
   const handleClear = () => { setQuery(""); setSearchState(EMPTY_SEARCH); };
 
   // 통계
-  const totalMarkers = filteredRows.length;
-  const totalDataRows = filteredRows.reduce((sum, r) => sum + r.total, 0);
-  const allDataRows = totalRows.reduce((sum, r) => sum + r.total, 0);
-  const allMarkers = totalRows.length;
+  const totalMarkers = totalRows.length;
+  const totalDataRows = totalRows.reduce((sum, r) => sum + r.total, 0);
 
   // "여유 있는 곳만 보기" 빠른 토글
   const isPromisingMode =
@@ -184,9 +180,6 @@ export default function Sidebar({
               <span className="text-lg font-bold text-blue-600">{totalMarkers.toLocaleString()}</span>
               <span className="text-[10px] text-gray-400">마을</span>
             </div>
-            {(totalDataRows !== allDataRows) && (
-              <span className="text-[10px] text-gray-400 ml-auto">전체 {allDataRows.toLocaleString()}건 · {allMarkers.toLocaleString()}마을</span>
-            )}
           </div>
           {/* 마커 범례 — 기본 접혀있음 */}
           <div className="mt-1.5">
@@ -374,7 +367,6 @@ export default function Sidebar({
           {activeTab === "filter" && (
             <FilterPanel
               totalRows={totalRows}
-              filteredRows={filteredRows}
               filters={filters}
               onChange={onFiltersChange}
               isPromisingMode={isPromisingMode}

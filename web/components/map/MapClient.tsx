@@ -23,7 +23,6 @@ import {
   type MarkerColor,
 } from "@/lib/types";
 import { colorForMarker } from "@/lib/markerColor";
-import { matchesVolumeFilter, hasAnyFilter } from "@/lib/filterUtil";
 
 interface Props {
   isAdmin: boolean;
@@ -204,34 +203,6 @@ export default function MapClient({ isAdmin, email }: Props) {
     }
   }, [mapInstance, allRows, detailCache]);
 
-  // 2. 필터 적용 (메모리)
-  const filteredRows = useMemo(() => {
-    return allRows.filter((r) => {
-      // 1차: 여유용량 (공용 유틸 사용 — FilterPanel과 동일 로직)
-      if (!matchesVolumeFilter(r.subst_no_cap, r.total, filters.cap_subst)) return false;
-      if (!matchesVolumeFilter(r.mtr_no_cap, r.total, filters.cap_mtr)) return false;
-      if (!matchesVolumeFilter(r.dl_no_cap, r.total, filters.cap_dl)) return false;
-
-      // 2차: 지역/설비
-      if (filters.addr_do.size > 0 && (!r.addr_do || !filters.addr_do.has(r.addr_do)))
-        return false;
-      if (filters.addr_gu.size > 0 && (!r.addr_gu || !filters.addr_gu.has(r.addr_gu)))
-        return false;
-      if (filters.addr_dong.size > 0 && (!r.addr_dong || !filters.addr_dong.has(r.addr_dong)))
-        return false;
-      if (filters.addr_li.size > 0 && (!r.addr_li || !filters.addr_li.has(r.addr_li)))
-        return false;
-      if (filters.subst_nm.size > 0) {
-        const has = r.subst_names?.some((n) => filters.subst_nm.has(n));
-        if (!has) return false;
-      }
-      if (filters.dl_nm.size > 0) {
-        const has = r.dl_names?.some((n) => filters.dl_nm.has(n));
-        if (!has) return false;
-      }
-      return true;
-    });
-  }, [allRows, filters]);
 
   // 3. 마을(geocode_address) 상세 데이터 fetch + 카드 열기
   //    마커 클릭 / 검색 결과 클릭 양쪽이 공유하는 핵심 로직
@@ -340,34 +311,8 @@ export default function MapClient({ isAdmin, email }: Props) {
       if (targetAddr) {
         openLocationDetail(targetAddr);
       }
-
-      // 필터에 가려졌는지 검사
-      const isVisible = targetAddr
-        ? filteredRows.some((r) => r.geocode_address === targetAddr)
-        : true;
-
-      if (!isVisible && hasAnyFilter(filters)) {
-        // 안내용 마을 이름
-        const name = [
-          pick.row.addr_do,
-          pick.row.addr_si,
-          pick.row.addr_gu,
-          pick.row.addr_dong,
-          pick.row.addr_li,
-        ]
-          .filter(Boolean)
-          .join(" ");
-
-        // 스냅샷 저장 후 필터 초기화
-        const snapshot = filters;
-        setFilters(emptyFilters());
-        setToast({
-          message: `'${name}'를 보기 위해 필터를 해제했어요`,
-          snapshot,
-        });
-      }
     },
-    [mapInstance, filteredRows, filters, openLocationDetail, gpsActive, gpsAutoFollow]
+    [mapInstance, openLocationDetail, gpsActive, gpsAutoFollow]
   );
 
   // 5. 공유 링크 생성 + 클립보드 복사
@@ -675,7 +620,6 @@ export default function MapClient({ isAdmin, email }: Props) {
         isAdmin={isAdmin}
         email={email}
         totalRows={allRows}
-        filteredRows={filteredRows}
         filters={filters}
         onFiltersChange={setFilters}
         isOpen={sidebarOpen}
@@ -713,7 +657,7 @@ export default function MapClient({ isAdmin, email }: Props) {
         )}
 
         <KakaoMap
-          rows={filteredRows}
+          rows={allRows}
           colorFilter={colorFilter}
           onMarkerClick={handleMarkerClick}
           fitBoundsKey={fitBoundsKey}
@@ -804,7 +748,7 @@ export default function MapClient({ isAdmin, email }: Props) {
         {/* 유망 부지 TOP 플로팅 패널 — open 일 때만 마운트 */}
         {topListOpen && (
           <TopRemainingList
-            rows={filteredRows}
+            rows={allRows}
             onPick={handleSidebarPick}
             onClose={() => setTopListOpen(false)}
             topN={10}

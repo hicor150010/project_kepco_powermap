@@ -10,7 +10,6 @@ import { matchesVolumeFilter } from "@/lib/filterUtil";
 
 interface Props {
   totalRows: MapSummaryRow[];
-  filteredRows: MapSummaryRow[];
   filters: Filters;
   onChange: (filters: Filters) => void;
   isPromisingMode?: boolean;
@@ -65,7 +64,7 @@ function VolumeToggle({
 type SortKey = "remaining_desc" | "count_desc" | "name_asc";
 
 export default function FilterPanel({
-  totalRows, filteredRows, filters, onChange,
+  totalRows, filters, onChange,
   isPromisingMode, onTogglePromising, onSearchPick,
 }: Props) {
   const [showResults, setShowResults] = useState(false);
@@ -173,7 +172,17 @@ export default function FilterPanel({
     setShowResults(false);
   };
 
-  // ── 조건검색 결과 (filteredRows → SearchRiResult[]) ──
+  // ── 조건검색: 모든 필터 적용된 결과 (내부 계산) ──
+
+  const filteredRows = useMemo(() => {
+    return volumeFiltered.filter((r) => {
+      if (filters.addr_do.size > 0 && (!r.addr_do || !filters.addr_do.has(r.addr_do))) return false;
+      if (filters.addr_gu.size > 0 && (!r.addr_gu || !filters.addr_gu.has(r.addr_gu))) return false;
+      if (filters.addr_dong.size > 0 && (!r.addr_dong || !filters.addr_dong.has(r.addr_dong))) return false;
+      if (filters.addr_li.size > 0 && (!r.addr_li || !filters.addr_li.has(r.addr_li))) return false;
+      return true;
+    });
+  }, [volumeFiltered, filters.addr_do, filters.addr_gu, filters.addr_dong, filters.addr_li]);
 
   const conditionResults: SearchRiResult[] = useMemo(() => {
     if (!showResults) return [];
