@@ -272,7 +272,7 @@ export default function MapClient({ isAdmin, email }: Props) {
         // 데이터 로드 완료 후 핀 복원
         if (mapInstance) restoreCachedPins(addr, mapInstance);
       } catch (err) {
-        console.error("[location] 조회 실패", err);
+        // 에러는 UI에서 처리
       } finally {
         setDetailLoading(false);
       }

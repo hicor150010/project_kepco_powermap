@@ -111,10 +111,8 @@ async function geocode(address: string): Promise<GeoResult> {
   // 카카오가 결과를 못 줬으면 VWorld 시도 (한도 초과/결과 없음 모두)
   const vworld = await callVWorld(address);
   if (vworld.lat !== null) {
-    console.log(`[VWorld fallback 성공] ${address}`);
     return vworld;
   }
-  console.warn(`[지오코딩 실패] ${address}`);
   return { lat: null, lng: null };
 }
 

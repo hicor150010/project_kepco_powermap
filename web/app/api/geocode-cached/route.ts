@@ -21,8 +21,6 @@ export async function GET(request: NextRequest) {
     .select("address, lat, lng")
     .like("address", `${village} %`);
 
-  console.log(`[geocode-cached] village="${village}" → ${data?.length ?? 0}건${error ? ` (에러: ${error.message})` : ""}`);
-
   if (error || !data) {
     return NextResponse.json({ pins: [] });
   }
