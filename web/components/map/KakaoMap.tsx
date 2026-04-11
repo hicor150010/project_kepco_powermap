@@ -542,9 +542,15 @@ export default function KakaoMap({
       rebuildImage(selectedAddr, true);
 
       // 펄스 링 오버레이 추가 — 인라인 스타일로 CSS 의존성 제거
+      // markersByAddrRef가 비동기 생성 중 비어있을 수 있으므로 rows에서 직접 좌표 조회
       const entry = markersByAddrRef.current.get(selectedAddr);
-      if (entry) {
-        const pos = entry.marker.getPosition();
+      const selRow = !entry ? rows.find(r => r.geocode_address === selectedAddr) : null;
+      const pos = entry
+        ? entry.marker.getPosition()
+        : selRow && selRow.lat != null && selRow.lng != null
+          ? new window.kakao.maps.LatLng(selRow.lat, selRow.lng)
+          : null;
+      if (pos) {
         const pulseHtml = `
           <div style="position:relative;width:0;height:0;">
             <div style="
