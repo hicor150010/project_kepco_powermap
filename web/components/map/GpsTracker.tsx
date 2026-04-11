@@ -65,7 +65,7 @@ export default function GpsTracker({
     firstFix: false,
     autoFollow: true,
     // ── GPS 필터 상태 ──
-    lastValidPos: null as { lat: number; lng: number; time: number } | null,
+    lastValidPos: null as { lat: number; lng: number; time: number; accuracy?: number } | null,
     emaPos: null as { lat: number; lng: number } | null,
     gpsStartTime: 0,
     filterStats: { total: 0, accepted: 0, rejectedAccuracy: 0, rejectedSpeed: 0, rejectedDistance: 0 },
@@ -184,57 +184,77 @@ export default function GpsTracker({
     });
     // 처음에는 숨김
 
-    // ── watchPosition 시작 ──
-    s.gpsStartTime = Date.now();
-    s.watchId = navigator.geolocation.watchPosition(
+    // ── getCurrentPosition으로 초기 위치 빠르게 잡기 (enableHighAccuracy: false → WiFi/네트워크 우선) ──
+    navigator.geolocation.getCurrentPosition(
       (pos) => {
+        // watchPosition 콜백과 동일한 핸들러로 전달
+        handlePosition(pos);
+      },
+      () => { /* 실패해도 watchPosition이 백업 */ },
+      { enableHighAccuracy: false, maximumAge: 60000, timeout: 5000 },
+    );
+
+    // ── watchPosition으로 지속 추적 ──
+    s.gpsStartTime = Date.now();
+
+    function handlePosition(pos: GeolocationPosition) {
         const { latitude, longitude, accuracy, heading, speed } = pos.coords;
         const now = pos.timestamp;
-        // HMR 방어 — 이전 ref에 filterStats가 없을 수 있음
         if (!s.filterStats) s.filterStats = { total: 0, accepted: 0, rejectedAccuracy: 0, rejectedSpeed: 0, rejectedDistance: 0 };
         s.filterStats.total++;
 
-        // ── [필터 1] 정확도 필터 (firstFix 전에는 시간 경과에 따라 완화, 최대 200m) ──
-        let accThreshold = FILTER_ACCURACY_THRESHOLD;
+        // ── [전략] "최선 채택" — 이전보다 정확하거나, 처음이면 무조건 채택 ──
+        const bestAccuracy = s.lastValidPos ? s.lastValidPos.accuracy ?? Infinity : Infinity;
+        const isBetter = accuracy <= bestAccuracy;
+        const isGoodEnough = accuracy <= FILTER_ACCURACY_THRESHOLD;
+
+        // firstFix 전: 이전보다 정확하면 무조건 채택 (IP든 WiFi든 가장 좋은 것 사용)
+        // firstFix 후: 정확도 기준 충족 시만 채택 + 속도/거리 필터 적용
         if (!s.firstFix) {
-          const elapsed = (Date.now() - s.gpsStartTime) / 1000;
-          if (elapsed > 20) accThreshold = 200;
-          else if (elapsed > 10) accThreshold = 100;
+          if (!isBetter && !isGoodEnough) {
+            s.filterStats.rejectedAccuracy++;
+            setGpsInfo({ speed, heading, accuracy, lat: latitude, lng: longitude, filtered: true, filterReason: "accuracy", filterStats: { ...s.filterStats } });
+            return;
+          }
+        } else {
+          // firstFix 이후: 정확도 필터
+          if (accuracy > FILTER_ACCURACY_THRESHOLD) {
+            s.filterStats.rejectedAccuracy++;
+            setGpsInfo({ speed, heading, accuracy, lat: latitude, lng: longitude, filtered: true, filterReason: "accuracy", filterStats: { ...s.filterStats } });
+            return;
+          }
+
+          // 속도 기반 점프 필터
+          if (s.lastValidPos) {
+            const dist = haversineMeters(s.lastValidPos.lat, s.lastValidPos.lng, latitude, longitude);
+            const dt = (now - s.lastValidPos.time) / 1000;
+            if (dt > 0 && dist / dt > FILTER_MAX_SPEED) {
+              s.filterStats.rejectedSpeed++;
+              setGpsInfo({ speed, heading, accuracy, lat: latitude, lng: longitude, filtered: true, filterReason: "speed", filterStats: { ...s.filterStats } });
+              return;
+            }
+
+            // 최소 거리 필터 (정지 떨림 제거)
+            if (dist < FILTER_MIN_DISTANCE) {
+              s.filterStats.rejectedDistance++;
+              setGpsInfo({ speed, heading, accuracy, lat: s.emaPos?.lat ?? latitude, lng: s.emaPos?.lng ?? longitude, filtered: true, filterReason: "distance", filterStats: { ...s.filterStats } });
+              return;
+            }
+          }
         }
+
+        // 저정확도 경고 (1km 이상, 1회만)
         if (accuracy > 1000 && !s.lowAccuracyWarned) {
           s.lowAccuracyWarned = true;
           onErrorRef.current?.(getLowAccuracyGuide());
         }
-        if (accuracy > accThreshold) {
-          s.filterStats.rejectedAccuracy++;
-          setGpsInfo({ speed, heading, accuracy, lat: latitude, lng: longitude, filtered: true, filterReason: "accuracy", filterStats: { ...s.filterStats } });
-          return;
-        }
 
-        // ── [필터 2] 속도 기반 점프 필터 ──
-        if (s.lastValidPos) {
-          const dist = haversineMeters(s.lastValidPos.lat, s.lastValidPos.lng, latitude, longitude);
-          const dt = (now - s.lastValidPos.time) / 1000;
-          if (dt > 0 && dist / dt > FILTER_MAX_SPEED) {
-            s.filterStats.rejectedSpeed++;
-            setGpsInfo({ speed, heading, accuracy, lat: latitude, lng: longitude, filtered: true, filterReason: "speed", filterStats: { ...s.filterStats } });
-            return;
-          }
-
-          // ── [필터 3] 최소 거리 필터 (정지 떨림 제거) ──
-          if (dist < FILTER_MIN_DISTANCE) {
-            s.filterStats.rejectedDistance++;
-            setGpsInfo({ speed, heading, accuracy, lat: s.emaPos?.lat ?? latitude, lng: s.emaPos?.lng ?? longitude, filtered: true, filterReason: "distance", filterStats: { ...s.filterStats } });
-            return;
-          }
-        }
-
-        // ── 필터 통과 ──
+        // ── 채택 ──
         s.filterStats.accepted++;
-        s.lastValidPos = { lat: latitude, lng: longitude, time: now };
+        s.lastValidPos = { lat: latitude, lng: longitude, time: now, accuracy };
 
-        // ── [필터 4] EMA 스무딩 ──
-        const smoothed = s.emaPos
+        // EMA 스무딩 (firstFix 후에만 적용, 처음엔 원본 사용)
+        const smoothed = (s.emaPos && s.firstFix)
           ? applyEma(s.emaPos, { lat: latitude, lng: longitude }, EMA_ALPHA)
           : { lat: latitude, lng: longitude };
         s.emaPos = smoothed;
@@ -299,7 +319,10 @@ export default function GpsTracker({
         } else if (s.autoFollow) {
           map.panTo(latlng);
         }
-      },
+      } // handlePosition 끝
+
+    s.watchId = navigator.geolocation.watchPosition(
+      handlePosition,
       (err) => {
         const msgs: Record<number, string> = {
           1: "위치 권한을 허용해 주세요. (브라우저 설정에서 변경 가능)",
@@ -310,7 +333,7 @@ export default function GpsTracker({
       },
       {
         enableHighAccuracy: true,
-        maximumAge: 0,
+        maximumAge: 5000,
         timeout: 15000,
       }
     );
@@ -429,7 +452,7 @@ function getLowAccuracyGuide(): string {
   const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
 
   if (!isMobile) {
-    return "데스크톱에서는 GPS가 없어 위치 정확도가 낮습니다. 모바일 기기에서 이용해 주세요.";
+    return "위치 정확도가 낮아요. HTTPS 환경에서 접속하거나, 브라우저 위치 권한을 재설정해 보세요.";
   }
   if (/iPad|iPhone|iPod/.test(ua)) {
     return "위치 정확도가 매우 낮아요. 설정 → 개인정보 보호 및 보안 → 위치 서비스 → Safari 웹사이트 → '정확한 위치' 켜기";
