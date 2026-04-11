@@ -230,7 +230,7 @@ export default function Sidebar({
                 : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
             }`}
           >
-            ⚙ 필터
+            📋 조건검색
           </button>
         </div>
 
@@ -374,10 +374,15 @@ export default function Sidebar({
           {activeTab === "filter" && (
             <FilterPanel
               totalRows={totalRows}
+              filteredRows={filteredRows}
               filters={filters}
               onChange={onFiltersChange}
               isPromisingMode={isPromisingMode}
               onTogglePromising={togglePromising}
+              onSearchPick={(pick) => {
+                onSearchPick?.(pick);
+                if (window.innerWidth < 768) onToggle();
+              }}
             />
           )}
         </div>
