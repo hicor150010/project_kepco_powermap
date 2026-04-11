@@ -426,6 +426,11 @@ function degToDir(deg: number): string {
 /** 브라우저별 '정확한 위치' 활성화 안내 메시지 */
 function getLowAccuracyGuide(): string {
   const ua = navigator.userAgent;
+  const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
+
+  if (!isMobile) {
+    return "데스크톱에서는 GPS가 없어 위치 정확도가 낮습니다. 모바일 기기에서 이용해 주세요.";
+  }
   if (/iPad|iPhone|iPod/.test(ua)) {
     return "위치 정확도가 매우 낮아요. 설정 → 개인정보 보호 및 보안 → 위치 서비스 → Safari 웹사이트 → '정확한 위치' 켜기";
   }
@@ -433,7 +438,7 @@ function getLowAccuracyGuide(): string {
     return "위치 정확도가 매우 낮아요. 삼성 인터넷 메뉴(≡) → 설정 → 사이트 및 다운로드 → 위치 → 이 사이트 권한 삭제 후 다시 허용";
   }
   if (/Chrome/i.test(ua)) {
-    return "위치 정확도가 매우 낮아요. 주소창 왼쪽 아이콘 → 권한 → 위치 → '정확한 위치 사용' 켜기";
+    return "위치 정확도가 매우 낮아요. 주소창 왼쪽 자물쇠 → 권한 → 위치 → '정확한 위치 사용' 켜기";
   }
   return "위치 정확도가 매우 낮아요. 브라우저 설정에서 이 사이트의 위치 권한을 '정확한 위치'로 변경해 주세요.";
 }
