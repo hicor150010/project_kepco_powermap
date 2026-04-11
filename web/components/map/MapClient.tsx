@@ -85,6 +85,28 @@ export default function MapClient({ isAdmin, email }: Props) {
   // 마을별 지번 좌표 캐시 — 마을 재선택 시 즉시 복원
   const [jibunCache] = useState<Map<string, { lat: number; lng: number; jibun: string }[]>>(new Map());
 
+  // 데이터 새로고침
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const res = await fetch(`/api/map-summary?_t=${Date.now()}`, {
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error("새로고침 실패");
+      const data = await res.json();
+      setAllRows(data.rows ?? []);
+      detailCache.clear();
+      setSelectedAddr(null);
+      setSelectedRows(null);
+      setSimpleToast("최신 데이터로 갱신되었습니다.");
+    } catch {
+      setSimpleToast("새로고침에 실패했습니다.");
+    } finally {
+      setRefreshing(false);
+    }
+  }, [detailCache]);
+
   // 범용 토스트 (공유 링크 등)
   const [simpleToast, setSimpleToast] = useState<string | null>(null);
 
@@ -631,6 +653,8 @@ export default function MapClient({ isAdmin, email }: Props) {
           setSelectedRows(null);
           clearJibunPin();
         }}
+        onRefresh={handleRefresh}
+        refreshing={refreshing}
       />
 
       <main className="flex-1 relative min-w-0">
@@ -669,23 +693,7 @@ export default function MapClient({ isAdmin, email }: Props) {
           compareRows={compareRows}
         />
 
-        {/* 좌상단: 사이드바 열기 버튼 */}
-        {!sidebarOpen && (
-          <div className="absolute top-3 left-3 z-10">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="bg-white rounded-lg shadow-md border border-gray-200
-                         p-2.5 hover:bg-gray-50 transition-colors group"
-              aria-label="사이드바 열기"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600 group-hover:text-gray-900">
-                <line x1="3" y1="6" x2="21" y2="6" />
-                <line x1="3" y1="12" x2="15" y2="12" />
-                <line x1="3" y1="18" x2="21" y2="18" />
-              </svg>
-            </button>
-          </div>
-        )}
+        {/* 사이드바 열기/닫기 — Sidebar 컴포넌트의 엣지 탭으로 이동 */}
 
         {/* 우상단 도구 패널 (거리재기 / 유망 부지 TOP) */}
         <MapToolbar

@@ -185,6 +185,14 @@ VWORLD_KEY  # 인증키 (서버 전용)
 - `crawl_jobs` — 크롤링 작업 관리
 - `user_roles` — 사용자 권한
 
+### API 캐시 전략 (2026-04-11)
+- **대상**: `/api/map-summary`, `/api/location`
+- **방식**: `Cache-Control: public, s-maxage=3600, stale-while-revalidate=60`
+  - Vercel CDN 엣지에서 1시간 캐시 → Supabase 호출 최소화
+  - `stale-while-revalidate=60`: 만료 직후 60초간 stale 응답 반환하며 백그라운드 갱신
+- **새로고침**: 사이드바 상단 새로고침 버튼 → `?_t=timestamp` + `cache: no-store`로 CDN 캐시 우회
+- **캐시하지 않는 것**: `/api/search` (사용자 입력 기반, 반복 적음), `/api/geocode` (이미 KV+DB 3단계 캐시)
+
 ### DB 최적화 이력 (2026-04-11)
 - **불필요 인덱스 8개 제거**: trigram GIN 3개, btree 5개 (사용횟수 0)
 - **UPSERT unique 해시화**: 9컬럼 텍스트 unique → `row_hash` (MD5 32자) unique
@@ -317,6 +325,7 @@ SECRETS.local.md
 ---
 
 ## 변경 이력
+- 2026-04-11: API 캐시 — map-summary, location에 CDN 캐시 1시간 + 새로고침 버튼 추가
 - 2026-04-11: DB 최적화 — 불필요 인덱스 8개 제거 + UPSERT unique 해시화 (110MB → 53MB)
 - 2026-04-10: Vercel 배포 완료. 계정/프로젝트/도메인 정보 추가. VWorld 서비스URL 와일드카드 확인.
 - 2026-04-08: 초안 작성. 기존 API_KEYS.md를 SERVICES.md(공개) + SECRETS.local.md(비공개)로 분리. VWorld 추가.

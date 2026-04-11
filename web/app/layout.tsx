@@ -19,8 +19,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko" className="h-dvh antialiased">
-      <body className="h-dvh flex flex-col overscroll-none">{children}</body>
+    <html lang="ko" className="min-h-dvh antialiased">
+      <body className="min-h-dvh flex flex-col overscroll-none bg-gray-50">{children}</body>
     </html>
   );
 }

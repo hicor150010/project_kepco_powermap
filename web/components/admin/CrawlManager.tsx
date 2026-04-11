@@ -1216,7 +1216,7 @@ export default function CrawlManager() {
                           </div>
 
                           {/* 이어서 추출 버튼 */}
-                          {job.status === "stopped" && job.checkpoint && (() => {
+                          {(job.status === "stopped" || job.status === "failed") && job.checkpoint && (() => {
                             const threadBusy = activeJobs.some((j) => (j.thread || 1) === (job.thread || 1));
                             return (
                               <div className="mt-4 pt-4 border-t border-gray-200 flex justify-end">

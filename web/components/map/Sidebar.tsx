@@ -25,6 +25,9 @@ interface Props {
   onJibunPin?: (row: KepcoDataRow) => void;
   /** 검색바 포커스 시 (카드 숨기기 등) */
   onSearchFocus?: () => void;
+  /** 데이터 새로고침 */
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
 // ── 검색 히스토리 ──
@@ -68,6 +71,8 @@ export default function Sidebar({
   onSearchPick,
   onJibunPin,
   onSearchFocus,
+  onRefresh,
+  refreshing,
 }: Props) {
   const [activeTab, setActiveTab] = useState<SidebarTab>("search");
 
@@ -141,35 +146,27 @@ export default function Sidebar({
         />
       )}
 
-      <aside
+      {/* ── 사이드바 + 엣지 핸들 래퍼 ── */}
+      <div
         className={`
-          w-80 max-w-[85vw] bg-white border-r border-gray-200
-          flex flex-col h-full shadow-lg md:shadow-none flex-shrink-0
-          transition-all duration-300 ease-in-out
-
+          flex flex-shrink-0
           fixed inset-y-0 left-0 z-50
-          ${isOpen ? "translate-x-0" : "-translate-x-full"}
-
-          md:static md:z-auto md:translate-x-0
-          ${isOpen ? "md:ml-0" : "md:-ml-80"}
+          md:relative md:z-auto md:inset-auto
+          transition-all duration-300 ease-in-out
+          ${isOpen ? "translate-x-0 md:ml-0" : "-translate-x-full md:-ml-80"}
+          md:translate-x-0
         `}
       >
-        {/* ── 헤더: 타이틀 + 닫기 ── */}
+      <aside
+        className="w-80 max-w-[85vw] bg-white border-r border-gray-200
+          flex flex-col h-full shadow-lg md:shadow-none"
+      >
+        {/* ── 헤더: 타이틀 ── */}
         <div className="px-3 py-2 border-b border-gray-200">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center">
             <h1 className="text-sm font-bold text-gray-900">배전선로 여유용량 지도</h1>
-            <button
-              onClick={onToggle}
-              className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 flex-shrink-0"
-              aria-label="사이드바 닫기"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="11 17 6 12 11 7" />
-                <polyline points="18 17 13 12 18 7" />
-              </svg>
-            </button>
           </div>
-          {/* 통계 */}
+          {/* 통계 + 새로고침 */}
           <div className="flex items-center gap-3 mt-1.5">
             <div className="flex items-baseline gap-1">
               <span className="text-lg font-bold text-gray-900">{totalDataRows.toLocaleString()}</span>
@@ -180,6 +177,23 @@ export default function Sidebar({
               <span className="text-lg font-bold text-blue-600">{totalMarkers.toLocaleString()}</span>
               <span className="text-[10px] text-gray-400">마을</span>
             </div>
+            {onRefresh && (
+              <button
+                onClick={onRefresh}
+                disabled={refreshing}
+                className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded-md border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-700 disabled:opacity-50 text-[11px] font-medium transition-colors"
+                title="최신 데이터 새로고침"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                  className={refreshing ? "animate-spin" : ""}
+                >
+                  <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                  <path d="M21 3v5h-5" />
+                </svg>
+                {refreshing ? "갱신 중" : "새로고침"}
+              </button>
+            )}
           </div>
           {/* 마커 범례 — 기본 접혀있음 */}
           <div className="mt-1.5">
@@ -233,32 +247,38 @@ export default function Sidebar({
             <div className="flex flex-col h-full">
               {/* 검색 입력 */}
               <div className="px-3 py-2.5 border-b border-gray-100 relative">
-                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-100 rounded-lg px-3 py-2">
-                  <span className="text-sm text-gray-400">🔍</span>
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") doSearch(query.trim()); }}
-                    onFocus={() => {
-                      const h = getHistory();
-                      setHistory(h);
-                      if (h.length > 0 && searchState.ri.length === 0 && searchState.ji.length === 0) setHistoryOpen(true);
-                      onSearchFocus?.();
-                    }}
-                    onBlur={() => setTimeout(() => setHistoryOpen(false), 150)}
-                    placeholder="주소·지번 검색 (예: 용구리 100)"
-                    className="flex-1 text-sm text-gray-900 placeholder:text-gray-400 bg-transparent outline-none"
-                  />
-                  {query && (
-                    <button type="button" onClick={handleClear} className="text-gray-300 hover:text-gray-500 text-xs">✕</button>
-                  )}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0 flex items-center gap-1.5 bg-gray-50 border border-gray-200 focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-100 rounded-lg px-3 py-2">
+                    <span className="text-sm text-gray-400 flex-shrink-0">🔍</span>
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") doSearch(query.trim()); }}
+                      onFocus={() => {
+                        const h = getHistory();
+                        setHistory(h);
+                        if (h.length > 0 && searchState.ri.length === 0 && searchState.ji.length === 0) setHistoryOpen(true);
+                        onSearchFocus?.();
+                      }}
+                      onBlur={() => setTimeout(() => setHistoryOpen(false), 150)}
+                      placeholder="주소·지번 검색"
+                      className="flex-1 min-w-0 text-sm text-gray-900 placeholder:text-gray-400 bg-transparent outline-none"
+                    />
+                    {query && (
+                      <button type="button" onClick={handleClear} className="p-1 text-gray-400 hover:text-gray-600 active:text-gray-800 flex-shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd"/>
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={() => doSearch(query.trim())}
                     disabled={!query.trim() || searchState.loading}
-                    className="text-xs px-3 py-1 rounded-md bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed font-medium"
+                    className="text-xs px-3 py-2.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed font-medium flex-shrink-0"
                   >
                     검색
                   </button>
@@ -384,6 +404,26 @@ export default function Sidebar({
           <LogoutButton />
         </div>
     </aside>
+
+      {/* ── 엣지 탭 핸들: 사이드바 오른쪽에 붙은 열기/닫기 토글 ── */}
+      <button
+        onClick={onToggle}
+        className="self-center flex-shrink-0
+          w-6 h-14 flex items-center justify-center
+          bg-white border border-l-0 border-gray-200
+          rounded-r-lg shadow-md
+          text-gray-500 hover:text-gray-800 hover:bg-gray-50
+          transition-colors"
+        aria-label={isOpen ? "사이드바 닫기" : "사이드바 열기"}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          className={`transition-transform duration-300 ${isOpen ? "" : "rotate-180"}`}
+        >
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+      </button>
+      </div>
     </>
   );
 }
