@@ -1,34 +1,17 @@
 -- ============================================================
--- 007_search_indexes.sql — 주소·지번 검색 성능 인덱스
--- 작성: 2026-04-08
+-- 007_search_indexes.sql — 주소·지번 검색 지원 함수
+-- 작성: 2026-04-08 / 수정: 2026-04-11 (불필요 인덱스 제거)
 --
--- 화면 하단 검색 패널이 사용한다.
---   1) 리 단위 그룹 검색: addr_li / addr_dong ILIKE 키워드
---   2) 지번 정확/근접 검색: addr_li 일치 + addr_jibun 본번 비교
+-- 인덱스 정리 사유:
+--   - trigram GIN 3개: 용량 대비 사용률 0 (seq scan이 충분히 빠름)
+--   - btree addr_li/addr_dong: ILIKE 패턴에 무용
+--   - li_jibun_main: 사용률 0
+--   전국 50만행 기준 seq scan ~200ms 이내로 충분
 -- ============================================================
 
 -- ─────────────────────────────────────────────
--- 1) 행정구역별 인덱스 (리·동 단위 그룹 조회)
--- ─────────────────────────────────────────────
-CREATE INDEX IF NOT EXISTS idx_kepco_addr_li   ON kepco_data (addr_li);
-CREATE INDEX IF NOT EXISTS idx_kepco_addr_dong ON kepco_data (addr_dong);
-
--- ─────────────────────────────────────────────
--- 2) 부분 일치(ILIKE) 가속용 trigram 인덱스
---    pg_trgm extension 필요
--- ─────────────────────────────────────────────
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-
-CREATE INDEX IF NOT EXISTS idx_kepco_addr_li_trgm
-  ON kepco_data USING gin (addr_li gin_trgm_ops);
-CREATE INDEX IF NOT EXISTS idx_kepco_addr_dong_trgm
-  ON kepco_data USING gin (addr_dong gin_trgm_ops);
-CREATE INDEX IF NOT EXISTS idx_kepco_addr_gu_trgm
-  ON kepco_data USING gin (addr_gu gin_trgm_ops);
-
--- ─────────────────────────────────────────────
--- 3) 지번 본번 추출 함수 (불변 함수 → 인덱스 가능)
---    "100" → 100, "100-1" → 100, "산100-2" → 100, "산" → NULL
+-- 지번 본번 추출 함수 (불변 함수 → search_kepco에서 사용)
+--   "100" → 100, "100-1" → 100, "산100-2" → 100, "산" → NULL
 -- ─────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION kepco_jibun_main(jibun TEXT)
 RETURNS INTEGER
@@ -40,14 +23,6 @@ $$;
 
 COMMENT ON FUNCTION kepco_jibun_main IS
   '지번 문자열에서 본번(첫 숫자 시퀀스)만 정수로 추출. 없으면 NULL.';
-
--- ─────────────────────────────────────────────
--- 4) (addr_li, 본번) 함수형 인덱스
---    같은 리 안에서 본번 정렬·근접 검색을 빠르게
--- ─────────────────────────────────────────────
-CREATE INDEX IF NOT EXISTS idx_kepco_li_jibun_main
-  ON kepco_data (addr_li, kepco_jibun_main(addr_jibun))
-  WHERE addr_li IS NOT NULL;
 
 -- ============================================================
 -- RPC: search_kepco

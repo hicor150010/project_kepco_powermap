@@ -177,7 +177,7 @@ class CrawlDbWriter:
             chunk = rows[i : i + BATCH_SIZE]
             try:
                 resp = requests.post(
-                    f"{self._url}/rest/v1/kepco_data",
+                    f"{self._url}/rest/v1/kepco_data?on_conflict=row_hash",
                     json=chunk,
                     headers=self._headers(
                         "resolution=merge-duplicates,return=minimal"

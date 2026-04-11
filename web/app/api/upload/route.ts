@@ -189,8 +189,7 @@ export async function POST(request: NextRequest) {
     const { error, count } = await supabase
       .from("kepco_data")
       .upsert(chunk, {
-        onConflict:
-          "addr_do,addr_si,addr_gu,addr_dong,addr_li,addr_jibun,subst_nm,mtr_no,dl_nm",
+        onConflict: "row_hash",
         count: "exact",
       });
     if (error) {

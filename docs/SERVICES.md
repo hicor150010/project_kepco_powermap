@@ -177,11 +177,22 @@ VWORLD_KEY  # 인증키 (서버 전용)
 | MAU | 50,000 | |
 | **휴면** | 7일 미접속 시 일시정지 | ⚠️ |
 
-### 예상 사용 구조
-- `geocode_cache` — 주소→좌표 영구 캐시 (한 번 저장 후 재사용)
-- `addresses` — 정규화된 주소 마스터
-- `substations`, `distribution_lines` — 시설 마스터
-- `kepco_data` — 용량/상태/STEP 데이터 (정기 upsert)
+### DB 구조
+- `kepco_data` — 원본 데이터 (정기 upsert, 전국 ~75만행 예상)
+- `kepco_map_summary` — 지도 마커용 MV (리 단위 집계)
+- `kepco_data_history` — 용량 변경 이력 (7일 보존)
+- `geocode_cache` — 주소→좌표 영구 캐시
+- `crawl_jobs` — 크롤링 작업 관리
+- `user_roles` — 사용자 권한
+
+### DB 최적화 이력 (2026-04-11)
+- **불필요 인덱스 8개 제거**: trigram GIN 3개, btree 5개 (사용횟수 0)
+- **UPSERT unique 해시화**: 9컬럼 텍스트 unique → `row_hash` (MD5 32자) unique
+  - UPSERT 시 `on_conflict=row_hash` 사용
+  - 트리거(`trg_row_hash`)가 INSERT/UPDATE 시 자동 계산
+- **결과**: DB 110MB → 53MB (52% 감소)
+- **전국 추정**: ~320MB (500MB 한도 이내)
+- **원복 SQL**: `db/migrations/012_row_hash.sql` 상단 주석 참고
 
 ### 생성 시 필요 작업
 1. supabase.com 회원가입
@@ -306,5 +317,6 @@ SECRETS.local.md
 ---
 
 ## 변경 이력
+- 2026-04-11: DB 최적화 — 불필요 인덱스 8개 제거 + UPSERT unique 해시화 (110MB → 53MB)
 - 2026-04-10: Vercel 배포 완료. 계정/프로젝트/도메인 정보 추가. VWorld 서비스URL 와일드카드 확인.
 - 2026-04-08: 초안 작성. 기존 API_KEYS.md를 SERVICES.md(공개) + SECRETS.local.md(비공개)로 분리. VWorld 추가.
