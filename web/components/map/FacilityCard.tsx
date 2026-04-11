@@ -45,15 +45,13 @@ export function FacilityCard({
           {ok ? "여유" : "없음"}
         </span>
       </div>
-      {/* 2행: 기준·접수·계획 + 여유량 — 가로 배치 */}
-      <div className="flex items-center gap-2 mt-1 text-[10px]">
-        <div className="flex gap-2 text-gray-500">
-          <span>기준 <span className="font-mono text-gray-700 tabular-nums">{formatPower(base ?? 0)}</span></span>
-          <span>접수 <span className="font-mono text-gray-700 tabular-nums">{formatPower(received ?? 0)}</span></span>
-          <span>계획 <span className="font-mono text-gray-700 tabular-nums">{formatPower(planned ?? 0)}</span></span>
-        </div>
+      {/* 2행: 기준·접수·계획 + 여유량 */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 text-[10px]">
+        <span className="whitespace-nowrap"><span className="text-gray-500">기준</span> <span className="font-mono text-gray-700 tabular-nums">{formatPower(base ?? 0)}</span></span>
+        <span className="whitespace-nowrap"><span className="text-blue-500">접수</span> <span className="font-mono text-gray-700 tabular-nums">{formatPower(received ?? 0)}</span></span>
+        <span className="whitespace-nowrap"><span className="text-amber-500">계획</span> <span className="font-mono text-gray-700 tabular-nums">{formatPower(planned ?? 0)}</span></span>
         <span
-          className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${
+          className={`whitespace-nowrap ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${
             remainingOk ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-700"
           }`}
         >

@@ -22,11 +22,8 @@ interface Props {
 
 type SortKey =
   | "addr_jibun"
-  | "subst_nm"
   | "cap_subst"
-  | "mtr_no"
   | "cap_mtr"
-  | "dl_nm"
   | "cap_dl";
 type SortDir = "asc" | "desc";
 const PAGE_SIZE = 50;
@@ -243,37 +240,24 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
                 {/* 2단 헤더 — 모바일에서는 시설 이름 컬럼 숨김 */}
                 <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                   <tr className="border-b border-gray-200">
-                    <th className="w-8 px-1 md:px-2 py-2 bg-gray-100" rowSpan={2}></th>
-                    <th className="px-2 md:px-3 py-2 bg-gray-100 cursor-pointer" rowSpan={2} onClick={() => setSort("addr_jibun")}>
+                    <th className="w-8 px-1 md:px-2 py-2 bg-gray-100"></th>
+                    <th className="px-2 md:px-3 py-2 bg-gray-100 cursor-pointer" onClick={() => setSort("addr_jibun")}>
                       <SortHeaderInline label="번지" col="addr_jibun" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
                     </th>
-                    {/* 모바일: 1열씩, 데스크톱: 2열씩 */}
-                    <th className="hidden md:table-cell px-3 py-1.5 text-center text-[10px] font-bold text-blue-800 bg-blue-50 border-l border-blue-200 cursor-pointer" rowSpan={2} onClick={() => setSort("subst_nm")}>
-                      <SortHeaderInline label="변전소" col="subst_nm" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
+                    <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-blue-800 bg-blue-50 border-l border-r border-blue-200 cursor-pointer" onClick={() => setSort("cap_subst")}>
+                      <SortHeaderInline label="변전소" col="cap_subst" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
                     </th>
-                    <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-blue-800 bg-blue-50 border-l md:border-l-0 border-r border-blue-200 cursor-pointer" rowSpan={2} onClick={() => setSort("cap_subst")}>
-                      <SortHeaderInline label="🏭" col="cap_subst" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" />
-                      <span className="md:hidden block text-[9px] font-normal text-blue-600">변전소</span>
+                    <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-emerald-800 bg-emerald-50 border-r border-emerald-200 cursor-pointer" onClick={() => setSort("cap_mtr")}>
+                      <SortHeaderInline label="주변압기" col="cap_mtr" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
                     </th>
-                    <th className="hidden md:table-cell px-3 py-1.5 text-center text-[10px] font-bold text-emerald-800 bg-emerald-50 border-l border-emerald-200 cursor-pointer" rowSpan={2} onClick={() => setSort("mtr_no")}>
-                      <SortHeaderInline label="주변압기" col="mtr_no" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
-                    </th>
-                    <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-emerald-800 bg-emerald-50 border-l md:border-l-0 border-r border-emerald-200 cursor-pointer" rowSpan={2} onClick={() => setSort("cap_mtr")}>
-                      <SortHeaderInline label="⚡" col="cap_mtr" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" />
-                      <span className="md:hidden block text-[9px] font-normal text-emerald-600">주변압기</span>
-                    </th>
-                    <th className="hidden md:table-cell px-3 py-1.5 text-center text-[10px] font-bold text-amber-800 bg-amber-50 border-l border-amber-200 cursor-pointer" rowSpan={2} onClick={() => setSort("dl_nm")}>
-                      <SortHeaderInline label="배전선로" col="dl_nm" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
-                    </th>
-                    <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-amber-800 bg-amber-50 border-l md:border-l-0 border-r border-amber-200 cursor-pointer" rowSpan={2} onClick={() => setSort("cap_dl")}>
-                      <SortHeaderInline label="📡" col="cap_dl" sortKey={sortKey} sortDir={sortDir} onSort={setSort} align="right" />
-                      <span className="md:hidden block text-[9px] font-normal text-amber-600">배전선로</span>
+                    <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-amber-800 bg-amber-50 border-r border-amber-200 cursor-pointer" onClick={() => setSort("cap_dl")}>
+                      <SortHeaderInline label="배전선로" col="cap_dl" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   {pageItems.length === 0 ? (
-                    <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-400">결과 없음</td></tr>
+                    <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">결과 없음</td></tr>
                   ) : (
                     pageItems.map((it, idx) => (
                       <FragmentRow key={it.id} it={it} idx={idx} isOpen={expanded.has(it.id)} onToggle={() => toggleExpand(it.id)} onJibunPin={onJibunPin} />
@@ -352,11 +336,18 @@ function SortHeaderInline({
   );
 }
 
-/** KEPCO 수식 기반 여유 판정 배지 */
-function CapBadge({ ok }: { ok: boolean }) {
-  return ok
-    ? <span className="text-xs font-semibold text-blue-600">여유</span>
-    : <span className="text-xs font-semibold text-red-600">없음</span>;
+/** 시설명 + 여유 배지 통합 셀 */
+function FacilityCell({ name, ok }: { name: string; ok: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-1.5">
+      <span className="text-gray-700 truncate">{name}</span>
+      {ok ? (
+        <span className="flex-shrink-0 text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">여유</span>
+      ) : (
+        <span className="flex-shrink-0 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">없음</span>
+      )}
+    </div>
+  );
 }
 
 /** 한 행 + 펼친 상세 영역 */
@@ -410,22 +401,19 @@ function FragmentRow({
             it.addr_jibun || "-"
           )}
         </td>
-        <td className="hidden md:table-cell px-3 py-2.5 text-gray-700">{it.subst_nm}</td>
-        <td className="px-2 md:px-3 py-2.5 text-right">
-          <CapBadge ok={hasCapacity(it.subst_capa, it.subst_pwr, it.g_subst_capa)} />
+        <td className="px-2 md:px-3 py-2.5">
+          <FacilityCell name={it.subst_nm ?? "-"} ok={hasCapacity(it.subst_capa, it.subst_pwr, it.g_subst_capa)} />
         </td>
-        <td className="hidden md:table-cell px-3 py-2.5 text-gray-700">#{it.mtr_no}</td>
-        <td className="px-2 md:px-3 py-2.5 text-right">
-          <CapBadge ok={hasCapacity(it.mtr_capa, it.mtr_pwr, it.g_mtr_capa)} />
+        <td className="px-2 md:px-3 py-2.5">
+          <FacilityCell name={`#${it.mtr_no ?? "-"}`} ok={hasCapacity(it.mtr_capa, it.mtr_pwr, it.g_mtr_capa)} />
         </td>
-        <td className="hidden md:table-cell px-3 py-2.5 text-gray-700">{it.dl_nm}</td>
-        <td className="px-2 md:px-3 py-2.5 text-right">
-          <CapBadge ok={hasCapacity(it.dl_capa, it.dl_pwr, it.g_dl_capa)} />
+        <td className="px-2 md:px-3 py-2.5">
+          <FacilityCell name={it.dl_nm ?? "-"} ok={hasCapacity(it.dl_capa, it.dl_pwr, it.g_dl_capa)} />
         </td>
       </tr>
       {isOpen && (
         <tr className="border-b-2 border-blue-200">
-          <td colSpan={8} className="px-6 py-4 bg-blue-50/30">
+          <td colSpan={5} className="px-3 md:px-6 py-3 md:py-4 bg-blue-50/30">
             <DetailContent it={it} />
           </td>
         </tr>
@@ -460,7 +448,7 @@ function DetailContent({ it }: { it: KepcoDataRow }) {
         <span className="font-semibold text-gray-900 truncate"><AddrLine parts={fullAddrParts} /></span>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-3">
         <FacilityCard
           title="변전소"
           name={it.subst_nm ?? "-"}
@@ -492,7 +480,7 @@ function DetailContent({ it }: { it: KepcoDataRow }) {
           <div className="text-[11px] font-bold text-gray-700 mb-2">
             📋 접속 예정 단계
           </div>
-          <div className="grid grid-cols-3 gap-2 text-[11px]">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-1.5 md:gap-2 text-[11px]">
             <StepBlock label="접수" cnt={it.step1_cnt} pwr={it.step1_pwr} />
             <StepBlock label="공용망 보강" cnt={it.step2_cnt} pwr={it.step2_pwr} />
             <StepBlock label="접속 공사" cnt={it.step3_cnt} pwr={it.step3_pwr} />
