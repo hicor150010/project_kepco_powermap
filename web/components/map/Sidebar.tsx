@@ -151,15 +151,15 @@ export default function Sidebar({
         className={`
           flex flex-shrink-0
           fixed inset-y-0 left-0 z-50
-          md:relative md:z-auto md:inset-auto
+          md:relative md:z-10 md:inset-auto
           transition-all duration-300 ease-in-out
           ${isOpen ? "translate-x-0 md:ml-0" : "-translate-x-full md:-ml-80"}
           md:translate-x-0
         `}
       >
       <aside
-        className="w-80 max-w-[85vw] bg-white border-r border-gray-200
-          flex flex-col h-full shadow-lg md:shadow-none"
+        className="w-80 max-w-[85vw] bg-white
+          flex flex-col h-full"
       >
         {/* ── 헤더: 타이틀 ── */}
         <div className="px-3 py-2 border-b border-gray-200">
@@ -408,7 +408,7 @@ export default function Sidebar({
       {/* ── 엣지 탭 핸들: 사이드바 오른쪽에 붙은 열기/닫기 토글 ── */}
       <button
         onClick={onToggle}
-        className="self-center flex-shrink-0
+        className="absolute left-full top-1/2 -translate-y-1/2
           w-6 h-14 flex items-center justify-center
           bg-white border border-l-0 border-gray-200
           rounded-r-lg shadow-md
