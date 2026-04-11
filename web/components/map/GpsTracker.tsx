@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { haversineMeters } from "@/lib/geo/distance";
 
 interface Props {
   map: any;
@@ -25,6 +26,12 @@ interface Props {
 }
 
 const MAX_TRAIL_POINTS = 5000;
+
+// ── GPS 필터링 상수 ──
+const FILTER_ACCURACY_THRESHOLD = 50; // m — 이보다 큰 accuracy면 폐기
+const FILTER_MAX_SPEED = 42; // m/s (≈150 km/h) — 초과 시 점프 판정
+const FILTER_MIN_DISTANCE = 3; // m — 이전 위치와 이보다 가까우면 폐기
+const EMA_ALPHA = 0.3; // EMA 스무딩 계수 (0에 가까울수록 부드러움)
 
 export default function GpsTracker({
   map,
@@ -41,6 +48,9 @@ export default function GpsTracker({
     accuracy: number;
     lat: number;
     lng: number;
+    filtered: boolean;
+    filterReason: string | null;
+    filterStats: { total: number; accepted: number; rejectedAccuracy: number; rejectedSpeed: number; rejectedDistance: number };
   } | null>(null);
 
   // 모든 ref를 하나로 — cleanup을 안정적으로 처리
@@ -54,6 +64,11 @@ export default function GpsTracker({
     trailPath: [] as any[],
     firstFix: false,
     autoFollow: true,
+    // ── GPS 필터 상태 ──
+    lastValidPos: null as { lat: number; lng: number; time: number } | null,
+    emaPos: null as { lat: number; lng: number } | null,
+    gpsStartTime: 0,
+    filterStats: { total: 0, accepted: 0, rejectedAccuracy: 0, rejectedSpeed: 0, rejectedDistance: 0 },
   });
   stateRef.current.autoFollow = autoFollow;
 
@@ -95,6 +110,11 @@ export default function GpsTracker({
       if (s.trailLine) { s.trailLine.setMap(null); s.trailLine = null; }
       s.trailPath = [];
       s.firstFix = false;
+      // ── 필터 상태 초기화 ──
+      s.lastValidPos = null;
+      s.emaPos = null;
+      s.gpsStartTime = 0;
+      s.filterStats = { total: 0, accepted: 0, rejectedAccuracy: 0, rejectedSpeed: 0, rejectedDistance: 0 };
     }
 
     if (!active || !map) {
@@ -163,15 +183,62 @@ export default function GpsTracker({
     // 처음에는 숨김
 
     // ── watchPosition 시작 ──
+    s.gpsStartTime = Date.now();
     s.watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const { latitude, longitude, accuracy, heading, speed } = pos.coords;
-        const latlng = new window.kakao.maps.LatLng(latitude, longitude);
+        const now = pos.timestamp;
+        // HMR 방어 — 이전 ref에 filterStats가 없을 수 있음
+        if (!s.filterStats) s.filterStats = { total: 0, accepted: 0, rejectedAccuracy: 0, rejectedSpeed: 0, rejectedDistance: 0 };
+        s.filterStats.total++;
+
+        // ── [필터 1] 정확도 필터 (firstFix 전에는 시간 경과에 따라 완화) ──
+        let accThreshold = FILTER_ACCURACY_THRESHOLD;
+        if (!s.firstFix) {
+          const elapsed = (Date.now() - s.gpsStartTime) / 1000;
+          if (elapsed > 20) accThreshold = Infinity;
+          else if (elapsed > 10) accThreshold = 100;
+        }
+        if (accuracy > accThreshold) {
+          s.filterStats.rejectedAccuracy++;
+          setGpsInfo({ speed, heading, accuracy, lat: latitude, lng: longitude, filtered: true, filterReason: "accuracy", filterStats: { ...s.filterStats } });
+          return;
+        }
+
+        // ── [필터 2] 속도 기반 점프 필터 ──
+        if (s.lastValidPos) {
+          const dist = haversineMeters(s.lastValidPos.lat, s.lastValidPos.lng, latitude, longitude);
+          const dt = (now - s.lastValidPos.time) / 1000;
+          if (dt > 0 && dist / dt > FILTER_MAX_SPEED) {
+            s.filterStats.rejectedSpeed++;
+            setGpsInfo({ speed, heading, accuracy, lat: latitude, lng: longitude, filtered: true, filterReason: "speed", filterStats: { ...s.filterStats } });
+            return;
+          }
+
+          // ── [필터 3] 최소 거리 필터 (정지 떨림 제거) ──
+          if (dist < FILTER_MIN_DISTANCE) {
+            s.filterStats.rejectedDistance++;
+            setGpsInfo({ speed, heading, accuracy, lat: s.emaPos?.lat ?? latitude, lng: s.emaPos?.lng ?? longitude, filtered: true, filterReason: "distance", filterStats: { ...s.filterStats } });
+            return;
+          }
+        }
+
+        // ── 필터 통과 ──
+        s.filterStats.accepted++;
+        s.lastValidPos = { lat: latitude, lng: longitude, time: now };
+
+        // ── [필터 4] EMA 스무딩 ──
+        const smoothed = s.emaPos
+          ? applyEma(s.emaPos, { lat: latitude, lng: longitude }, EMA_ALPHA)
+          : { lat: latitude, lng: longitude };
+        s.emaPos = smoothed;
+
+        const latlng = new window.kakao.maps.LatLng(smoothed.lat, smoothed.lng);
 
         // 파란 점 이동
         if (s.overlay) s.overlay.setPosition(latlng);
 
-        // 정확도 원
+        // 정확도 원 (raw accuracy 사용)
         if (s.accuracyCircle) { s.accuracyCircle.setMap(null); s.accuracyCircle = null; }
         if (accuracy > 50) {
           s.accuracyCircle = new window.kakao.maps.Circle({
@@ -197,7 +264,7 @@ export default function GpsTracker({
           s.headingOverlay.setMap(null);
         }
 
-        // 이동 궤적
+        // 이동 궤적 (필터 통과한 smoothed 좌표만)
         s.trailPath.push(latlng);
         if (s.trailPath.length > MAX_TRAIL_POINTS) {
           s.trailPath = s.trailPath.slice(-MAX_TRAIL_POINTS);
@@ -215,9 +282,9 @@ export default function GpsTracker({
         }
 
         // 정보 패널
-        setGpsInfo({ speed, heading, accuracy, lat: latitude, lng: longitude });
+        setGpsInfo({ speed, heading, accuracy, lat: smoothed.lat, lng: smoothed.lng, filtered: false, filterReason: null, filterStats: { ...s.filterStats } });
 
-        // 첫 위치
+        // 첫 위치 (정확도 필터 통과 후에만 발동)
         if (!s.firstFix) {
           s.firstFix = true;
           map.setCenter(latlng);
@@ -259,6 +326,8 @@ export default function GpsTracker({
 
   const speedKmh = gpsInfo.speed != null ? gpsInfo.speed * 3.6 : null;
   const headingDir = gpsInfo.heading != null ? degToDir(gpsInfo.heading) : null;
+  const fs = gpsInfo.filterStats ?? { total: 0, accepted: 0, rejectedAccuracy: 0, rejectedSpeed: 0, rejectedDistance: 0 };
+  const acceptRate = fs.total > 0 ? (fs.accepted / fs.total) * 100 : 0;
 
   return (
     <div className="absolute bottom-16 md:bottom-4 right-3 md:right-4 z-20 bg-white/95 backdrop-blur rounded-lg shadow-lg border border-gray-200 px-3 py-2.5 text-xs space-y-1.5 min-w-[160px] max-w-[calc(100vw-24px)] kepco-slide-up">
@@ -268,6 +337,9 @@ export default function GpsTracker({
           <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
         </span>
         GPS 추적 중
+        {gpsInfo.filtered && (
+          <span className="text-[9px] font-normal text-orange-500 ml-1">(필터링됨)</span>
+        )}
       </div>
 
       <div className="flex items-center justify-between">
@@ -304,6 +376,19 @@ export default function GpsTracker({
         </span>
       </div>
 
+      <div className="flex items-center justify-between">
+        <span className="text-gray-500">채택률</span>
+        <span className={`font-bold tabular-nums ${
+          acceptRate >= 80 ? "text-green-600" :
+          acceptRate >= 50 ? "text-yellow-600" : "text-red-600"
+        }`}>
+          {fs.total > 0 ? `${acceptRate.toFixed(0)}%` : "-"}
+          <span className="text-gray-400 font-normal ml-1">
+            ({fs.accepted}/{fs.total})
+          </span>
+        </span>
+      </div>
+
       <div className="pt-1 border-t border-gray-100">
         <div className="flex items-center justify-between text-gray-400">
           <span>위도</span>
@@ -314,6 +399,15 @@ export default function GpsTracker({
           <span className="tabular-nums">{gpsInfo.lng.toFixed(6)}</span>
         </div>
       </div>
+
+      <div className="pt-1 border-t border-gray-100 text-[10px] text-gray-400">
+        <div className="flex justify-between">
+          <span>필터</span>
+          <span className="tabular-nums">
+            정확도:{fs.rejectedAccuracy} 속도:{fs.rejectedSpeed} 거리:{fs.rejectedDistance}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -321,4 +415,16 @@ export default function GpsTracker({
 function degToDir(deg: number): string {
   const dirs = ["북", "북동", "동", "남동", "남", "남서", "서", "북서"];
   return dirs[Math.round(deg / 45) % 8];
+}
+
+/** EMA(지수이동평균) 스무딩 */
+function applyEma(
+  prev: { lat: number; lng: number },
+  curr: { lat: number; lng: number },
+  alpha: number,
+): { lat: number; lng: number } {
+  return {
+    lat: prev.lat + alpha * (curr.lat - prev.lat),
+    lng: prev.lng + alpha * (curr.lng - prev.lng),
+  };
 }
