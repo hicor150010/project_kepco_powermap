@@ -203,7 +203,7 @@ export default function GpsTracker({
         }
         if (accuracy > 1000 && !s.lowAccuracyWarned) {
           s.lowAccuracyWarned = true;
-          onErrorRef.current?.("위치 정확도가 매우 낮아요. 브라우저 주소창 왼쪽 아이콘 → 위치 → '정확한 위치 사용'을 켜 주세요.");
+          onErrorRef.current?.(getLowAccuracyGuide());
         }
         if (accuracy > accThreshold) {
           s.filterStats.rejectedAccuracy++;
@@ -421,6 +421,21 @@ export default function GpsTracker({
 function degToDir(deg: number): string {
   const dirs = ["북", "북동", "동", "남동", "남", "남서", "서", "북서"];
   return dirs[Math.round(deg / 45) % 8];
+}
+
+/** 브라우저별 '정확한 위치' 활성화 안내 메시지 */
+function getLowAccuracyGuide(): string {
+  const ua = navigator.userAgent;
+  if (/iPad|iPhone|iPod/.test(ua)) {
+    return "위치 정확도가 매우 낮아요. 설정 → 개인정보 보호 및 보안 → 위치 서비스 → Safari 웹사이트 → '정확한 위치' 켜기";
+  }
+  if (/SamsungBrowser/i.test(ua)) {
+    return "위치 정확도가 매우 낮아요. 삼성 인터넷 메뉴(≡) → 설정 → 사이트 및 다운로드 → 위치 → 이 사이트 권한 삭제 후 다시 허용";
+  }
+  if (/Chrome/i.test(ua)) {
+    return "위치 정확도가 매우 낮아요. 주소창 왼쪽 아이콘 → 권한 → 위치 → '정확한 위치 사용' 켜기";
+  }
+  return "위치 정확도가 매우 낮아요. 브라우저 설정에서 이 사이트의 위치 권한을 '정확한 위치'로 변경해 주세요.";
 }
 
 /** EMA(지수이동평균) 스무딩 */
