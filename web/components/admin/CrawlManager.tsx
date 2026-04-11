@@ -832,11 +832,11 @@ export default function CrawlManager() {
                             </div>
                             <div className="text-xs text-purple-600 mt-0.5">좌표변환</div>
                           </div>
-                          <div className={`rounded-lg px-3 py-3 text-center ${errors > 0 ? "bg-red-50" : "bg-gray-50"}`}>
-                            <div className={`text-xl font-bold ${errors > 0 ? "text-red-700" : "text-gray-400"}`}>
+                          <div className={`rounded-lg px-3 py-3 text-center ${errors > 0 ? "bg-orange-50" : "bg-gray-50"}`}>
+                            <div className={`text-xl font-bold ${errors > 0 ? "text-orange-700" : "text-gray-400"}`}>
                               {errors}
                             </div>
-                            <div className={`text-xs mt-0.5 ${errors > 0 ? "text-red-600" : "text-gray-400"}`}>오류</div>
+                            <div className={`text-xs mt-0.5 ${errors > 0 ? "text-orange-600" : "text-gray-400"}`}>미수집 지번</div>
                           </div>
                           <div className="bg-blue-50 rounded-lg px-3 py-3 text-center">
                             <div className="text-xl font-bold text-blue-700">
@@ -846,15 +846,15 @@ export default function CrawlManager() {
                           </div>
                         </div>
 
-                        {/* 최근 오류 내역 */}
+                        {/* 미수집 지번 내역 */}
                         {job.progress.recent_errors && job.progress.recent_errors.length > 0 && (
-                          <div className="bg-red-50 rounded-lg px-4 py-3 border border-red-100">
-                            <div className="text-xs font-bold text-red-600 mb-1.5">최근 오류 ({job.progress.recent_errors.length}건)</div>
+                          <div className="bg-orange-50 rounded-lg px-4 py-3 border border-orange-100">
+                            <div className="text-xs font-bold text-orange-600 mb-1.5">미수집 지번 ({job.progress.recent_errors.length}건)</div>
                             <div className="space-y-1">
                               {job.progress.recent_errors.slice(-5).map((err, i) => (
-                                <div key={i} className="text-[11px] text-red-700 flex gap-2">
-                                  <span className="text-red-400 flex-shrink-0">{err.addr}</span>
-                                  <span className="truncate">{err.error}</span>
+                                <div key={i} className="text-[11px] text-orange-700 flex gap-2">
+                                  <span className="text-orange-500 flex-shrink-0">{err.addr}</span>
+                                  <span className="truncate text-gray-500">{err.error}</span>
                                 </div>
                               ))}
                             </div>
@@ -864,29 +864,48 @@ export default function CrawlManager() {
                     );
                   })()}
 
-                  {/* 현재 위치 */}
-                  <div className="bg-gray-50 rounded-lg px-4 py-3">
-                    {job.progress.addr_parts ? (
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                        {[
-                          { label: "시/도", value: job.progress.addr_parts.sido },
-                          { label: "시/군", value: job.progress.addr_parts.si },
-                          { label: "구", value: job.progress.addr_parts.gu },
-                          { label: "동/읍/면", value: job.progress.addr_parts.dong },
-                          { label: "리", value: job.progress.addr_parts.li },
-                          { label: "번지", value: job.progress.addr_parts.jibun },
-                        ].filter(item => item.value).map(item => (
-                          <div key={item.label}>
-                            <span className="text-gray-400">{item.label}</span>{" "}
-                            <span className="font-semibold text-gray-800">{item.value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : job.progress.current_address ? (
-                      <div className="text-sm text-gray-700">
-                        현재: <span className="font-medium">{job.progress.current_address}</span>
-                      </div>
-                    ) : null}
+                  {/* 설정 vs 추출 중 — 테이블 비교 */}
+                  <div className="rounded-lg border border-gray-200 overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-gray-100 border-b border-gray-200">
+                          <th className="px-3 py-1.5 text-left text-[10px] font-bold text-gray-500 w-16"></th>
+                          <th className="px-2 py-1.5 text-center text-[10px] font-bold text-gray-500">시/도</th>
+                          <th className="px-2 py-1.5 text-center text-[10px] font-bold text-gray-500">시</th>
+                          <th className="px-2 py-1.5 text-center text-[10px] font-bold text-gray-500">구/군</th>
+                          <th className="px-2 py-1.5 text-center text-[10px] font-bold text-gray-500">동/면</th>
+                          <th className="px-2 py-1.5 text-center text-[10px] font-bold text-gray-500">리</th>
+                          <th className="px-2 py-1.5 text-center text-[10px] font-bold text-gray-500">번지</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="border-b border-gray-200 bg-gray-50/50">
+                          <td className="px-3 py-2"><span className="inline-block text-[10px] font-bold text-gray-400 bg-gray-200 rounded px-1.5 py-0.5">설정</span></td>
+                          <td className="px-2 py-2 text-center font-medium text-gray-600">{job.sido || "-"}</td>
+                          <td className="px-2 py-2 text-center font-medium text-gray-600">{job.si || "전체"}</td>
+                          <td className="px-2 py-2 text-center font-medium text-gray-600">{job.gu || "전체"}</td>
+                          <td className="px-2 py-2 text-center font-medium text-gray-600">{job.dong || "전체"}</td>
+                          <td className="px-2 py-2 text-center text-gray-400">-</td>
+                          <td className="px-2 py-2 text-center text-gray-400">-</td>
+                        </tr>
+                        {job.progress.addr_parts ? (
+                          <tr className="bg-blue-50 border-l-2 border-l-blue-400">
+                            <td className="px-3 py-2 whitespace-nowrap"><span className="inline-block text-[10px] font-bold text-blue-600 bg-blue-100 rounded px-1.5 py-0.5">추출 중</span></td>
+                            <td className="px-2 py-2 text-center font-semibold text-gray-800">{job.progress.addr_parts.sido || "-"}</td>
+                            <td className="px-2 py-2 text-center font-semibold text-gray-800">{job.progress.addr_parts.si || "-"}</td>
+                            <td className="px-2 py-2 text-center font-semibold text-gray-800">{job.progress.addr_parts.gu || "-"}</td>
+                            <td className="px-2 py-2 text-center font-semibold text-gray-800">{job.progress.addr_parts.dong || "-"}</td>
+                            <td className="px-2 py-2 text-center font-semibold text-gray-800">{job.progress.addr_parts.li || "-"}</td>
+                            <td className="px-2 py-2 text-center font-bold text-blue-700">{job.progress.addr_parts.jibun || "-"}</td>
+                          </tr>
+                        ) : job.progress.current_address ? (
+                          <tr className="bg-blue-50 border-l-2 border-l-blue-400">
+                            <td className="px-3 py-2 whitespace-nowrap"><span className="inline-block text-[10px] font-bold text-blue-600 bg-blue-100 rounded px-1.5 py-0.5">추출 중</span></td>
+                            <td colSpan={6} className="px-2 py-2 font-medium text-gray-800">{job.progress.current_address}</td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
                   </div>
 
                   {/* 설정 + 동작 안내 */}
@@ -1015,9 +1034,9 @@ export default function CrawlManager() {
                                         <div className="text-lg font-bold text-purple-700">{(job.progress.geocoded ?? 0).toLocaleString()}</div>
                                         <div className="text-[10px] text-purple-600">좌표</div>
                                       </div>
-                                      <div className={`rounded-lg px-3 py-2 text-center ${hErrors > 0 ? "bg-red-50" : "bg-gray-100"}`}>
-                                        <div className={`text-lg font-bold ${hErrors > 0 ? "text-red-700" : "text-gray-400"}`}>{hErrors}</div>
-                                        <div className={`text-[10px] ${hErrors > 0 ? "text-red-600" : "text-gray-400"}`}>오류</div>
+                                      <div className={`rounded-lg px-3 py-2 text-center ${hErrors > 0 ? "bg-orange-50" : "bg-gray-100"}`}>
+                                        <div className={`text-lg font-bold ${hErrors > 0 ? "text-orange-700" : "text-gray-400"}`}>{hErrors}</div>
+                                        <div className={`text-[10px] ${hErrors > 0 ? "text-orange-600" : "text-gray-400"}`}>미수집</div>
                                       </div>
                                       <div className="bg-blue-50 rounded-lg px-3 py-2 text-center">
                                         <div className="text-lg font-bold text-blue-700">{hProcessed.toLocaleString()}</div>
@@ -1069,15 +1088,15 @@ export default function CrawlManager() {
                                 </div>
                               )}
 
-                              {/* 최근 오류 내역 */}
+                              {/* 미수집 지번 내역 */}
                               {job.progress.recent_errors && job.progress.recent_errors.length > 0 && (
                                 <div>
-                                  <h4 className="text-xs font-bold text-red-500 uppercase tracking-wider mb-1">최근 오류 ({job.progress.recent_errors.length}건)</h4>
-                                  <div className="bg-red-50 rounded px-3 py-2 border border-red-200 space-y-1">
+                                  <h4 className="text-xs font-bold text-orange-500 uppercase tracking-wider mb-1">미수집 지번 ({job.progress.recent_errors.length}건)</h4>
+                                  <div className="bg-orange-50 rounded px-3 py-2 border border-orange-200 space-y-1">
                                     {job.progress.recent_errors.map((err, i) => (
-                                      <div key={i} className="text-[11px] text-red-700 flex gap-2">
-                                        <span className="text-red-400 flex-shrink-0 font-medium">{err.addr}</span>
-                                        <span className="truncate">{err.error}</span>
+                                      <div key={i} className="text-[11px] text-orange-700 flex gap-2">
+                                        <span className="text-orange-500 flex-shrink-0 font-medium">{err.addr}</span>
+                                        <span className="truncate text-gray-500">{err.error}</span>
                                       </div>
                                     ))}
                                   </div>
@@ -1162,7 +1181,7 @@ export default function CrawlManager() {
                                   </table>
                                   {cpStats && (
                                     <div className="mt-1.5 text-[10px] text-gray-400">
-                                      체크포인트 시점: 조회 {cpStats.processed?.toLocaleString() ?? 0} {"/"}  수집 {cpStats.found?.toLocaleString() ?? 0} {"/"} 오류 {cpStats.errors ?? 0}
+                                      체크포인트 시점: 조회 {cpStats.processed?.toLocaleString() ?? 0} {"/"}  수집 {cpStats.found?.toLocaleString() ?? 0} {"/"} 미수집 {cpStats.errors ?? 0}
                                     </div>
                                   )}
                                 </div>

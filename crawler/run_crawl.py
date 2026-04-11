@@ -40,8 +40,8 @@ FLUSH_SIZE = 100           # DB flush 간격 (건)
 
 # 모드별 타임아웃
 MODE_TIMEOUT = {
-    "single": 5 * 3600 + 50 * 60,     # 5시간 50분
-    "recurring": 2 * 3600 + 50 * 60,   # 2시간 50분
+    "single": 5 * 3600,               # 5시간
+    "recurring": 5 * 3600,             # 5시간
 }
 
 MAX_AUTO_RESTARTS = 50  # 반복 모드는 이 제한 내에서 체이닝

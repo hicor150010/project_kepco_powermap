@@ -119,6 +119,8 @@ class KepcoСrawler:
         self.progress = CrawlProgress()
         self.results: list[CrawlResult] = []
         self._stop_event = threading.Event()
+        # 실패 주소 보관 — 리 단위 끝나면 일괄 재시도
+        self._failed_addresses: list[tuple] = []  # (addr_do, si, gu, lidong, li, jibun, display_addr)
 
     def stop(self):
         """크롤링 중지 요청"""
@@ -414,13 +416,54 @@ class KepcoСrawler:
                 addr_do, addr_si, addr_gu, addr_lidong, addr_li, jibun
             )
 
-    def _search_jibun(self, addr_do: str, addr_si: str, addr_gu: str,
-                      addr_lidong: str, addr_li: str, addr_jibun: str):
-        """개별 번지 검색"""
+        # 리 단위 완료 후 — 실패 주소 일괄 재시도
+        self._retry_failed(li_display)
+
+    def _retry_failed(self, li_display: str):
+        """실패 목록 일괄 재시도 — 성공하면 제거, 최종 실패만 에러 카운트"""
+        if not self._failed_addresses:
+            return
         if self.is_stopped():
+            # 중단 시 남은 실패도 최종 에러로 확정
+            for item in self._failed_addresses:
+                self.progress.errors += 1
+                self.progress.add_error(item[6], "중단으로 재시도 불가")
+            self._failed_addresses.clear()
+            self._update_progress()
             return
 
-        # 표시용 주소 (전체 표시)
+        pending = list(self._failed_addresses)
+        self._failed_addresses.clear()
+        self._log(f"      [재시도] {li_display} — 실패 {len(pending)}건 재시도 시작")
+
+        still_failed: list[tuple] = []
+        for addr_do, addr_si, addr_gu, addr_lidong, addr_li, addr_jibun, display_addr in pending:
+            if self.is_stopped():
+                still_failed.append((addr_do, addr_si, addr_gu, addr_lidong, addr_li, addr_jibun, display_addr))
+                continue
+            try:
+                # 재시도 시 _search_jibun_once 사용 (실패해도 _failed에 안 쌓임)
+                self._search_jibun_once(addr_do, addr_si, addr_gu, addr_lidong, addr_li, addr_jibun)
+                self._log(f"          [재시도 성공] {display_addr}")
+            except Exception as e:
+                still_failed.append((addr_do, addr_si, addr_gu, addr_lidong, addr_li, addr_jibun, display_addr))
+                self._log(f"          [최종 실패] {display_addr}: {e}")
+
+        # 최종 실패만 에러 카운트 + 로그
+        for item in still_failed:
+            self.progress.errors += 1
+            self.progress.add_error(item[6], "재시도 후에도 실패")
+
+        if still_failed:
+            self._log(f"      [재시도 결과] 성공 {len(pending) - len(still_failed)}건, 최종 실패 {len(still_failed)}건")
+        else:
+            self._log(f"      [재시도 결과] 전체 {len(pending)}건 성공")
+        self._update_progress()
+
+    def _do_search(self, addr_do: str, addr_si: str, addr_gu: str,
+                   addr_lidong: str, addr_li: str, addr_jibun: str):
+        """개별 번지 검색 (핵심 로직) — 성공 시 결과 저장, 실패 시 예외 전파"""
+        # 표시용 주소
         parts = [addr_do]
         for v in [addr_si, addr_gu, addr_lidong, addr_li, addr_jibun]:
             if v:
@@ -429,93 +472,99 @@ class KepcoСrawler:
         self.progress.current_address = display_addr
         self._update_progress()
 
-        # 엑셀 저장용 (웹과 동일하게 -기타지역 그대로 표기)
+        # 엑셀 저장용
         excel_si = addr_si
         excel_gu = addr_gu
         excel_li = addr_li
 
-        # search_capacity: -기타지역 처리
-        # KEPCO API가 지역마다 -기타지역 처리가 다름:
-        #   광주: si=-기타지역 유지해야 함
-        #   천안: gu=-기타지역 빈값이어야 함
-        # → 1차: addr_li만 빈값, 나머지 그대로
-        # → 0건이면 2차: 모든 -기타지역을 빈값으로 재시도
         def _try_search(si, gu, lidong, li):
             return self.client.search_capacity(
                 addr_do=addr_do, addr_si=si, addr_gu=gu,
                 addr_lidong=lidong, addr_li=li, addr_jibun=addr_jibun,
             )
 
+        # 1차: addr_li만 빈값
+        results = _try_search(
+            addr_si, addr_gu, addr_lidong,
+            "" if addr_li == SKIP_VALUE else addr_li,
+        )
+        # 0건이면 2차: 모든 -기타지역을 빈값으로
+        if not results:
+            alt_si = "" if addr_si == SKIP_VALUE else addr_si
+            alt_gu = "" if addr_gu == SKIP_VALUE else addr_gu
+            alt_li = "" if addr_li == SKIP_VALUE else addr_li
+            retry = _try_search(alt_si, alt_gu, addr_lidong, alt_li)
+            if retry:
+                results = retry
+
+        if results:
+            for item in results:
+                result = CrawlResult(
+                    addr_do=addr_do,
+                    addr_si=excel_si,
+                    addr_gu=excel_gu,
+                    addr_lidong=addr_lidong,
+                    addr_li=excel_li,
+                    addr_jibun=addr_jibun,
+                    subst_nm=item.get("SUBST_NM", ""),
+                    mtr_no=str(item.get("MTR_NO", "")),
+                    dl_nm=item.get("DL_NM", ""),
+                    subst_capa=str(item.get("SUBST_CAPA", "")),
+                    subst_pwr=str(item.get("SUBST_PWR", "")),
+                    g_subst_capa=str(item.get("G_SUBST_CAPA", "")),
+                    mtr_capa=str(item.get("MTR_CAPA", "")),
+                    mtr_pwr=str(item.get("MTR_PWR", "")),
+                    g_mtr_capa=str(item.get("G_MTR_CAPA", "")),
+                    dl_capa=str(item.get("DL_CAPA", "")),
+                    dl_pwr=str(item.get("DL_PWR", "")),
+                    g_dl_capa=str(item.get("G_DL_CAPA", "")),
+                    crawled_at=datetime.now(timezone.utc).isoformat(),
+                )
+
+                # STEP 01/02/03 접속예정 건수/용량
+                if self.fetch_step_data:
+                    subst_cd = str(item.get("SUBST_CD", ""))
+                    dl_cd = str(item.get("DL_CD", ""))
+                    if subst_cd and dl_cd:
+                        try:
+                            detail = self.client.get_detail(subst_cd, dl_cd)
+                            for step in detail.get("dlt_resultDl", []):
+                                state = step.get("STATE", "")
+                                cnt = str(step.get("CNT", 0))
+                                pwr = str(step.get("PWR", 0))
+                                if state == "01":
+                                    result.step1_cnt = cnt
+                                    result.step1_pwr = pwr
+                                elif state == "02":
+                                    result.step2_cnt = cnt
+                                    result.step2_pwr = pwr
+                                elif state == "03":
+                                    result.step3_cnt = cnt
+                                    result.step3_pwr = pwr
+                        except Exception as e:
+                            self._log(f"          [오류] STEP 데이터 조회 실패: {e}")
+
+                self._add_result(result)
+
+    def _search_jibun(self, addr_do: str, addr_si: str, addr_gu: str,
+                      addr_lidong: str, addr_li: str, addr_jibun: str):
+        """개별 번지 검색 — 실패 시 _failed_addresses에 보관 (리 끝나면 재시도)"""
+        if self.is_stopped():
+            return
         try:
-            # 1차: addr_li만 빈값
-            results = _try_search(
-                addr_si, addr_gu, addr_lidong,
-                "" if addr_li == SKIP_VALUE else addr_li,
-            )
-            # 0건이면 2차: 모든 -기타지역을 빈값으로
-            if not results:
-                alt_si = "" if addr_si == SKIP_VALUE else addr_si
-                alt_gu = "" if addr_gu == SKIP_VALUE else addr_gu
-                alt_li = "" if addr_li == SKIP_VALUE else addr_li
-                retry = _try_search(alt_si, alt_gu, addr_lidong, alt_li)
-                if retry:
-                    results = retry
-
+            self._do_search(addr_do, addr_si, addr_gu, addr_lidong, addr_li, addr_jibun)
             self.progress.processed += 1
-
-            if results:
-                for item in results:
-                    result = CrawlResult(
-                        addr_do=addr_do,
-                        addr_si=excel_si,
-                        addr_gu=excel_gu,
-                        addr_lidong=addr_lidong,
-                        addr_li=excel_li,
-                        addr_jibun=addr_jibun,
-                        subst_nm=item.get("SUBST_NM", ""),
-                        mtr_no=str(item.get("MTR_NO", "")),
-                        dl_nm=item.get("DL_NM", ""),
-                        subst_capa=str(item.get("SUBST_CAPA", "")),
-                        subst_pwr=str(item.get("SUBST_PWR", "")),
-                        g_subst_capa=str(item.get("G_SUBST_CAPA", "")),
-                        mtr_capa=str(item.get("MTR_CAPA", "")),
-                        mtr_pwr=str(item.get("MTR_PWR", "")),
-                        g_mtr_capa=str(item.get("G_MTR_CAPA", "")),
-                        dl_capa=str(item.get("DL_CAPA", "")),
-                        dl_pwr=str(item.get("DL_PWR", "")),
-                        g_dl_capa=str(item.get("G_DL_CAPA", "")),
-                        crawled_at=datetime.now(timezone.utc).isoformat(),
-                    )
-
-                    # STEP 01/02/03 접속예정 건수/용량
-                    if self.fetch_step_data:
-                        subst_cd = str(item.get("SUBST_CD", ""))
-                        dl_cd = str(item.get("DL_CD", ""))
-                        if subst_cd and dl_cd:
-                            try:
-                                detail = self.client.get_detail(subst_cd, dl_cd)
-                                for step in detail.get("dlt_resultDl", []):
-                                    state = step.get("STATE", "")
-                                    cnt = str(step.get("CNT", 0))
-                                    pwr = str(step.get("PWR", 0))
-                                    if state == "01":
-                                        result.step1_cnt = cnt
-                                        result.step1_pwr = pwr
-                                    elif state == "02":
-                                        result.step2_cnt = cnt
-                                        result.step2_pwr = pwr
-                                    elif state == "03":
-                                        result.step3_cnt = cnt
-                                        result.step3_pwr = pwr
-                            except Exception as e:
-                                self._log(f"          [오류] STEP 데이터 조회 실패: {e}")
-
-                    self._add_result(result)
             self._update_progress()
-
         except Exception as e:
-            self.progress.errors += 1
+            display_addr = " ".join(p for p in [addr_do, addr_si, addr_gu, addr_lidong, addr_li, addr_jibun] if p)
             self.progress.processed += 1
-            self.progress.add_error(display_addr, e)
-            self._log(f"          [오류] {display_addr}: {e}")
+            self._failed_addresses.append(
+                (addr_do, addr_si, addr_gu, addr_lidong, addr_li, addr_jibun, display_addr)
+            )
+            self._log(f"          [일시오류] {display_addr}: {e} → 리 완료 후 재시도 예정")
             self._update_progress()
+
+    def _search_jibun_once(self, addr_do: str, addr_si: str, addr_gu: str,
+                           addr_lidong: str, addr_li: str, addr_jibun: str):
+        """재시도용 검색 — 실패 시 예외를 그대로 전파 (processed 중복 카운트 안 함)"""
+        self._do_search(addr_do, addr_si, addr_gu, addr_lidong, addr_li, addr_jibun)
