@@ -9,14 +9,12 @@ import LocationSummaryCard from "./LocationSummaryCard";
 import LocationDetailModal from "./LocationDetailModal";
 import MapToolbar from "./MapToolbar";
 import DistanceTool from "./DistanceTool";
-import SearchPanel from "./SearchPanel";
-import MapLegend from "./MapLegend";
+import type { SearchPick } from "./SearchResultList";
 import Toast from "./Toast";
 import TopRemainingList from "./TopRemainingList";
 import ComparePanel, { getChangeDirection, type ChangeDirection } from "./ComparePanel";
 import GpsTracker from "./GpsTracker";
 import type { CompareRow } from "@/app/api/compare/route";
-import type { SearchPick } from "./SearchResultList";
 import {
   emptyFilters,
   type ColumnFilters,
@@ -325,21 +323,20 @@ export default function MapClient({ isAdmin, email }: Props) {
       const targetAddr = pick.row.geocode_address;
       const lat = pick.row.lat;
       const lng = pick.row.lng;
-      if (lat == null || lng == null) return;
 
       // GPS 추적 중이면 autoFollow 해제 — 검색 이동을 GPS가 덮어쓰지 않도록
       if (gpsActive && gpsAutoFollow) {
         setGpsAutoFollow(false);
       }
 
-      // 지도 이동 — setCenter → setLevel 순서, 애니메이션 없이 즉시 이동
-      // (setLevel animate: true와 setCenter를 동시 호출하면 줌 애니메이션이
-      //  center를 재조정하면서 위치가 어긋날 수 있음)
-      const pos = new window.kakao.maps.LatLng(lat, lng);
-      mapInstance.setCenter(pos);
-      mapInstance.setLevel(5);
+      // 지도 이동 — 좌표가 있을 때만
+      if (lat != null && lng != null) {
+        const pos = new window.kakao.maps.LatLng(lat, lng);
+        mapInstance.setCenter(pos);
+        mapInstance.setLevel(5);
+      }
 
-      // 데이터 fetch + 시각 피드백
+      // 데이터 fetch + 시각 피드백 (좌표 없어도 상세 카드는 열어줌)
       if (targetAddr) {
         openLocationDetail(targetAddr);
       }
@@ -683,6 +680,13 @@ export default function MapClient({ isAdmin, email }: Props) {
         onFiltersChange={setFilters}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen((v) => !v)}
+        onSearchPick={handleSearchPick}
+        onJibunPin={handleJibunPin}
+        onSearchFocus={() => {
+          setSelectedAddr(null);
+          setSelectedRows(null);
+          clearJibunPin();
+        }}
       />
 
       <main className="flex-1 relative min-w-0">
@@ -721,13 +725,13 @@ export default function MapClient({ isAdmin, email }: Props) {
           compareRows={compareRows}
         />
 
-        {/* 좌상단: 사이드바 열기 버튼 + 범례 */}
-        <div className="absolute top-3 left-3 z-10 flex flex-col gap-2">
-          {!sidebarOpen && (
+        {/* 좌상단: 사이드바 열기 버튼 */}
+        {!sidebarOpen && (
+          <div className="absolute top-3 left-3 z-10">
             <button
               onClick={() => setSidebarOpen(true)}
               className="bg-white rounded-lg shadow-md border border-gray-200
-                         p-2.5 hover:bg-gray-50 transition-colors group self-start"
+                         p-2.5 hover:bg-gray-50 transition-colors group"
               aria-label="사이드바 열기"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600 group-hover:text-gray-900">
@@ -736,11 +740,8 @@ export default function MapClient({ isAdmin, email }: Props) {
                 <line x1="3" y1="18" x2="21" y2="18" />
               </svg>
             </button>
-          )}
-          <div className="hidden md:block">
-            <MapLegend />
           </div>
-        </div>
+        )}
 
         {/* 우상단 도구 패널 (거리재기 / 유망 부지 TOP) */}
         <MapToolbar
@@ -825,17 +826,6 @@ export default function MapClient({ isAdmin, email }: Props) {
           autoFollow={gpsAutoFollow}
           onAutoFollowChange={setGpsAutoFollow}
           onError={(msg) => setError(msg)}
-        />
-
-        {/* 화면 하단 검색 패널 (주소·지번 → 업로드된 데이터 검색) */}
-        <SearchPanel
-          onPick={handleSearchPick}
-          onJibunPin={handleJibunPin}
-          onFocus={() => {
-            setSelectedAddr(null);
-            setSelectedRows(null);
-            clearJibunPin();
-          }}
         />
 
         {/* 필터 자동 해제 시 토스트 (되돌리기 가능) */}

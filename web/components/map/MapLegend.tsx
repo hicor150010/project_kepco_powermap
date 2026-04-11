@@ -16,18 +16,18 @@ export default function MapLegend() {
 
   return (
     <div>
-      <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
+      <div className="overflow-hidden">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+          className="w-full flex items-center justify-between gap-2 px-1 py-1 text-[11px] text-gray-500 hover:text-gray-700"
         >
           <span>🎨 마커 보는 법</span>
           <span className="text-gray-400 text-[10px]">{open ? "▲" : "▼"}</span>
         </button>
 
         {open && (
-          <div className="px-3 pb-2.5 pt-2 border-t border-gray-100 flex items-start gap-3">
+          <div className="px-1 pb-2 pt-1.5 border-t border-gray-100 flex items-start gap-3">
             {/* 예시 마커 + 줄 라벨 */}
             <div className="flex items-center gap-1.5">
               <ExampleMarker />

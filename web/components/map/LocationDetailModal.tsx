@@ -400,10 +400,11 @@ function FragmentRow({
                 e.stopPropagation();
                 onJibunPin(it);
               }}
-              className="text-blue-600 hover:text-blue-800 hover:underline"
+              className="inline-flex items-center gap-1 px-2 py-1 -mx-1 rounded-md text-blue-600 hover:text-blue-800 hover:bg-blue-50 active:bg-blue-100 transition-colors"
               title="지도에서 이 지번 위치 보기"
             >
-              📍 {it.addr_jibun}
+              <span className="text-[10px]">📍</span>
+              <span>{it.addr_jibun}</span>
             </button>
           ) : (
             it.addr_jibun || "-"

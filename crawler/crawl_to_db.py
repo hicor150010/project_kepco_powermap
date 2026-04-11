@@ -222,7 +222,18 @@ class CrawlDbWriter:
                 if coords:
                     self._save_cache(address, coords[0], coords[1])
 
-            # 3) 좌표 있으면 kepco_data 업데이트
+            # 3) 여전히 없으면 fallback — 마지막 토큰(리) 제거 후 재시도
+            #    "동+리" 조합이 카카오 주소 체계에 없는 경우 대비
+            if not coords:
+                parts = address.split()
+                if len(parts) >= 3:
+                    fallback_addr = " ".join(parts[:-1])
+                    coords = _geocode_kakao(fallback_addr)
+                    if coords:
+                        self._save_cache(address, coords[0], coords[1])
+                        logger.info(f"지오코딩 fallback 성공: {address} → {fallback_addr}")
+
+            # 4) 좌표 있으면 kepco_data 업데이트
             if coords:
                 self._update_coords(address, coords[0], coords[1])
                 self._stats["geocoded"] += 1

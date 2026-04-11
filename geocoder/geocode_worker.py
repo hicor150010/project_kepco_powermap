@@ -158,13 +158,24 @@ def geocode_vworld(address: str) -> tuple[float, float] | None:
 
 
 def geocode(address: str) -> tuple[float, float] | None:
-    """카카오 메인 → VWorld fallback"""
+    """카카오 메인 → VWorld fallback → 리 제거 fallback"""
     result = geocode_kakao(address)
     if result:
         return result
     result = geocode_vworld(address)
     if result:
         logger.info(f"VWorld fallback 성공: {address}")
+        return result
+
+    # "동+리" 조합이 카카오/VWorld에 없는 경우 — 리 제거 후 재시도
+    parts = address.split()
+    if len(parts) >= 3:
+        fallback_addr = " ".join(parts[:-1])
+        result = geocode_kakao(fallback_addr)
+        if not result:
+            result = geocode_vworld(fallback_addr)
+        if result:
+            logger.info(f"리 제거 fallback 성공: {address} → {fallback_addr}")
     return result
 
 

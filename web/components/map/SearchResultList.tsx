@@ -98,6 +98,7 @@ export default function SearchResultList({ mode, ri, ji, onPick, onJibunPin }: P
                 </div>
                 <div className="text-[10px] text-gray-500 mt-0.5">
                   총 <span className="font-semibold text-blue-600">{r.cnt.toLocaleString()}건</span>
+                  {r.lat == null && <span className="text-orange-400 ml-1">(좌표 미확인)</span>}
                 </div>
               </div>
               <div className="text-blue-500 text-xs flex-shrink-0">→</div>
@@ -152,23 +153,22 @@ export default function SearchResultList({ mode, ri, ji, onPick, onJibunPin }: P
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-medium text-gray-900 truncate">
                   <AddrSpan text={joinAddress(row)} />{" "}
-                  <span className="text-blue-600 font-semibold">{row.addr_jibun}</span>
-                  {onJibunPin && row.addr_jibun && (
+                  {onJibunPin && row.addr_jibun ? (
                     <span
                       role="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         onJibunPin(row);
                       }}
-                      className="ml-1.5 text-[10px] text-red-400 hover:text-red-600 align-middle cursor-pointer"
+                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 -my-0.5 rounded text-blue-600 font-semibold hover:bg-blue-100 active:bg-blue-200 cursor-pointer transition-colors"
                       title="지도에서 이 지번 위치 보기"
                     >
-                      📍
+                      <span className="text-[10px]">📍</span>
+                      {row.addr_jibun}
                     </span>
+                  ) : (
+                    <span className="text-blue-600 font-semibold">{row.addr_jibun}</span>
                   )}
-                </div>
-                <div className="text-[10px] text-gray-500 mt-0.5 truncate">
-                  {[row.subst_nm, row.mtr_no, row.dl_nm].filter(Boolean).join(" · ") || "-"}
                 </div>
               </div>
               <div
@@ -196,7 +196,7 @@ function JibunDetail({ row }: { row: KepcoDataRow }) {
 
   return (
     <div className="px-4 py-3 bg-blue-50/40 border-t border-blue-100 space-y-3">
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 gap-2">
         <FacilityCard
           title="변전소"
           name={row.subst_nm ?? "-"}
@@ -228,7 +228,7 @@ function JibunDetail({ row }: { row: KepcoDataRow }) {
           <div className="text-[11px] font-bold text-gray-700 mb-1.5">
             📋 접속 예정 단계
           </div>
-          <div className="grid grid-cols-3 gap-2 text-[11px]">
+          <div className="grid grid-cols-1 gap-2 text-[11px]">
             <StepBlock label="접수" cnt={row.step1_cnt} pwr={row.step1_pwr} />
             <StepBlock label="공용망 보강" cnt={row.step2_cnt} pwr={row.step2_pwr} />
             <StepBlock label="접속 공사" cnt={row.step3_cnt} pwr={row.step3_pwr} />
