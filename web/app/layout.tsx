@@ -9,8 +9,24 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "KEPCO 배전선로 여유용량 지도",
-  description: "배전선로 여유용량 시각화 지도 서비스",
+  title: {
+    default: "PowerMap — 배전선로 여유용량 지도",
+    template: "%s | PowerMap",
+  },
+  description: "한국전력 배전선로 여유용량을 지도에서 한눈에 확인하세요.",
+  applicationName: "PowerMap",
+  openGraph: {
+    title: "PowerMap — 배전선로 여유용량 지도",
+    description: "한국전력 배전선로 여유용량을 지도에서 한눈에 확인하세요.",
+    type: "website",
+    locale: "ko_KR",
+    siteName: "PowerMap",
+  },
+  twitter: {
+    card: "summary",
+    title: "PowerMap — 배전선로 여유용량 지도",
+    description: "한국전력 배전선로 여유용량을 지도에서 한눈에 확인하세요.",
+  },
 };
 
 export default function RootLayout({

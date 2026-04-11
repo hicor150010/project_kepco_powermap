@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <!-- 전력 번개 아이콘 -->
+  <path d="M280 80 L180 260 L240 260 L220 432 L340 230 L270 230 Z" fill="white" opacity="0.95"/>
+  <!-- 지도 핀 원 -->
+  <circle cx="256" cy="256" r="40" fill="none" stroke="white" stroke-width="8" opacity="0.3"/>
+</svg>
