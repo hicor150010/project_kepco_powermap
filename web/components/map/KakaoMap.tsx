@@ -58,6 +58,9 @@ interface Props {
  *   └────┬────┘
  *        ▼
  */
+/** 고해상도(Retina) 디스플레이에서 선명하게 렌더링하기 위한 스케일 */
+const DPR = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 3) : 1;
+
 function makeMarkerSvg(
   ratios: MarkerRatios,
   count: number,
@@ -126,7 +129,10 @@ function makeMarkerSvg(
     : "";
   const filterAttr = selected ? ' filter="url(#ds)"' : "";
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${totalH}" viewBox="-2 -2 ${w + 4} ${totalH + 2}">
+  // DPR 배율로 래스터화 크기를 키워 고해상도 디스플레이에서 선명하게 표시
+  const renderW = Math.round((w + 4) * DPR);
+  const renderH = Math.round((totalH + 2) * DPR);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${renderW}" height="${renderH}" viewBox="-2 -2 ${w + 4} ${totalH + 2}">
     ${shadowFilter}
     <g${filterAttr}>
     <!-- 화살표 -->
