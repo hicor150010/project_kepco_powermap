@@ -17,7 +17,7 @@ export async function GET() {
 
   const supabase = createAdminClient();
   const { data, error } = await supabase
-    .from("kepco_data_history")
+    .from("kepco_capa_history")
     .select("changed_at")
     .order("changed_at", { ascending: false });
 

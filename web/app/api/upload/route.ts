@@ -3,7 +3,7 @@
  * - 관리자 전용
  * - 브라우저에서 파싱한 ParsedRow[]를 받음
  * - 신규 주소 지오코딩 (VWorld) → geocode_cache 저장
- * - kepco_data upsert (청크)
+ * - kepco_addr upsert → kepco_capa upsert (2단계)
  * - Materialized View REFRESH
  */
 import { NextRequest, NextResponse } from "next/server";
@@ -83,7 +83,6 @@ export async function POST(request: NextRequest) {
   // 4) geocode_cache 일괄 조회
   const cacheMap = new Map<string, { lat: number; lng: number }>();
   if (uniqueAddresses.length > 0) {
-    // IN 절 한도 회피용 청크 (1000개씩)
     for (let i = 0; i < uniqueAddresses.length; i += 1000) {
       const chunk = uniqueAddresses.slice(i, i + 1000);
       const { data, error } = await supabase
@@ -126,9 +125,7 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    // geocode_cache 저장 (upsert)
     if (toInsert.length > 0) {
-      // 청크별 저장
       for (let i = 0; i < toInsert.length; i += UPSERT_CHUNK) {
         const chunk = toInsert.slice(i, i + UPSERT_CHUNK);
         const { error } = await supabase
@@ -144,22 +141,59 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // 6) 좌표 매핑
-  const dataRows: any[] = [];
-  let rowsWithoutCoords = 0;
+  // 6) kepco_addr upsert — 고유 주소별 1행
+  const addrRowsMap = new Map<string, {
+    addr_do: string; addr_si: string | null; addr_gu: string | null;
+    addr_dong: string | null; addr_li: string | null;
+    geocode_address: string; lat: number | null; lng: number | null;
+  }>();
+
   for (const r of body.rows) {
-    const geo = cacheMap.get(r.geocode_address);
-    if (!geo) rowsWithoutCoords++;
-    dataRows.push({
-      addr_do: r.addr_do,
-      addr_si: r.addr_si,
-      addr_gu: r.addr_gu,
-      addr_dong: r.addr_dong,
-      addr_li: r.addr_li,
+    if (!addrRowsMap.has(r.geocode_address)) {
+      const geo = cacheMap.get(r.geocode_address);
+      addrRowsMap.set(r.geocode_address, {
+        addr_do: r.addr_do,
+        addr_si: r.addr_si,
+        addr_gu: r.addr_gu,
+        addr_dong: r.addr_dong,
+        addr_li: r.addr_li,
+        geocode_address: r.geocode_address,
+        lat: geo?.lat ?? null,
+        lng: geo?.lng ?? null,
+      });
+    }
+  }
+
+  const addrRows = Array.from(addrRowsMap.values());
+  const addrIdMap = new Map<string, number>(); // geocode_address → id
+  let rowsWithoutCoords = 0;
+
+  for (let i = 0; i < addrRows.length; i += UPSERT_CHUNK) {
+    const chunk = addrRows.slice(i, i + UPSERT_CHUNK);
+    const { data, error } = await supabase
+      .from("kepco_addr")
+      .upsert(chunk, { onConflict: "geocode_address" })
+      .select("id, geocode_address");
+    if (error) {
+      return NextResponse.json(
+        { ok: false, error: `kepco_addr 저장 실패: ${error.message}` },
+        { status: 500 }
+      );
+    }
+    data?.forEach((r) => addrIdMap.set(r.geocode_address, r.id));
+  }
+
+  // 7) kepco_capa upsert — 지번×시설 용량 데이터
+  const capaRows: any[] = [];
+  for (const r of body.rows) {
+    const addrId = addrIdMap.get(r.geocode_address);
+    if (!addrId) {
+      rowsWithoutCoords++;
+      continue;
+    }
+    capaRows.push({
+      addr_id: addrId,
       addr_jibun: r.addr_jibun,
-      geocode_address: r.geocode_address,
-      lat: geo?.lat ?? null,
-      lng: geo?.lng ?? null,
       subst_nm: r.subst_nm,
       mtr_no: r.mtr_no,
       dl_nm: r.dl_nm,
@@ -181,20 +215,18 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // 7) kepco_data upsert (청크)
-  // - PostgREST는 inserted/updated 구분 못함 → 단순 카운트
   let totalUpserted = 0;
-  for (let i = 0; i < dataRows.length; i += UPSERT_CHUNK) {
-    const chunk = dataRows.slice(i, i + UPSERT_CHUNK);
+  for (let i = 0; i < capaRows.length; i += UPSERT_CHUNK) {
+    const chunk = capaRows.slice(i, i + UPSERT_CHUNK);
     const { error, count } = await supabase
-      .from("kepco_data")
+      .from("kepco_capa")
       .upsert(chunk, {
-        onConflict: "row_hash",
+        onConflict: "addr_id,addr_jibun,subst_nm,mtr_no,dl_nm",
         count: "exact",
       });
     if (error) {
       return NextResponse.json(
-        { ok: false, error: `kepco_data 저장 실패: ${error.message}` },
+        { ok: false, error: `kepco_capa 저장 실패: ${error.message}` },
         { status: 500 }
       );
     }
@@ -204,7 +236,6 @@ export async function POST(request: NextRequest) {
   // 8) Materialized View REFRESH
   const { error: refreshErr } = await supabase.rpc("refresh_kepco_summary");
   if (refreshErr) {
-    // REFRESH 실패는 치명적이진 않지만 로그는 남김
     console.error("[REFRESH 실패]", refreshErr);
   }
 
@@ -219,7 +250,7 @@ export async function POST(request: NextRequest) {
       failed: geocodeFailed,
     },
     db: {
-      inserted: totalUpserted, // 신규+갱신 합계 (PostgREST 한계)
+      inserted: totalUpserted,
       updated: 0,
       rowsWithoutCoords,
     },

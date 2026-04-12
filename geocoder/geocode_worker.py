@@ -1,9 +1,9 @@
 """
 KEPCO 좌표 변환 워커 (GitHub Actions용)
-- kepco_data에서 lat IS NULL인 주소 조회
+- kepco_addr에서 lat IS NULL인 주소 조회
 - geocode_cache에서 캐시 조회
-- 캐시 miss → VWorld API로 좌표 변환
-- 결과를 geocode_cache + kepco_data에 업데이트
+- 캐시 miss → 카카오/VWorld API로 좌표 변환
+- 결과를 geocode_cache + kepco_addr에 업데이트
 - Materialized View 새로고침
 """
 import logging
@@ -48,14 +48,14 @@ def _headers(prefer: str = "") -> dict:
 # ══════════════════════════════════════════════
 
 def get_null_coord_addresses() -> list[str]:
-    """kepco_data에서 lat IS NULL인 geocode_address 목록 (DISTINCT)"""
+    """kepco_addr에서 lat IS NULL인 geocode_address 목록"""
     addresses = []
     offset = 0
     limit = 1000
 
     while True:
         resp = requests.get(
-            f"{SUPABASE_URL}/rest/v1/kepco_data",
+            f"{SUPABASE_URL}/rest/v1/kepco_addr",
             params={
                 "select": "geocode_address",
                 "lat": "is.null",
@@ -72,10 +72,8 @@ def get_null_coord_addresses() -> list[str]:
         addresses.extend(r["geocode_address"] for r in rows)
         offset += limit
 
-    # DISTINCT
-    unique = list(dict.fromkeys(addresses))
-    logger.info(f"좌표 없는 주소: {len(unique)}개")
-    return unique
+    logger.info(f"좌표 없는 주소: {len(addresses)}개")
+    return addresses
 
 
 # ══════════════════════════════════════════════
@@ -194,9 +192,9 @@ def upsert_cache(address: str, lat: float, lng: float):
 
 
 def update_kepco_coords(geocode_address: str, lat: float, lng: float):
-    """kepco_data에서 해당 geocode_address의 좌표 업데이트"""
+    """kepco_addr에서 해당 geocode_address의 좌표 업데이트"""
     requests.patch(
-        f"{SUPABASE_URL}/rest/v1/kepco_data",
+        f"{SUPABASE_URL}/rest/v1/kepco_addr",
         params={"geocode_address": f"eq.{geocode_address}", "lat": "is.null"},
         json={"lat": lat, "lng": lng},
         headers=_headers("return=minimal"),

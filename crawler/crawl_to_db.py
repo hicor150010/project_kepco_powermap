@@ -1,6 +1,10 @@
 """
 KEPCO 크롤링 결과 → Supabase DB UPSERT + 실시간 지오코딩
 PostgREST REST API 직접 호출 (supabase-py 불필요)
+
+정규화 구조:
+  kepco_addr  — 리 단위 주소 마스터 (geocode_address UNIQUE)
+  kepco_capa  — 지번×시설 용량 데이터 (addr_id FK)
 """
 import logging
 import os
@@ -54,28 +58,33 @@ def _build_geocode_address(
     return " ".join(parts)
 
 
-def _to_row(result: CrawlResult) -> dict:
-    """CrawlResult → kepco_data DB row dict"""
-    geocode_addr = _build_geocode_address(
-        result.addr_do,
-        result.addr_si,
-        result.addr_gu,
-        result.addr_lidong,
-        result.addr_li,
-    )
-
+def _to_addr_row(result: CrawlResult) -> dict:
+    """CrawlResult → kepco_addr row dict"""
     return {
         "addr_do": result.addr_do or None,
         "addr_si": _empty_to_none(result.addr_si),
         "addr_gu": _empty_to_none(result.addr_gu),
         "addr_dong": _empty_to_none(result.addr_lidong),
         "addr_li": _empty_to_none(result.addr_li),
+        "geocode_address": _build_geocode_address(
+            result.addr_do,
+            result.addr_si,
+            result.addr_gu,
+            result.addr_lidong,
+            result.addr_li,
+        ),
+    }
+
+
+def _to_capa_row(result: CrawlResult, addr_id: int) -> dict:
+    """CrawlResult → kepco_capa row dict"""
+    return {
+        "addr_id": addr_id,
         "addr_jibun": _empty_to_none(result.addr_jibun),
-        "geocode_address": geocode_addr,
         "subst_nm": _empty_to_none(result.subst_nm),
         "mtr_no": _empty_to_none(result.mtr_no),
         "dl_nm": _empty_to_none(result.dl_nm),
-        # 변전소 용량 (여유 판정은 수식으로 계산: capa-pwr≤0 OR capa-g_capa≤0 = 없음)
+        # 변전소 용량
         "subst_capa": _parse_int(result.subst_capa),
         "subst_pwr": _parse_int(result.subst_pwr),
         "g_subst_capa": _parse_int(result.g_subst_capa),
@@ -94,8 +103,6 @@ def _to_row(result: CrawlResult) -> dict:
         "step2_pwr": _parse_int(result.step2_pwr),
         "step3_cnt": _parse_int(result.step3_cnt),
         "step3_pwr": _parse_int(result.step3_pwr),
-        # 실제 크롤링 시점 (UTC)
-        "crawled_at": result.crawled_at or None,
     }
 
 
@@ -125,7 +132,7 @@ def _geocode_kakao(address: str) -> tuple[float, float] | None:
 
 
 class CrawlDbWriter:
-    """크롤링 결과를 Supabase kepco_data에 스트리밍 UPSERT + 실시간 지오코딩"""
+    """크롤링 결과를 Supabase kepco_addr + kepco_capa에 2단계 UPSERT + 실시간 지오코딩"""
 
     def __init__(
         self,
@@ -136,10 +143,12 @@ class CrawlDbWriter:
         self._url = supabase_url.rstrip("/")
         self._key = supabase_key
         self._flush_size = flush_size
-        self._buffer: list[dict] = []
+        self._buffer: list[CrawlResult] = []
         self._stats = {"upserted": 0, "errors": 0, "geocoded": 0}
         # 이미 지오코딩한 주소 캐시 (세션 내 중복 방지)
         self._geocode_done: set[str] = set()
+        # addr_id 캐시 (geocode_address → id)
+        self._addr_id_cache: dict[str, int] = {}
 
     def _headers(self, prefer: str = "") -> dict:
         """PostgREST 요청 헤더"""
@@ -157,27 +166,79 @@ class CrawlDbWriter:
         CrawlResult를 버퍼에 추가.
         flush_size에 도달하면 자동 flush 후 True 반환.
         """
-        row = _to_row(result)
-        self._buffer.append(row)
+        self._buffer.append(result)
         if len(self._buffer) >= self._flush_size:
             self.flush()
             return True
         return False
 
     def flush(self):
-        """버퍼의 모든 데이터를 Supabase에 UPSERT 후 비움 + 지오코딩"""
+        """버퍼의 모든 데이터를 Supabase에 2단계 UPSERT 후 비움 + 지오코딩"""
         if not self._buffer:
             return
 
-        rows = self._buffer.copy()
+        results = self._buffer.copy()
         self._buffer.clear()
 
-        # 1. UPSERT
-        for i in range(0, len(rows), BATCH_SIZE):
-            chunk = rows[i : i + BATCH_SIZE]
+        # ── 1단계: kepco_addr UPSERT ──
+        # 고유 geocode_address 추출
+        addr_rows_map: dict[str, dict] = {}
+        for result in results:
+            addr_row = _to_addr_row(result)
+            ga = addr_row["geocode_address"]
+            if ga and ga not in addr_rows_map:
+                addr_rows_map[ga] = addr_row
+
+        # 캐시에 없는 주소만 UPSERT
+        new_addr_rows = [
+            row for ga, row in addr_rows_map.items()
+            if ga not in self._addr_id_cache
+        ]
+
+        if new_addr_rows:
+            for i in range(0, len(new_addr_rows), BATCH_SIZE):
+                chunk = new_addr_rows[i : i + BATCH_SIZE]
+                try:
+                    resp = requests.post(
+                        f"{self._url}/rest/v1/kepco_addr"
+                        "?on_conflict=geocode_address",
+                        json=chunk,
+                        headers=self._headers(
+                            "resolution=merge-duplicates,return=representation"
+                        ),
+                        timeout=60,
+                    )
+                    if resp.status_code in (200, 201):
+                        for r in resp.json():
+                            self._addr_id_cache[r["geocode_address"]] = r["id"]
+                        logger.info(f"kepco_addr UPSERT: {len(chunk)}건")
+                    else:
+                        logger.error(
+                            f"kepco_addr UPSERT 실패 (HTTP {resp.status_code}): "
+                            f"{resp.text[:500]}"
+                        )
+                except requests.exceptions.RequestException as e:
+                    logger.error(f"kepco_addr 네트워크 오류: {e}")
+
+        # ── 2단계: kepco_capa UPSERT ──
+        capa_rows = []
+        for result in results:
+            ga = _build_geocode_address(
+                result.addr_do, result.addr_si, result.addr_gu,
+                result.addr_lidong, result.addr_li,
+            )
+            addr_id = self._addr_id_cache.get(ga)
+            if not addr_id:
+                self._stats["errors"] += 1
+                continue
+            capa_rows.append(_to_capa_row(result, addr_id))
+
+        for i in range(0, len(capa_rows), BATCH_SIZE):
+            chunk = capa_rows[i : i + BATCH_SIZE]
             try:
                 resp = requests.post(
-                    f"{self._url}/rest/v1/kepco_data?on_conflict=row_hash",
+                    f"{self._url}/rest/v1/kepco_capa"
+                    "?on_conflict=addr_id,addr_jibun,subst_nm,mtr_no,dl_nm",
                     json=chunk,
                     headers=self._headers(
                         "resolution=merge-duplicates,return=minimal"
@@ -186,32 +247,31 @@ class CrawlDbWriter:
                 )
                 if resp.status_code in (200, 201):
                     self._stats["upserted"] += len(chunk)
-                    logger.info(f"UPSERT 성공: {len(chunk)}건")
+                    logger.info(f"kepco_capa UPSERT: {len(chunk)}건")
                 else:
                     self._stats["errors"] += len(chunk)
                     logger.error(
-                        f"UPSERT 실패 (HTTP {resp.status_code}): "
+                        f"kepco_capa UPSERT 실패 (HTTP {resp.status_code}): "
                         f"{resp.text[:500]}"
                     )
             except requests.exceptions.RequestException as e:
                 self._stats["errors"] += len(chunk)
-                logger.error(f"UPSERT 네트워크 오류: {e}")
+                logger.error(f"kepco_capa 네트워크 오류: {e}")
 
-        # 2. 지오코딩 — 이번 flush의 고유 geocode_address 중 아직 안 한 것만
+        # ── 3단계: 지오코딩 ──
         new_addresses = set()
-        for row in rows:
-            addr = row.get("geocode_address", "")
-            if addr and addr not in self._geocode_done:
-                new_addresses.add(addr)
+        for ga in addr_rows_map:
+            if ga and ga not in self._geocode_done:
+                new_addresses.add(ga)
 
         if new_addresses:
             self._geocode_addresses(new_addresses)
 
-        # 3. MV 새로고침 — 지도에 실시간 반영
+        # ── 4단계: MV 새로고침 ──
         self.refresh_mv()
 
     def _geocode_addresses(self, addresses: set[str]):
-        """주소 목록을 지오코딩하여 geocode_cache + kepco_data 업데이트"""
+        """주소 목록을 지오코딩하여 geocode_cache + kepco_addr 업데이트"""
         for address in addresses:
             # 1) geocode_cache 확인
             coords = self._lookup_cache(address)
@@ -223,7 +283,6 @@ class CrawlDbWriter:
                     self._save_cache(address, coords[0], coords[1])
 
             # 3) 여전히 없으면 fallback — 마지막 토큰(리) 제거 후 재시도
-            #    "동+리" 조합이 카카오 주소 체계에 없는 경우 대비
             if not coords:
                 parts = address.split()
                 if len(parts) >= 3:
@@ -233,7 +292,7 @@ class CrawlDbWriter:
                         self._save_cache(address, coords[0], coords[1])
                         logger.info(f"지오코딩 fallback 성공: {address} → {fallback_addr}")
 
-            # 4) 좌표 있으면 kepco_data 업데이트
+            # 4) 좌표 있으면 kepco_addr 업데이트
             if coords:
                 self._update_coords(address, coords[0], coords[1])
                 self._stats["geocoded"] += 1
@@ -272,10 +331,10 @@ class CrawlDbWriter:
             pass
 
     def _update_coords(self, geocode_address: str, lat: float, lng: float):
-        """kepco_data에서 해당 geocode_address의 좌표 업데이트"""
+        """kepco_addr에서 해당 geocode_address의 좌표 업데이트"""
         try:
             requests.patch(
-                f"{self._url}/rest/v1/kepco_data",
+                f"{self._url}/rest/v1/kepco_addr",
                 params={
                     "geocode_address": f"eq.{geocode_address}",
                     "lat": "is.null",

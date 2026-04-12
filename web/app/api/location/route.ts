@@ -2,6 +2,7 @@
  * GET /api/location?addr=...
  * - 마커 클릭 시 호출
  * - 해당 마을(geocode_address)의 모든 raw 데이터 반환
+ * - kepco_addr + kepco_capa JOIN (RPC)
  * - 인증된 사용자만
  */
 import { NextRequest, NextResponse } from "next/server";
@@ -27,14 +28,9 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from("kepco_data")
-    .select("*")
-    .eq("geocode_address", addr)
-    .order("addr_jibun", { ascending: true })
-    .order("subst_nm", { ascending: true })
-    .order("mtr_no", { ascending: true })
-    .order("dl_nm", { ascending: true });
+  const { data, error } = await supabase.rpc("get_location_detail", {
+    addr,
+  });
 
   if (error) {
     console.error("[location] 조회 실패", error);
