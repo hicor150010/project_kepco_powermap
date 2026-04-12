@@ -1,7 +1,7 @@
 /**
- * GET /api/compare?subst=any&mtr=any&dl=gained
- * ref(기준 스냅샷) vs 현재 kepco_capa 비교
- * 시설별 필터: any / same / gained / lost
+ * GET /api/compare?date=2026-04-01&subst=any&mtr=any&dl=gained
+ * changelog 기반 비교 — 특정 날짜 이후 ref 대비 변화 조회
+ * 시설별 필터: any / gained / lost
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
@@ -22,6 +22,7 @@ export interface CompareRefRow {
   curr_subst_ok: boolean;
   curr_mtr_ok: boolean;
   curr_dl_ok: boolean;
+  changed_date: string;
   changed_count: number;
 }
 
@@ -31,7 +32,7 @@ export interface CompareRefResponse {
   total: number;
 }
 
-const VALID_FILTERS = new Set(["any", "same", "gained", "lost"]);
+const VALID_FILTERS = new Set(["any", "gained", "lost"]);
 
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
@@ -43,20 +44,28 @@ export async function GET(request: NextRequest) {
   }
 
   const sp = request.nextUrl.searchParams;
+  const dateParam = sp.get("date");
   const substFilter = sp.get("subst") || "any";
   const mtrFilter = sp.get("mtr") || "any";
   const dlFilter = sp.get("dl") || "any";
 
-  // 유효성 검사
+  if (!dateParam || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+    return NextResponse.json(
+      { ok: false, error: "date 파라미터가 필요합니다. (YYYY-MM-DD)" },
+      { status: 400 }
+    );
+  }
+
   if (!VALID_FILTERS.has(substFilter) || !VALID_FILTERS.has(mtrFilter) || !VALID_FILTERS.has(dlFilter)) {
     return NextResponse.json(
-      { ok: false, error: "필터 값은 any/same/gained/lost 중 하나여야 합니다." },
+      { ok: false, error: "필터 값은 any/gained/lost 중 하나여야 합니다." },
       { status: 400 }
     );
   }
 
   const supabase = createAdminClient();
-  const { data, error } = await supabase.rpc("compare_with_ref", {
+  const { data, error } = await supabase.rpc("compare_changelog", {
+    target_date: dateParam,
     subst_filter: substFilter,
     mtr_filter: mtrFilter,
     dl_filter: dlFilter,

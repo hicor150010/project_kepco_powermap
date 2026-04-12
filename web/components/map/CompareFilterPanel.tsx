@@ -14,7 +14,7 @@ interface Props {
 type FilterValue = "any" | "same" | "gained" | "lost";
 type SortKey = "changed_desc" | "name_asc";
 
-/** 변화 유형 토글 — FilterPanel의 VolumeToggle과 동일 패턴 */
+/** 변화 유형 토글 — 한 줄: 라벨 + 버튼 */
 function ChangeToggle({
   label,
   value,
@@ -24,26 +24,37 @@ function ChangeToggle({
   value: FilterValue;
   onChange: (v: FilterValue) => void;
 }) {
-  const btn = (v: FilterValue, color: "default" | "green" | "red") => {
-    const active = value === v;
-    const activeCls =
-      color === "green"
-        ? "bg-green-500 border-green-500 text-white"
-        : color === "red"
-          ? "bg-red-500 border-red-500 text-white"
-          : "bg-gray-700 border-gray-700 text-white";
-    return `px-1.5 py-1.5 text-[10px] rounded border transition-colors font-medium ${
-      active ? activeCls : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
-    }`;
-  };
+  const items: { v: FilterValue; text: string; color: "default" | "green" | "red" }[] = [
+    { v: "any", text: "전체", color: "default" },
+    { v: "gained", text: "없음→있음", color: "green" },
+    { v: "lost", text: "있음→없음", color: "red" },
+  ];
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-[11px] font-medium text-gray-600 w-14 flex-shrink-0">{label}</span>
-      <div className="flex flex-wrap gap-1 flex-1">
-        <button onClick={() => onChange("any")} className={btn("any", "default")}>전체</button>
-        <button onClick={() => onChange("gained")} className={btn("gained", "green")}>NEW</button>
-        <button onClick={() => onChange("lost")} className={btn("lost", "red")}>소멸</button>
+    <div className="flex items-center gap-1.5">
+      <span className="text-[11px] font-medium text-gray-600 w-12 shrink-0">{label}</span>
+      <div className="flex gap-1 flex-1">
+        {items.map(({ v, text, color }) => {
+          const active = value === v;
+          const activeCls =
+            color === "green"
+              ? "bg-green-500 border-green-500 text-white"
+              : color === "red"
+                ? "bg-red-500 border-red-500 text-white"
+                : "bg-gray-700 border-gray-700 text-white";
+          return (
+            <button
+              key={v}
+              type="button"
+              onClick={() => onChange(v)}
+              className={`flex-1 py-1.5 text-[10px] rounded-md border transition-colors font-medium whitespace-nowrap ${
+                active ? activeCls : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {text}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -112,6 +123,8 @@ function groupToVillages(rows: CompareRefRow[]): VillageStats[] {
 export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin }: Props) {
   const [step, setStep] = useState<"filter" | "results">("filter");
   const [snapshotDate, setSnapshotDate] = useState<string | null>(null);
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [resetting, setResetting] = useState(false);
 
@@ -134,11 +147,19 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
   const [addrDong, setAddrDong] = useState<Set<string>>(new Set());
   const [addrLi, setAddrLi] = useState<Set<string>>(new Set());
 
-  // 기준일 로드
+  // 기준일 + 날짜 목록 로드
   useEffect(() => {
     fetch("/api/compare/dates")
       .then((r) => r.json())
-      .then((d) => { if (d.ok && d.snapshotDate) setSnapshotDate(d.snapshotDate); })
+      .then((d) => {
+        if (d.ok) {
+          if (d.snapshotDate) setSnapshotDate(d.snapshotDate);
+          if (d.dates && d.dates.length > 0) {
+            setAvailableDates(d.dates);
+            setSelectedDate(d.dates[0]);
+          }
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -146,7 +167,8 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
   const handleSearch = async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ subst: substFilter, mtr: mtrFilter, dl: dlFilter });
+      const dateToUse = selectedDate || snapshotDate || new Date().toISOString().slice(0, 10);
+      const params = new URLSearchParams({ date: dateToUse, subst: substFilter, mtr: mtrFilter, dl: dlFilter });
       const res = await fetch(`/api/compare?${params}`);
       const data = await res.json();
       if (data.ok) {
@@ -325,20 +347,37 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
               )}
             </div>
 
-            {/* 기준일 */}
-            <div className="text-[11px] text-gray-500 bg-gray-50 rounded px-2 py-1.5">
-              <span>📅 기준일: <b className="text-gray-800">{snapshotDate ?? "로딩 중..."}</b></span>
-              <span className="mx-1 text-gray-400">→</span>
-              <span>현재: <b className="text-gray-800">{new Date().toISOString().slice(0, 10)}</b></span>
-              {isAdmin && (
-                <button
-                  onClick={handleReset}
-                  disabled={resetting}
-                  className="ml-2 text-[10px] text-gray-400 hover:text-red-500 disabled:opacity-50"
-                >
-                  {resetting ? "리셋 중..." : "리셋"}
-                </button>
-              )}
+            {/* 기준일 + 비교 날짜 */}
+            <div className="text-[11px] text-gray-500 bg-gray-50 rounded px-2 py-1.5 space-y-1">
+              <div>
+                <span>📅 기준일: <b className="text-gray-800">{snapshotDate ?? "로딩 중..."}</b></span>
+                {isAdmin && (
+                  <button
+                    onClick={handleReset}
+                    disabled={resetting}
+                    className="ml-2 text-[10px] text-gray-400 hover:text-red-500 disabled:opacity-50"
+                  >
+                    {resetting ? "리셋 중..." : "리셋"}
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span>📆 비교 시점:</span>
+                {availableDates.length > 0 ? (
+                  <select
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="border border-gray-300 rounded px-1.5 py-0.5 text-[11px] text-gray-900 bg-white"
+                  >
+                    {availableDates.map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="text-gray-400">기록 없음 (수집 후 생성)</span>
+                )}
+                <span className="text-gray-400">~ 현재</span>
+              </div>
             </div>
 
             {/* 변화 유형 필터 */}
@@ -378,7 +417,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
                 <div className="text-xs text-gray-500 space-y-1">
                   <p>기준일 대비 현재의 <b>여유 상태 변화</b>를 분석합니다.</p>
                   <p className="text-[10px] text-gray-400">
-                    <span className="text-green-600">NEW</span> = 여유 새로 생김 · <span className="text-red-600">소멸</span> = 여유 사라짐
+                    <span className="text-green-600">없음→있음</span> = 여유 새로 생김 · <span className="text-red-600">있음→없음</span> = 여유 사라짐
                   </p>
                 </div>
               </div>
@@ -408,11 +447,11 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
             <div className="grid grid-cols-3 gap-1.5 text-center">
               <div className="bg-green-50 rounded-lg py-1.5">
                 <div className="text-sm font-bold text-green-700">{sortedVillages.filter((v) => v.direction === "improved").length}</div>
-                <div className="text-[9px] text-green-600">NEW</div>
+                <div className="text-[9px] text-green-600">없음→있음</div>
               </div>
               <div className="bg-red-50 rounded-lg py-1.5">
                 <div className="text-sm font-bold text-red-700">{sortedVillages.filter((v) => v.direction === "worsened").length}</div>
-                <div className="text-[9px] text-red-600">소멸</div>
+                <div className="text-[9px] text-red-600">있음→없음</div>
               </div>
               <div className="bg-amber-50 rounded-lg py-1.5">
                 <div className="text-sm font-bold text-amber-700">{sortedVillages.filter((v) => v.direction === "mixed").length}</div>
@@ -482,8 +521,8 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
               {sortedVillages.map((v) => {
                 const isSelected = selectedAddr === v.geocode_address;
                 const dirConfig = {
-                  improved: { badge: "NEW", cls: "bg-green-100 text-green-700" },
-                  worsened: { badge: "소멸", cls: "bg-red-100 text-red-700" },
+                  improved: { badge: "없음→있음", cls: "bg-green-100 text-green-700" },
+                  worsened: { badge: "있음→없음", cls: "bg-red-100 text-red-700" },
                   mixed: { badge: "혼합", cls: "bg-amber-100 text-amber-700" },
                   unchanged: { badge: "동일", cls: "bg-gray-100 text-gray-600" },
                 }[v.direction];

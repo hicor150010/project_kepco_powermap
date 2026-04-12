@@ -1,6 +1,6 @@
 /**
  * GET /api/compare/dates
- * ref 기준일 정보 반환 (UI 표시용)
+ * ref 기준일 + changelog에 기록된 날짜 목록 반환 (UI용)
  */
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
@@ -16,7 +16,16 @@ export async function GET() {
   }
 
   const supabase = createAdminClient();
-  const { data, error } = await supabase.rpc("get_ref_info");
+
+  // ref 기준일
+  const { data: refInfo } = await supabase.rpc("get_ref_info");
+  const snapshotDate = refInfo?.[0]?.snapshot_date ?? null;
+
+  // changelog에 기록된 날짜 목록
+  const { data: dates, error } = await supabase
+    .from("kepco_capa_changelog")
+    .select("changed_date")
+    .order("changed_date", { ascending: false });
 
   if (error) {
     return NextResponse.json(
@@ -25,11 +34,11 @@ export async function GET() {
     );
   }
 
-  const info = data?.[0] ?? { snapshot_date: null, total_count: 0 };
+  const uniqueDates = [...new Set((dates ?? []).map((r: any) => r.changed_date))];
 
   return NextResponse.json({
     ok: true,
-    snapshotDate: info.snapshot_date,
-    totalCount: info.total_count,
+    snapshotDate,
+    dates: uniqueDates,
   });
 }
