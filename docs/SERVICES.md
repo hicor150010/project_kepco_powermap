@@ -178,9 +178,11 @@ VWORLD_KEY  # 인증키 (서버 전용)
 | **휴면** | 7일 미접속 시 일시정지 | ⚠️ |
 
 ### DB 구조
-- `kepco_data` — 원본 데이터 (정기 upsert, 전국 ~75만행 예상)
+- `kepco_addr` — 주소 마스터 (시도/시/구/동/리/지번)
+- `kepco_capa` — 용량 데이터 (addr_id FK, 시설명, kW 수치)
 - `kepco_map_summary` — 지도 마커용 MV (리 단위 집계)
-- `kepco_data_history` — 용량 변경 이력 (7일 보존)
+- `kepco_capa_ref` — 기준 스냅샷 (불변, 변화 비교용)
+- `kepco_capa_changelog` — 일별 변화 이력
 - `geocode_cache` — 주소→좌표 영구 캐시
 - `crawl_jobs` — 크롤링 작업 관리
 - `user_roles` — 사용자 권한
@@ -320,11 +322,12 @@ SECRETS.local.md
 | Kakao | https://developers.kakao.com/console/app/1424714 |
 | VWorld | https://www.vworld.kr/dev/v4api.do |
 | Vercel | https://vercel.com/dashboard |
-| Supabase | https://supabase.com/dashboard (미생성) |
+| Supabase | https://supabase.com/dashboard/project/wtbwgjejfrrwgbzgcdjd |
 
 ---
 
 ## 변경 이력
+- 2026-04-12: DB 구조 갱신 — kepco_addr/capa 분리, ref+changelog 추가, history 삭제
 - 2026-04-11: API 캐시 — map-summary, location에 CDN 캐시 1시간 + 새로고침 버튼 추가
 - 2026-04-11: DB 최적화 — 불필요 인덱스 8개 제거 + UPSERT unique 해시화 (110MB → 53MB)
 - 2026-04-10: Vercel 배포 완료. 계정/프로젝트/도메인 정보 추가. VWorld 서비스URL 와일드카드 확인.

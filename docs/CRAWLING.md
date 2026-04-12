@@ -62,9 +62,9 @@ KEPCO API → 크롤러 (crawler.py)
 1. kepco_addr UPSERT (캐시 miss인 주소만, 응답으로 addr_id 캐시)
 2. kepco_capa UPSERT (addr_id 붙여서, 응답으로 upserted_ids 수집)
 3. 새 주소 지오코딩 (카카오 API → geocode_cache → kepco_addr.lat/lng)
-4. Materialized View 새로고침
-5. sync_capa_ref(upserted_ids) — 새 지번만 ref에 추가
-6. detect_changes(upserted_ids) — ref 대비 변화 감지 → changelog 기록
+4. Materialized View 새로고침 (1시간 간격, 웹 새로고침 버튼으로도 수동 가능)
+5. sync_capa_ref(upserted_ids) — 새 지번만 ref에 추가 (ON CONFLICT DO NOTHING)
+6. detect_changes(upserted_ids) — ref 대비 변화 감지 → changelog 기록 (같은 날 첫 감지만)
 
 > 상세 흐름은 [COMPARE.md](./COMPARE.md) 참조
 
@@ -116,7 +116,9 @@ KEPCO API → 크롤러 (crawler.py)
 | 트리거 실패 복구 | 3회 재시도 | run_crawl.py auto_continue() |
 | 반복 무한루프 방지 | max_cycles 설정 | run_crawl.py |
 | KEPCO 차단 방지 | 세션 재생성, UA 랜덤, 점진적 백오프 | api_client.py |
+| MV 새로고침 부하 방지 | 1시간 간격 제한 (time.time() 기반) | crawl_to_db.py |
 | 변화 감지 | ref 대비 changelog (detect_changes RPC) | 016_changelog.sql |
+| 같은 날 중복 감지 방지 | ON CONFLICT DO NOTHING (첫 감지만) | 016_changelog.sql |
 
 ---
 
