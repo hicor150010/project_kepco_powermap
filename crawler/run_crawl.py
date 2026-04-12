@@ -90,7 +90,7 @@ def find_next_job(thread: int) -> dict | None:
     if rows:
         return rows[0]
 
-    # 2) stopped + checkpoint 있는 것 (타임아웃 재개)
+    # 2) stopped + checkpoint 있는 것 (타임아웃 재개만 — 사용자 중단 제외)
     resp = requests.get(
         f"{SUPABASE_URL}/rest/v1/crawl_jobs",
         params={
@@ -98,14 +98,18 @@ def find_next_job(thread: int) -> dict | None:
             "thread": f"eq.{thread}",
             "checkpoint": "not.is.null",
             "order": "created_at.asc",
-            "limit": "1",
+            "limit": "10",
             "select": "*",
         },
         headers=_headers(),
         timeout=30,
     )
     rows = resp.json()
-    return rows[0] if rows else None
+    for row in rows:
+        result = row.get("result") or {}
+        if result.get("stopped_reason") != "user":
+            return row
+    return None
 
 
 def update_job(job_id: int, data: dict):
