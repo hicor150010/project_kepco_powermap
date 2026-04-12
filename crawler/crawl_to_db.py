@@ -8,6 +8,7 @@ PostgREST REST API 직접 호출 (supabase-py 불필요)
 """
 import logging
 import os
+import time
 import urllib.parse
 
 import requests
@@ -149,6 +150,9 @@ class CrawlDbWriter:
         self._geocode_done: set[str] = set()
         # addr_id 캐시 (geocode_address → id)
         self._addr_id_cache: dict[str, int] = {}
+        # MV 갱신 주기 (1시간)
+        self._last_mv_refresh: float = 0.0
+        self._mv_interval: float = 3600.0
 
     def _headers(self, prefer: str = "") -> dict:
         """PostgREST 요청 헤더"""
@@ -271,8 +275,10 @@ class CrawlDbWriter:
         if new_addresses:
             self._geocode_addresses(new_addresses)
 
-        # ── 4단계: MV 새로고침 ──
-        self.refresh_mv()
+        # ── 4단계: MV 새로고침 (1시간 간격) ──
+        if time.time() - self._last_mv_refresh > self._mv_interval:
+            self.refresh_mv()
+            self._last_mv_refresh = time.time()
 
         # ── 5단계: ref 스냅샷 동기화 (새 지번만 추가) ──
         if upserted_ids:
