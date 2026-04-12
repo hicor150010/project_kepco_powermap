@@ -18,7 +18,7 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
           curl -s -X DELETE \
-            "${SUPABASE_URL}/rest/v1/kepco_data_history?changed_at=lt.$(date -d '7 days ago' +%Y-%m-%d)" \
+            "${SUPABASE_URL}/rest/v1/kepco_capa_history?changed_at=lt.$(date -d '7 days ago' +%Y-%m-%d)" \
             -H "apikey: ${SUPABASE_SERVICE_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_SERVICE_KEY}" \
             -H "Prefer: return=minimal"
