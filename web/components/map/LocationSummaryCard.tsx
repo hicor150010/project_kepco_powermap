@@ -18,7 +18,7 @@
 import { useMemo } from "react";
 import type { KepcoDataRow } from "@/lib/types";
 import { hasCapacity } from "@/lib/types";
-import type { CompareRow } from "@/app/api/compare/route";
+import type { CompareRefRow } from "@/app/api/compare/route";
 import { summarizeLocation, type FacilityCounts } from "@/lib/summarize";
 import AddrLine from "./AddrLine";
 
@@ -27,7 +27,7 @@ interface Props {
   loading: boolean;
   onShowDetail: () => void;
   onClose: () => void;
-  compareRows?: CompareRow[];
+  compareRows?: CompareRefRow[];
 }
 
 export default function LocationSummaryCard({
@@ -240,7 +240,7 @@ function MiniBar({ label, counts }: { label: string; counts: FacilityCounts }) {
   );
 }
 
-function CompareSection({ rows }: { rows: CompareRow[] }) {
+function CompareSection({ rows }: { rows: CompareRefRow[] }) {
   return (
     <div className="border-t border-orange-200 pt-3 mt-1">
       <div className="flex items-center gap-1.5 mb-2.5">
@@ -248,11 +248,10 @@ function CompareSection({ rows }: { rows: CompareRow[] }) {
           <path d="M8 1v14M3 4l2-2 2 2M11 12l2 2 2-2M3 5v6M13 5v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
         <span className="text-xs font-bold text-orange-700">
-          이전 대비 변경 ({rows.length}건)
+          기준 대비 변경 ({rows.length}건)
         </span>
       </div>
 
-      {/* 지번별 상세 비교 */}
       <div className="space-y-2 max-h-[200px] overflow-y-auto">
         {rows.map((r, i) => (
           <CompareDetailRow key={i} row={r} />
@@ -262,24 +261,13 @@ function CompareSection({ rows }: { rows: CompareRow[] }) {
   );
 }
 
-function CompareDetailRow({ row }: { row: CompareRow }) {
-  const prevSubstOk = hasCapacity(row.prev_subst_capa, row.prev_subst_pwr, row.prev_g_subst_capa);
-  const curSubstOk = hasCapacity(row.cur_subst_capa, row.cur_subst_pwr, row.cur_g_subst_capa);
-  const prevMtrOk = hasCapacity(row.prev_mtr_capa, row.prev_mtr_pwr, row.prev_g_mtr_capa);
-  const curMtrOk = hasCapacity(row.cur_mtr_capa, row.cur_mtr_pwr, row.cur_g_mtr_capa);
-  const prevDlOk = hasCapacity(row.prev_dl_capa, row.prev_dl_pwr, row.prev_g_dl_capa);
-  const curDlOk = hasCapacity(row.cur_dl_capa, row.cur_dl_pwr, row.cur_g_dl_capa);
-
+function CompareDetailRow({ row }: { row: CompareRefRow }) {
   return (
     <div className="bg-orange-50/60 rounded-lg px-3 py-2 border border-orange-100">
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[11px] font-bold text-gray-800">{row.addr_jibun || "-"}</span>
-        <span className="text-[10px] text-gray-400">{row.subst_nm || ""} / {row.dl_nm || ""}</span>
-      </div>
       <div className="space-y-1">
-        {prevSubstOk !== curSubstOk && <CapDelta label="변전소" prevOk={prevSubstOk} curOk={curSubstOk} />}
-        {prevMtrOk !== curMtrOk && <CapDelta label="주변압기" prevOk={prevMtrOk} curOk={curMtrOk} />}
-        {prevDlOk !== curDlOk && <CapDelta label="배전선로" prevOk={prevDlOk} curOk={curDlOk} />}
+        {row.prev_subst_ok !== row.curr_subst_ok && <CapDelta label="변전소" prevOk={row.prev_subst_ok} curOk={row.curr_subst_ok} />}
+        {row.prev_mtr_ok !== row.curr_mtr_ok && <CapDelta label="주변압기" prevOk={row.prev_mtr_ok} curOk={row.curr_mtr_ok} />}
+        {row.prev_dl_ok !== row.curr_dl_ok && <CapDelta label="배전선로" prevOk={row.prev_dl_ok} curOk={row.curr_dl_ok} />}
       </div>
     </div>
   );

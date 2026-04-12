@@ -270,6 +270,9 @@ class CrawlDbWriter:
         # ── 4단계: MV 새로고침 ──
         self.refresh_mv()
 
+        # ── 5단계: ref 스냅샷 동기화 (새 지번만 추가) ──
+        self.sync_ref()
+
     def _geocode_addresses(self, addresses: set[str]):
         """주소 목록을 지오코딩하여 geocode_cache + kepco_addr 업데이트"""
         for address in addresses:
@@ -345,6 +348,25 @@ class CrawlDbWriter:
             )
         except Exception:
             pass
+
+    def sync_ref(self):
+        """ref 스냅샷 동기화 — 새 지번만 추가 (sync_capa_ref RPC)"""
+        try:
+            resp = requests.post(
+                f"{self._url}/rest/v1/rpc/sync_capa_ref",
+                json={},
+                headers=self._headers(),
+                timeout=120,
+            )
+            if resp.status_code in (200, 204):
+                logger.info("ref 스냅샷 동기화 완료")
+            else:
+                logger.warning(
+                    f"ref 동기화 실패 (HTTP {resp.status_code}): "
+                    f"{resp.text[:300]}"
+                )
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"ref 동기화 네트워크 오류: {e}")
 
     def refresh_mv(self):
         """Materialized View 새로고침 (refresh_kepco_summary RPC)"""

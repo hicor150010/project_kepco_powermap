@@ -12,9 +12,9 @@ import DistanceTool from "./DistanceTool";
 import type { SearchPick } from "./SearchResultList";
 import Toast from "./Toast";
 import TopRemainingList from "./TopRemainingList";
-import ComparePanel, { getChangeDirection, type ChangeDirection } from "./ComparePanel";
+import ComparePanel from "./ComparePanel";
 import GpsTracker from "./GpsTracker";
-import type { CompareRow } from "@/app/api/compare/route";
+import type { CompareRefRow } from "@/app/api/compare/route";
 import {
   emptyFilters,
   type ColumnFilters,
@@ -65,7 +65,7 @@ export default function MapClient({ isAdmin, email }: Props) {
 
   // 비교 모드
   const [compareActive, setCompareActive] = useState(false);
-  const [compareRows, setCompareRows] = useState<CompareRow[]>([]);
+  const [compareRows, setCompareRows] = useState<CompareRefRow[]>([]);
 
   // GPS 실시간 추적
   const [gpsActive, setGpsActive] = useState(false);

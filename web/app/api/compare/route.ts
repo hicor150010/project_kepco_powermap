@@ -1,16 +1,13 @@
 /**
- * GET /api/compare?date=2026-04-01
- * 특정 날짜 이후 용량 수치가 변경된 지번 목록 반환
- * → 마을(geocode_address) 단위로 집계하여 지도에 표시
- *
- * 여유 판정은 KEPCO 수식으로 계산:
- *   없음 = (capa - pwr ≤ 0) OR (capa - g_capa ≤ 0)
+ * GET /api/compare?subst=any&mtr=any&dl=gained
+ * ref(기준 스냅샷) vs 현재 kepco_capa 비교
+ * 시설별 필터: any / same / gained / lost
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-export interface CompareRow {
+export interface CompareRefRow {
   geocode_address: string;
   lat: number;
   lng: number;
@@ -19,38 +16,22 @@ export interface CompareRow {
   addr_gu: string | null;
   addr_dong: string | null;
   addr_li: string | null;
-  addr_jibun: string | null;
-  subst_nm: string | null;
-  dl_nm: string | null;
-  // 현재 수치
-  cur_subst_capa: number | null;
-  cur_subst_pwr: number | null;
-  cur_g_subst_capa: number | null;
-  cur_mtr_capa: number | null;
-  cur_mtr_pwr: number | null;
-  cur_g_mtr_capa: number | null;
-  cur_dl_capa: number | null;
-  cur_dl_pwr: number | null;
-  cur_g_dl_capa: number | null;
-  // 이전 수치
-  prev_subst_capa: number | null;
-  prev_subst_pwr: number | null;
-  prev_g_subst_capa: number | null;
-  prev_mtr_capa: number | null;
-  prev_mtr_pwr: number | null;
-  prev_g_mtr_capa: number | null;
-  prev_dl_capa: number | null;
-  prev_dl_pwr: number | null;
-  prev_g_dl_capa: number | null;
+  prev_subst_ok: boolean;
+  prev_mtr_ok: boolean;
+  prev_dl_ok: boolean;
+  curr_subst_ok: boolean;
+  curr_mtr_ok: boolean;
+  curr_dl_ok: boolean;
   changed_count: number;
 }
 
-export interface CompareResponse {
+export interface CompareRefResponse {
   ok: boolean;
-  since: string;
-  rows: CompareRow[];
+  rows: CompareRefRow[];
   total: number;
 }
+
+const VALID_FILTERS = new Set(["any", "same", "gained", "lost"]);
 
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
@@ -61,17 +42,24 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const dateParam = request.nextUrl.searchParams.get("date");
-  if (!dateParam || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+  const sp = request.nextUrl.searchParams;
+  const substFilter = sp.get("subst") || "any";
+  const mtrFilter = sp.get("mtr") || "any";
+  const dlFilter = sp.get("dl") || "any";
+
+  // 유효성 검사
+  if (!VALID_FILTERS.has(substFilter) || !VALID_FILTERS.has(mtrFilter) || !VALID_FILTERS.has(dlFilter)) {
     return NextResponse.json(
-      { ok: false, error: "date 파라미터가 필요합니다. (YYYY-MM-DD)" },
+      { ok: false, error: "필터 값은 any/same/gained/lost 중 하나여야 합니다." },
       { status: 400 }
     );
   }
 
   const supabase = createAdminClient();
-  const { data, error } = await supabase.rpc("get_changes_since", {
-    since_date: dateParam,
+  const { data, error } = await supabase.rpc("compare_with_ref", {
+    subst_filter: substFilter,
+    mtr_filter: mtrFilter,
+    dl_filter: dlFilter,
   });
 
   if (error) {
@@ -82,12 +70,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const rows = (data ?? []) as CompareRow[];
+  const rows = (data ?? []) as CompareRefRow[];
 
   return NextResponse.json({
     ok: true,
-    since: dateParam,
     rows,
     total: rows.length,
-  } satisfies CompareResponse);
+  } satisfies CompareRefResponse);
 }

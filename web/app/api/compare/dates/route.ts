@@ -1,6 +1,6 @@
 /**
  * GET /api/compare/dates
- * history 테이블에 기록된 변경 날짜 목록 반환 (날짜 선택 UI용)
+ * ref 기준일 정보 반환 (UI 표시용)
  */
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
@@ -16,10 +16,7 @@ export async function GET() {
   }
 
   const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from("kepco_capa_history")
-    .select("changed_at")
-    .order("changed_at", { ascending: false });
+  const { data, error } = await supabase.rpc("get_ref_info");
 
   if (error) {
     return NextResponse.json(
@@ -28,8 +25,11 @@ export async function GET() {
     );
   }
 
-  // 고유 날짜만 추출
-  const dates = [...new Set((data ?? []).map((r: any) => r.changed_at))];
+  const info = data?.[0] ?? { snapshot_date: null, total_count: 0 };
 
-  return NextResponse.json({ ok: true, dates });
+  return NextResponse.json({
+    ok: true,
+    snapshotDate: info.snapshot_date,
+    totalCount: info.total_count,
+  });
 }

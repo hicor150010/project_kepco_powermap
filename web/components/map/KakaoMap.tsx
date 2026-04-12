@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { MapSummaryRow, MarkerColor } from "@/lib/types";
-import type { CompareRow } from "@/app/api/compare/route";
-import { getChangeDirection } from "./ComparePanel";
+import type { CompareRefRow } from "@/app/api/compare/route";
 import {
   colorForMarker,
   ratiosForMarker,
@@ -42,7 +41,7 @@ interface Props {
   /** 지도 타입: "roadmap" | "skyview" | "hybrid" */
   mapType?: "roadmap" | "skyview" | "hybrid";
   /** 비교 결과 — 값이 있으면 변경 마커 오버레이 표시 */
-  compareRows?: CompareRow[];
+  compareRows?: CompareRefRow[];
 }
 
 /**
@@ -594,7 +593,7 @@ export default function KakaoMap({
     if (compareRows.length === 0) return;
 
     // geocode_address별로 그룹핑 → 마을 단위 오버레이
-    const byAddr = new Map<string, { rows: CompareRow[]; lat: number; lng: number }>();
+    const byAddr = new Map<string, { rows: CompareRefRow[]; lat: number; lng: number }>();
     for (const r of compareRows) {
       if (!byAddr.has(r.geocode_address)) {
         byAddr.set(r.geocode_address, { rows: [], lat: r.lat, lng: r.lng });
@@ -603,10 +602,19 @@ export default function KakaoMap({
     }
 
     byAddr.forEach(({ rows: cRows, lat, lng }, addr) => {
-      // 마을 내 방향 판단
-      const dirs = cRows.map(getChangeDirection);
-      const hasWorsen = dirs.includes("worsened");
-      const hasImprove = dirs.includes("improved");
+      // 마을 내 방향 판단 (ref 기반)
+      let gained = 0;
+      let lost = 0;
+      for (const r of cRows) {
+        if (!r.prev_subst_ok && r.curr_subst_ok) gained++;
+        if (r.prev_subst_ok && !r.curr_subst_ok) lost++;
+        if (!r.prev_mtr_ok && r.curr_mtr_ok) gained++;
+        if (r.prev_mtr_ok && !r.curr_mtr_ok) lost++;
+        if (!r.prev_dl_ok && r.curr_dl_ok) gained++;
+        if (r.prev_dl_ok && !r.curr_dl_ok) lost++;
+      }
+      const hasWorsen = lost > 0;
+      const hasImprove = gained > 0;
 
       let color: string;
       let arrow: string;
