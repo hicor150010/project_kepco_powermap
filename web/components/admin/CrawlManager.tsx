@@ -51,7 +51,7 @@ const STATUS_LABELS: Record<string, { text: string; color: string }> = {
   running: { text: "실행 중", color: "bg-blue-100 text-blue-800" },
   completed: { text: "완료", color: "bg-green-100 text-green-800" },
   failed: { text: "실패", color: "bg-red-100 text-red-800" },
-  stopped: { text: "중단됨", color: "bg-gray-100 text-gray-800" },
+  stopped: { text: "타임아웃", color: "bg-gray-100 text-gray-800" },
   stop_requested: { text: "중단 요청", color: "bg-orange-100 text-orange-800" },
   cancelled: { text: "취소됨", color: "bg-gray-100 text-gray-600" },
 };
