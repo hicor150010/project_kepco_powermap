@@ -680,7 +680,7 @@ export default function CrawlManager() {
                         className="w-20 border border-gray-300 rounded px-2 py-1 text-sm text-gray-900 focus:border-blue-500 focus:outline-none"
                       /> 건
                     </td>
-                    <td className="py-3 text-gray-500">이만큼 모이면 DB 저장 + 좌표 변환 + 지도 반영 + 체크포인트 + 변화 감지</td>
+                    <td className="py-3 text-gray-500">이만큼 모이면 DB 저장 + 좌표 변환 + 체크포인트 + 변화 감지 (지도 반영은 1시간 간격)</td>
                   </tr>
                   {/* 3. 화면 갱신 주기 */}
                   <tr className="border-b border-gray-100">
@@ -722,8 +722,8 @@ export default function CrawlManager() {
                   실행 중에는 변경할 수 없으며, 중단 후 다시 시작하면 새 설정이 적용됩니다.
                 </div>
                 <div className="text-xs text-blue-700 bg-blue-50 rounded px-3 py-2 border border-blue-200">
-                  <b>변화 감지:</b> 수집 시 기존 데이터와 비교하여 변전소/주변압기/배전선로의 상태나 용량이 달라진 건을 자동으로 이력에 기록합니다.
-                  기록된 이력은 지도의 &quot;변경 비교&quot; 기능에서 확인할 수 있습니다.
+                  <b>변화 감지:</b> 수집 시 기준 스냅샷(ref)과 비교하여 변전소/주변압기/배전선로의 여유 상태가 달라진 건을 자동으로 이력에 기록합니다.
+                  기록된 이력은 지도의 &quot;변화추적&quot; 기능에서 확인할 수 있습니다.
                 </div>
               </div>
             </div>
@@ -932,7 +932,7 @@ export default function CrawlManager() {
                             </tr>
                             <tr className="border-t border-gray-200">
                               <td className="py-1.5 font-semibold text-gray-600">배치 크기</td>
-                              <td className="py-1.5 text-gray-700 font-medium">{flush}건마다 → DB 저장 + 좌표 변환 + 지도 반영 + 체크포인트 + 변화 감지</td>
+                              <td className="py-1.5 text-gray-700 font-medium">{flush}건마다 → DB 저장 + 좌표 변환 + 체크포인트 + 변화 감지 (지도 반영은 1시간 간격)</td>
                             </tr>
                             <tr className="border-t border-gray-200">
                               <td className="py-1.5 font-semibold text-gray-600">화면 갱신 주기</td>

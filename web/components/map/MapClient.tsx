@@ -98,11 +98,19 @@ export default function MapClient({ isAdmin, email }: Props) {
   // 마을별 지번 좌표 캐시 — 마을 재선택 시 즉시 복원
   const [jibunCache] = useState<Map<string, { lat: number; lng: number; jibun: string }[]>>(new Map());
 
-  // 데이터 새로고침
+  // 데이터 새로고침 (MV 갱신 + 데이터 로드)
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshPhase, setRefreshPhase] = useState<string>("");
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
+      // 1단계: MV 갱신
+      setRefreshPhase("데이터 집계 중...");
+      const mvRes = await fetch("/api/refresh-mv", { method: "POST" });
+      if (!mvRes.ok) throw new Error("MV 갱신 실패");
+
+      // 2단계: 데이터 로드
+      setRefreshPhase("지도 데이터 불러오는 중...");
       const res = await fetch(`/api/map-summary?_t=${Date.now()}`, {
         cache: "no-store",
       });
@@ -117,6 +125,7 @@ export default function MapClient({ isAdmin, email }: Props) {
       setSimpleToast("새로고침에 실패했습니다.");
     } finally {
       setRefreshing(false);
+      setRefreshPhase("");
     }
   }, [detailCache]);
 
@@ -682,6 +691,22 @@ export default function MapClient({ isAdmin, email }: Props) {
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70">
             <div className="bg-white rounded-lg shadow-lg px-6 py-4 border border-gray-200">
               <div className="text-sm text-gray-700">지도를 불러오는 중...</div>
+            </div>
+          </div>
+        )}
+
+        {refreshing && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/20 backdrop-blur-[1px]">
+            <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 border border-gray-100 flex flex-col items-center gap-3 min-w-[220px]">
+              <div className="relative w-10 h-10">
+                <div className="absolute inset-0 rounded-full border-[3px] border-gray-200" />
+                <div className="absolute inset-0 rounded-full border-[3px] border-t-blue-500 animate-spin" />
+              </div>
+              <div className="text-sm font-semibold text-gray-800">데이터 갱신 중</div>
+              <div className="text-xs text-gray-500">{refreshPhase || "잠시만 기다려주세요..."}</div>
+              <div className="w-full bg-gray-100 rounded-full h-1 overflow-hidden mt-1">
+                <div className="h-full bg-blue-500 rounded-full animate-pulse" style={{ width: "60%" }} />
+              </div>
             </div>
           </div>
         )}
