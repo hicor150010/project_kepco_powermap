@@ -9,6 +9,8 @@ interface Props {
   onSearchPick?: (pick: SearchPick) => void;
   selectedAddr?: string | null;
   isAdmin?: boolean;
+  onMapFilter?: (addrs: Set<string>) => void;
+  onClearMapFilter?: () => void;
 }
 
 type FilterValue = "any" | "same" | "gained" | "lost";
@@ -139,7 +141,7 @@ function groupToVillages(rows: CompareRefRow[]): VillageStats[] {
   return Array.from(map.values()).map(analyzeVillage);
 }
 
-export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin }: Props) {
+export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin, onMapFilter, onClearMapFilter }: Props) {
   const [step, setStep] = useState<"filter" | "results">("filter");
   const [snapshotDate, setSnapshotDate] = useState<string | null>(null);
   const [availableDates, setAvailableDates] = useState<string[]>([]);
@@ -198,6 +200,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
         setStep1Villages([...villages]);
         clearRegionFilters();
         setStep("results");
+        onMapFilter?.(new Set(villages.map((v) => v.geocode_address)));
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
@@ -207,6 +210,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
     clearRegionFilters();
     setStep1Villages([]);
     setStep("filter");
+    onClearMapFilter?.();
   };
 
   const reset = () => {
@@ -219,6 +223,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
     setStep1Villages([]);
     clearRegionFilters();
     setStep("filter");
+    onClearMapFilter?.();
   };
 
   const clearRegionFilters = () => {
@@ -325,6 +330,12 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
       return true;
     });
   }, [step, step1Villages, addrDo, addrSi, addrGu, addrDong, addrLi]);
+
+  // 2단계 지역 필터 변경 시 지도 마커도 갱신
+  useEffect(() => {
+    if (step !== "results") return;
+    onMapFilter?.(new Set(filteredVillages.map((v) => v.geocode_address)));
+  }, [step, filteredVillages, onMapFilter]);
 
   const sortedVillages = useMemo(() => {
     const arr = [...filteredVillages];
@@ -558,33 +569,20 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
 
                 return (
                   <li key={v.geocode_address}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onSearchPick?.({
-                          kind: "ri",
-                          row: {
-                            addr_do: v.addr_do,
-                            addr_si: v.addr_si,
-                            addr_gu: v.addr_gu,
-                            addr_dong: v.addr_dong,
-                            addr_li: v.addr_li,
-                            geocode_address: v.geocode_address,
-                            cnt: v.totalRows,
-                            lat: v.lat,
-                            lng: v.lng,
-                          },
-                        });
-                        setExpandedAddr(isExpanded ? null : v.geocode_address);
-                      }}
+                    <div
                       className={`w-full text-left px-4 py-2.5 transition-colors ${
                         isSelected
                           ? "bg-orange-50 border-l-2 border-orange-500"
-                          : "hover:bg-orange-50 active:bg-orange-100"
+                          : "hover:bg-orange-50"
                       }`}
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        {/* 펼침 토글 (클릭 = 펼침만) */}
+                        <button
+                          type="button"
+                          onClick={() => setExpandedAddr(isExpanded ? null : v.geocode_address)}
+                          className="flex-1 min-w-0 text-left"
+                        >
                           <div className="text-xs font-medium text-gray-900 truncate">
                             {v.geocode_address}
                           </div>
@@ -596,10 +594,32 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
                             <FacilityDelta label="주변압기" change={v.mtr} />
                             <FacilityDelta label="배전선로" change={v.dl} />
                           </div>
-                        </div>
-                        <div className={`text-orange-400 text-xs flex-shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}>▶</div>
+                        </button>
+                        {/* 지도 이동 버튼 (모바일: 사이드바 닫힘) */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onSearchPick?.({
+                              kind: "ri",
+                              row: {
+                                addr_do: v.addr_do,
+                                addr_si: v.addr_si,
+                                addr_gu: v.addr_gu,
+                                addr_dong: v.addr_dong,
+                                addr_li: v.addr_li,
+                                geocode_address: v.geocode_address,
+                                cnt: v.totalRows,
+                                lat: v.lat,
+                                lng: v.lng,
+                              },
+                            });
+                          }}
+                          className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full hover:bg-orange-100 active:bg-orange-200 transition-colors"
+                        >
+                          <span className="text-orange-500 text-sm">📍</span>
+                        </button>
                       </div>
-                    </button>
+                    </div>
                     {/* 지번별 상세 */}
                     {isExpanded && (
                       <div className="px-4 pb-2 bg-gray-50 border-l-2 border-orange-300">
