@@ -161,20 +161,24 @@ export default function ComparePanel({ onResults, onClose, onVillageClick, isAdm
         </button>
       </div>
 
-      {/* 기준일 */}
-      <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
-        <span className="text-xs text-gray-500">
-          기준일: <b className="text-gray-800">{snapshotDate ?? "로딩 중..."}</b>
-        </span>
-        {isAdmin && (
-          <button
-            onClick={handleReset}
-            disabled={resetting}
-            className="text-[10px] px-2 py-1 rounded bg-gray-100 text-gray-500 hover:bg-gray-200 disabled:opacity-50"
-          >
-            {resetting ? "리셋 중..." : "기준일 리셋"}
-          </button>
-        )}
+      {/* 기준일 + 현재 */}
+      <div className="px-4 py-2.5 border-b border-gray-100">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-gray-500">
+            기준일: <b className="text-gray-800">{snapshotDate ?? "로딩 중..."}</b>
+            <span className="mx-1.5 text-gray-400">→</span>
+            현재: <b className="text-gray-800">{new Date().toISOString().slice(0, 10)}</b>
+          </span>
+          {isAdmin && (
+            <button
+              onClick={handleReset}
+              disabled={resetting}
+              className="text-[10px] px-2 py-1 rounded bg-gray-100 text-gray-500 hover:bg-gray-200 disabled:opacity-50"
+            >
+              {resetting ? "리셋 중..." : "기준일 리셋"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 필터 */}
@@ -272,7 +276,7 @@ function FilterRow({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value as FilterValue)}
-        className="flex-1 border border-gray-300 rounded-md px-2 py-1.5 text-xs bg-white focus:border-orange-400 focus:ring-1 focus:ring-orange-400 focus:outline-none"
+        className="flex-1 border border-gray-300 rounded-md px-2 py-1.5 text-xs text-gray-900 bg-white focus:border-orange-400 focus:ring-1 focus:ring-orange-400 focus:outline-none"
       >
         {FILTER_OPTIONS.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
