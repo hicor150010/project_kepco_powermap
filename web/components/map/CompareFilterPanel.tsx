@@ -60,6 +60,12 @@ function ChangeToggle({
   );
 }
 
+/** 시설별 변화 요약 */
+interface FacilityChange {
+  gained: number;  // 없음→있음
+  lost: number;    // 있음→없음
+}
+
 /** 마을 단위 분석 */
 interface VillageStats {
   geocode_address: string;
@@ -74,20 +80,28 @@ interface VillageStats {
   gained: number;
   lost: number;
   totalRows: number;
+  subst: FacilityChange;
+  mtr: FacilityChange;
+  dl: FacilityChange;
 }
 
 function analyzeVillage(rows: CompareRefRow[]): VillageStats {
   const first = rows[0];
-  let gained = 0;
-  let lost = 0;
+  const subst: FacilityChange = { gained: 0, lost: 0 };
+  const mtr: FacilityChange = { gained: 0, lost: 0 };
+  const dl: FacilityChange = { gained: 0, lost: 0 };
+
   for (const r of rows) {
-    if (!r.prev_subst_ok && r.curr_subst_ok) gained++;
-    if (r.prev_subst_ok && !r.curr_subst_ok) lost++;
-    if (!r.prev_mtr_ok && r.curr_mtr_ok) gained++;
-    if (r.prev_mtr_ok && !r.curr_mtr_ok) lost++;
-    if (!r.prev_dl_ok && r.curr_dl_ok) gained++;
-    if (r.prev_dl_ok && !r.curr_dl_ok) lost++;
+    if (!r.prev_subst_ok && r.curr_subst_ok) subst.gained++;
+    if (r.prev_subst_ok && !r.curr_subst_ok) subst.lost++;
+    if (!r.prev_mtr_ok && r.curr_mtr_ok) mtr.gained++;
+    if (r.prev_mtr_ok && !r.curr_mtr_ok) mtr.lost++;
+    if (!r.prev_dl_ok && r.curr_dl_ok) dl.gained++;
+    if (r.prev_dl_ok && !r.curr_dl_ok) dl.lost++;
   }
+
+  const gained = subst.gained + mtr.gained + dl.gained;
+  const lost = subst.lost + mtr.lost + dl.lost;
 
   let direction: VillageStats["direction"] = "unchanged";
   if (gained > 0 && lost === 0) direction = "improved";
@@ -107,6 +121,9 @@ function analyzeVillage(rows: CompareRefRow[]): VillageStats {
     gained,
     lost,
     totalRows: rows.length,
+    subst,
+    mtr,
+    dl,
   };
 }
 
@@ -553,20 +570,20 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
                           : "hover:bg-orange-50 active:bg-orange-100"
                       }`}
                     >
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="text-xs font-medium text-gray-900 truncate">
                           {v.geocode_address}
                         </div>
-                        <div className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-2">
+                        <div className="text-[10px] mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                           <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${dirConfig.cls}`}>
                             {dirConfig.badge}
                           </span>
-                          {v.gained > 0 && <span className="text-green-600">+{v.gained}</span>}
-                          {v.lost > 0 && <span className="text-red-600">-{v.lost}</span>}
-                          <span className="text-gray-400">{v.totalRows}건</span>
+                          <FacilityDelta label="변전소" change={v.subst} />
+                          <FacilityDelta label="주변압기" change={v.mtr} />
+                          <FacilityDelta label="배전선로" change={v.dl} />
                         </div>
                       </div>
-                      <div className="text-orange-500 text-xs flex-shrink-0">→</div>
+                      <div className="text-orange-400 text-xs flex-shrink-0">→</div>
                     </button>
                   </li>
                 );
@@ -576,5 +593,17 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
         </div>
       )}
     </div>
+  );
+}
+
+/** 시설별 변화 표시 — 변화 없으면 렌더링 안 함 */
+function FacilityDelta({ label, change }: { label: string; change: FacilityChange }) {
+  if (change.gained === 0 && change.lost === 0) return null;
+  return (
+    <span className="text-[10px] text-gray-600">
+      <span className="text-gray-400">{label}</span>
+      {change.gained > 0 && <span className="text-green-600 ml-0.5">+{change.gained}</span>}
+      {change.lost > 0 && <span className="text-red-600 ml-0.5">-{change.lost}</span>}
+    </span>
   );
 }
