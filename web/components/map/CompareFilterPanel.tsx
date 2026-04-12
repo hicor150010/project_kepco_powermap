@@ -83,6 +83,7 @@ interface VillageStats {
   subst: FacilityChange;
   mtr: FacilityChange;
   dl: FacilityChange;
+  rows: CompareRefRow[];
 }
 
 function analyzeVillage(rows: CompareRefRow[]): VillageStats {
@@ -124,6 +125,7 @@ function analyzeVillage(rows: CompareRefRow[]): VillageStats {
     subst,
     mtr,
     dl,
+    rows,
   };
 }
 
@@ -156,6 +158,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
   const [step1Villages, setStep1Villages] = useState<VillageStats[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("changed_desc");
   const [detailRegionOpen, setDetailRegionOpen] = useState(false);
+  const [expandedAddr, setExpandedAddr] = useState<string | null>(null);
 
   // 지역 필터
   const [addrDo, setAddrDo] = useState<Set<string>>(new Set());
@@ -349,6 +352,13 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
   return (
     <div className="overflow-y-auto h-full">
       <div className="px-3 py-3 space-y-3">
+        {/* 스텝 인디케이터 */}
+        <div className="flex items-center gap-1 text-[10px]">
+          <span className={`px-2 py-0.5 rounded-full font-bold ${step === "filter" ? "bg-orange-500 text-white" : "bg-gray-200 text-gray-500"}`}>① 조건</span>
+          <span className="text-gray-300">→</span>
+          <span className={`px-2 py-0.5 rounded-full font-bold ${step === "results" ? "bg-orange-500 text-white" : "bg-gray-200 text-gray-500"}`}>② 지역</span>
+        </div>
+
         {step === "filter" ? (
           <>
             {/* ── 1단계: 비교 조건 설정 ── */}
@@ -426,7 +436,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
               disabled={loading}
               className="w-full py-2.5 rounded-lg bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 disabled:opacity-50 transition-colors"
             >
-              {loading ? "분석 중..." : "비교 검색"}
+              {loading ? "분석 중..." : "다음: 지역 선택 →"}
             </button>
 
             {!loading && allVillages.length === 0 && (
@@ -544,6 +554,8 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
                   unchanged: { badge: "동일", cls: "bg-gray-100 text-gray-600" },
                 }[v.direction];
 
+                const isExpanded = expandedAddr === v.geocode_address;
+
                 return (
                   <li key={v.geocode_address}>
                     <button
@@ -563,28 +575,42 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
                             lng: v.lng,
                           },
                         });
+                        setExpandedAddr(isExpanded ? null : v.geocode_address);
                       }}
-                      className={`w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 transition-colors ${
+                      className={`w-full text-left px-4 py-2.5 transition-colors ${
                         isSelected
                           ? "bg-orange-50 border-l-2 border-orange-500"
                           : "hover:bg-orange-50 active:bg-orange-100"
                       }`}
                     >
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs font-medium text-gray-900 truncate">
-                          {v.geocode_address}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-medium text-gray-900 truncate">
+                            {v.geocode_address}
+                          </div>
+                          <div className="text-[10px] mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${dirConfig.cls}`}>
+                              {dirConfig.badge}
+                            </span>
+                            <FacilityDelta label="변전소" change={v.subst} />
+                            <FacilityDelta label="주변압기" change={v.mtr} />
+                            <FacilityDelta label="배전선로" change={v.dl} />
+                          </div>
                         </div>
-                        <div className="text-[10px] mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${dirConfig.cls}`}>
-                            {dirConfig.badge}
-                          </span>
-                          <FacilityDelta label="변전소" change={v.subst} />
-                          <FacilityDelta label="주변압기" change={v.mtr} />
-                          <FacilityDelta label="배전선로" change={v.dl} />
+                        <div className={`text-orange-400 text-xs flex-shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}>▶</div>
+                      </div>
+                    </button>
+                    {/* 지번별 상세 */}
+                    {isExpanded && (
+                      <div className="px-4 pb-2 bg-gray-50 border-l-2 border-orange-300">
+                        <div className="text-[10px] text-gray-500 py-1.5 font-bold">지번별 변화 상세</div>
+                        <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                          {v.rows.map((r, i) => (
+                            <JibunChangeRow key={i} row={r} />
+                          ))}
                         </div>
                       </div>
-                      <div className="text-orange-400 text-xs flex-shrink-0">→</div>
-                    </button>
+                    )}
                   </li>
                 );
               })}
@@ -605,5 +631,33 @@ function FacilityDelta({ label, change }: { label: string; change: FacilityChang
       {change.gained > 0 && <span className="text-green-600 ml-0.5">+{change.gained}</span>}
       {change.lost > 0 && <span className="text-red-600 ml-0.5">-{change.lost}</span>}
     </span>
+  );
+}
+
+/** 지번별 변화 행 */
+function JibunChangeRow({ row }: { row: CompareRefRow }) {
+  const changes: { label: string; prev: boolean; curr: boolean }[] = [];
+  if (row.prev_subst_ok !== row.curr_subst_ok) changes.push({ label: "변전소", prev: row.prev_subst_ok, curr: row.curr_subst_ok });
+  if (row.prev_mtr_ok !== row.curr_mtr_ok) changes.push({ label: "주변압기", prev: row.prev_mtr_ok, curr: row.curr_mtr_ok });
+  if (row.prev_dl_ok !== row.curr_dl_ok) changes.push({ label: "배전선로", prev: row.prev_dl_ok, curr: row.curr_dl_ok });
+
+  if (changes.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded px-2.5 py-1.5 border border-gray-200">
+      <div className="text-[10px] font-medium text-gray-800 truncate">
+        {row.addr_jibun || "-"} <span className="text-gray-400 font-normal">{row.dl_nm || row.subst_nm || ""}</span>
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+        {changes.map((c) => (
+          <span key={c.label} className="text-[9px]">
+            <span className="text-gray-400">{c.label}</span>
+            <span className={c.prev ? "text-green-600 ml-0.5" : "text-red-600 ml-0.5"}>{c.prev ? "여유" : "없음"}</span>
+            <span className="text-gray-400 mx-0.5">→</span>
+            <span className={c.curr ? "text-green-600" : "text-red-600"}>{c.curr ? "여유" : "없음"}</span>
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }

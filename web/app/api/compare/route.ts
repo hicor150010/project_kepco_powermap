@@ -16,6 +16,10 @@ export interface CompareRefRow {
   addr_gu: string | null;
   addr_dong: string | null;
   addr_li: string | null;
+  addr_jibun: string | null;
+  subst_nm: string | null;
+  mtr_no: string | null;
+  dl_nm: string | null;
   prev_subst_ok: boolean;
   prev_mtr_ok: boolean;
   prev_dl_ok: boolean;
