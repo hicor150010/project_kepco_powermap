@@ -732,15 +732,15 @@ export default function MapClient({ isAdmin, email }: Props) {
             <div className={`absolute z-20 left-1/2 -translate-x-1/2
               ${selectedAddr ? "bottom-44 md:bottom-auto md:top-2" : "bottom-4 md:bottom-auto md:top-2"}`}
             >
-              <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur border border-gray-200 shadow-lg rounded-full px-3 py-1.5 text-[11px] whitespace-nowrap">
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white shrink-0 ${dotColor}`}>
+              <div className="flex items-center gap-1.5 md:gap-2 bg-white/95 backdrop-blur border border-gray-200 shadow-lg rounded-full px-3 py-1.5 md:px-4 md:py-2 text-[11px] md:text-xs whitespace-nowrap">
+                <span className={`px-1.5 py-0.5 md:px-2 md:py-1 rounded-full text-[10px] md:text-[11px] font-bold text-white shrink-0 ${dotColor}`}>
                   {sourceLabel}
                 </span>
                 <span className="text-gray-800 font-bold tabular-nums">{visibleCount.toLocaleString()}</span>
-                <span className="text-gray-400 text-[10px]">마을</span>
+                <span className="text-gray-400 text-[10px] md:text-[11px]">마을</span>
                 <span className="text-gray-300">·</span>
                 <span className="text-gray-800 font-bold tabular-nums">{visibleJibun.toLocaleString()}</span>
-                <span className="text-gray-400 text-[10px]">지번</span>
+                <span className="text-gray-400 text-[10px] md:text-[11px]">지번</span>
                 {isFiltered && (
                   <span className="w-px h-3 bg-gray-200 mx-0.5" />
                 )}
@@ -748,9 +748,9 @@ export default function MapClient({ isAdmin, email }: Props) {
                   <button
                     type="button"
                     onClick={clearMapFilter}
-                    className="px-1.5 py-0.5 rounded-full bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-600 text-[10px] font-medium transition-colors"
+                    className="px-2 py-0.5 md:px-2.5 md:py-1 rounded-full border border-gray-400 hover:border-gray-600 hover:bg-gray-50 active:bg-gray-100 text-gray-600 hover:text-gray-800 text-[10px] md:text-[11px] font-medium transition-colors"
                   >
-                    전체
+                    ✕ 전체보기
                   </button>
                 )}
               </div>

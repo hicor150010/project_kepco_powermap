@@ -65,8 +65,8 @@ function AddrSpan({ text }: { text: string }) {
 }
 
 export default function SearchResultList({ mode, ri, ji, onPick, onJibunPin, selectedAddr }: Props) {
-  // 지번 행 펼침 상태 (id 집합)
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  // 지번 행 펼침 상태 (하나만 열림)
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   if (mode === "ri") {
     if (ri.length === 0) {
@@ -131,14 +131,9 @@ export default function SearchResultList({ mode, ri, ji, onPick, onJibunPin, sel
     );
   }
 
-  // 펼침/접기만 (사이드바 닫지 않음)
+  // 펼침/접기 — 하나만 열림 (아코디언)
   const handleToggleExpand = (row: KepcoDataRow) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(row.id)) next.delete(row.id);
-      else next.add(row.id);
-      return next;
-    });
+    setExpandedId((prev) => prev === row.id ? null : row.id);
   };
 
   // 지도 이동 (onPick 호출 → 사이드바 닫힘)
@@ -149,7 +144,7 @@ export default function SearchResultList({ mode, ri, ji, onPick, onJibunPin, sel
   return (
     <ul className="divide-y divide-gray-100">
       {ji.map((row) => {
-        const isOpen = expanded.has(row.id);
+        const isOpen = expandedId === row.id;
         return (
           <li key={row.id}>
             <div
