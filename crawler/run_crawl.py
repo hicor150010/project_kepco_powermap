@@ -90,7 +90,8 @@ def find_next_job(thread: int) -> dict | None:
     if rows:
         return rows[0]
 
-    # 2) stopped + checkpoint 있는 것 (타임아웃 재개만 — 사용자 중단 제외)
+    # 2) stopped + checkpoint 있는 것 (타임아웃 재개)
+    #    cancelled는 사용자 취소이므로 여기에 안 걸림
     resp = requests.get(
         f"{SUPABASE_URL}/rest/v1/crawl_jobs",
         params={
@@ -98,18 +99,14 @@ def find_next_job(thread: int) -> dict | None:
             "thread": f"eq.{thread}",
             "checkpoint": "not.is.null",
             "order": "created_at.asc",
-            "limit": "10",
+            "limit": "1",
             "select": "*",
         },
         headers=_headers(),
         timeout=30,
     )
     rows = resp.json()
-    for row in rows:
-        result = row.get("result") or {}
-        if result.get("stopped_reason") != "user":
-            return row
-    return None
+    return rows[0] if rows else None
 
 
 def update_job(job_id: int, data: dict):
@@ -245,16 +242,13 @@ def auto_continue(job: dict, checkpoint: dict | None, thread: int):
 
     try:
         # 1. 새 crawl_jobs row 생성
-        child_options = dict(job.get("options") or {})
-        child_options["_parent_job_id"] = job["id"]
-
         new_job = {
             "sido": job["sido"],
             "si": job.get("si"),
             "gu": job.get("gu"),
             "dong": job.get("dong"),
             "li": job.get("li"),
-            "options": child_options,
+            "options": job.get("options") or {},
             "checkpoint": checkpoint,
             "requested_by": job.get("requested_by"),
             "thread": thread,
@@ -329,18 +323,6 @@ def run(job: dict, thread: int):
     cycle_count = job.get("cycle_count", 0)
     max_cycles = job.get("max_cycles")
     logger.info(f"=== Job #{job_id} 시작: {job['sido']} (thread={thread}, mode={mode}, cycle={cycle_count}) ===")
-
-    # 부모 Job이 사용자에 의해 중단되었으면 자기도 종료
-    parent_job_id = (job.get("options") or {}).get("_parent_job_id")
-    if parent_job_id:
-        parent = read_job(parent_job_id)
-        if parent:
-            parent_result = parent.get("result") or {}
-            parent_reason = parent_result.get("stopped_reason")
-            if parent.get("status") == "stopped" and parent_reason != "timeout":
-                logger.info(f"부모 Job #{parent_job_id}이 사용자 중단 — 이 Job도 종료합니다.")
-                update_job(job_id, {"status": "stopped", "result": {"stopped_reason": "parent_stopped"}})
-                return
 
     # 옵션 파싱
     options = job.get("options") or {}
@@ -451,17 +433,20 @@ def run(job: dict, thread: int):
     # MV 새로고침
     db_writer.refresh_mv()
 
-    # 최종 상태 결정
+    # ── 최종 상태 결정 ──
+    #   stopped   = 타임아웃 중단 (시스템), cron/체이닝으로 재개 가능
+    #   cancelled = 사용자 취소, 재개 안 함
+    #   completed = 정상 완료
     if timeout_triggered.is_set():
         final_status = "stopped"
     elif crawler.is_stopped():
-        final_status = "stopped"
+        final_status = "cancelled"
     else:
         final_status = "completed"
 
     checkpoint = build_checkpoint(crawler.progress)
     stats = db_writer.get_stats()
-    logger.info(f"=== Job #{job_id} 완료: status={final_status}, "
+    logger.info(f"=== Job #{job_id} 종료: status={final_status}, "
                 f"upserted={stats['upserted']}, errors={stats['errors']}, "
                 f"geocoded={stats.get('geocoded', 0)} ===")
 
@@ -469,56 +454,45 @@ def run(job: dict, thread: int):
     if crawler.progress.all_errors:
         final_progress["all_errors"] = crawler.progress.all_errors
 
-    # stopped 사유 기록 (타임아웃 vs 사용자 중단 구분)
-    result_json: dict = {}
-    if final_status == "stopped":
-        result_json["stopped_reason"] = "timeout" if timeout_triggered.is_set() else "user"
-
     update_job(job_id, {
         "status": final_status,
         "progress": final_progress,
         "checkpoint": checkpoint,
         "completed_at": "now()",
-        **({"result": result_json} if result_json else {}),
     })
 
     timer.cancel()
 
-    # ── 자동 재시작 로직 (모드별) ──
+    # ── 자동 재시작 ──
+    # cancelled/failed → 절대 재시작 안 함
+    # completed/stopped → 모드에 따라 판단
+    if final_status in ("cancelled", "failed"):
+        logger.info(f"{final_status} — 자동 재시작 없음")
+        return
+
     restart_count = (job.get("options") or {}).get("_restart_count", 0)
 
-    if mode == "single":
-        # 1회 모드: 타임아웃 시에만 체이닝 (기존 로직)
-        if timeout_triggered.is_set() and checkpoint and restart_count < MAX_AUTO_RESTARTS:
+    if final_status == "stopped":
+        # 타임아웃 → 체크포인트에서 이어서 (1회/반복 공통)
+        if checkpoint and restart_count < MAX_AUTO_RESTARTS:
             next_options = dict(options)
             next_options["_restart_count"] = restart_count + 1
-            next_job = {**job, "options": next_options}
+            next_job = {**job, "options": next_options, "cycle_count": cycle_count}
             auto_continue(next_job, checkpoint, thread)
-        elif timeout_triggered.is_set() and restart_count >= MAX_AUTO_RESTARTS:
+        elif restart_count >= MAX_AUTO_RESTARTS:
             logger.warning(f"자동 재시작 한도 도달 ({MAX_AUTO_RESTARTS}회)")
 
-    elif mode == "recurring":
-        if final_status == "stopped" and not timeout_triggered.is_set():
-            # 사용자가 수동 중단 → 체이닝 안 함
-            logger.info("반복 모드: 사용자 중단 — 체이닝 중지")
-        elif timeout_triggered.is_set():
-            # 타임아웃: 체크포인트에서 이어서 재시작
-            if restart_count < MAX_AUTO_RESTARTS:
-                next_options = dict(options)
-                next_options["_restart_count"] = restart_count + 1
-                next_job = {**job, "options": next_options, "cycle_count": cycle_count}
-                auto_continue(next_job, checkpoint, thread)
-        elif final_status == "completed":
-            # 한 바퀴 완료: 다음 순환
-            new_cycle = cycle_count + 1
-            if max_cycles and new_cycle >= max_cycles:
-                logger.info(f"반복 모드: 최대 순환 횟수 도달 ({max_cycles}회) — 종료")
-            else:
-                logger.info(f"반복 모드: 순환 {new_cycle}회차 시작")
-                next_options = dict(options)
-                next_options["_restart_count"] = 0  # 새 순환은 restart_count 리셋
-                next_job = {**job, "options": next_options, "cycle_count": new_cycle}
-                auto_continue(next_job, None, thread)  # checkpoint=None → 처음부터
+    elif final_status == "completed" and mode == "recurring":
+        # 반복 모드 한 바퀴 완료 → 다음 순환
+        new_cycle = cycle_count + 1
+        if max_cycles and new_cycle >= max_cycles:
+            logger.info(f"반복 모드: 최대 순환 횟수 도달 ({max_cycles}회) — 종료")
+        else:
+            logger.info(f"반복 모드: 순환 {new_cycle}회차 시작")
+            next_options = dict(options)
+            next_options["_restart_count"] = 0  # 새 순환은 restart_count 리셋
+            next_job = {**job, "options": next_options, "cycle_count": new_cycle}
+            auto_continue(next_job, None, thread)  # checkpoint=None → 처음부터
 
 
 def main():

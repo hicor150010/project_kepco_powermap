@@ -53,6 +53,7 @@ const STATUS_LABELS: Record<string, { text: string; color: string }> = {
   failed: { text: "실패", color: "bg-red-100 text-red-800" },
   stopped: { text: "중단됨", color: "bg-gray-100 text-gray-800" },
   stop_requested: { text: "중단 요청", color: "bg-orange-100 text-orange-800" },
+  cancelled: { text: "취소됨", color: "bg-gray-100 text-gray-600" },
 };
 
 // ── 메인 컴포넌트 ──
@@ -410,7 +411,8 @@ export default function CrawlManager() {
     (j) =>
       (j.status === "completed" ||
       j.status === "failed" ||
-      j.status === "stopped") &&
+      j.status === "stopped" ||
+      j.status === "cancelled") &&
       (j.thread || 1) === selectedThread
   );
 
