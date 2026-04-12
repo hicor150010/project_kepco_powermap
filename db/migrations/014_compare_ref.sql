@@ -43,7 +43,7 @@ CREATE POLICY "kepco_capa_ref_select" ON kepco_capa_ref
 -- 새 지번만 ref에 추가. 기존 행은 절대 건드리지 않음.
 -- ═══════════════════════════════════════════════
 
-CREATE OR REPLACE FUNCTION sync_capa_ref()
+CREATE OR REPLACE FUNCTION sync_capa_ref(capa_ids BIGINT[] DEFAULT NULL)
 RETURNS void
 LANGUAGE sql
 SECURITY DEFINER
@@ -59,16 +59,15 @@ AS $$
     (COALESCE(c.dl_capa, 0) - COALESCE(c.dl_pwr, 0) > 0)
       AND (COALESCE(c.dl_capa, 0) - COALESCE(c.g_dl_capa, 0) > 0)
   FROM kepco_capa c
-  WHERE NOT EXISTS (
-    SELECT 1 FROM kepco_capa_ref r WHERE r.capa_id = c.id
-  );
+  WHERE (capa_ids IS NULL OR c.id = ANY(capa_ids))
+  ON CONFLICT (capa_id) DO NOTHING;
 $$;
 
-REVOKE ALL ON FUNCTION sync_capa_ref() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION sync_capa_ref() TO service_role;
+REVOKE ALL ON FUNCTION sync_capa_ref(BIGINT[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION sync_capa_ref(BIGINT[]) TO service_role;
 
-COMMENT ON FUNCTION sync_capa_ref() IS
-  '새 지번만 ref에 추가. 기존 행은 불변. 크롤러 flush 후 호출.';
+COMMENT ON FUNCTION sync_capa_ref IS
+  '새 지번만 ref에 추가. capa_ids 전달 시 해당 ID만, NULL이면 전체. 기존 행은 불변.';
 
 -- ═══════════════════════════════════════════════
 -- Phase 4: RPC — reset_capa_ref()

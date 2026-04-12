@@ -532,7 +532,7 @@ export default function CrawlManager() {
 
         {selectedMode === "recurring" && (
           <div className="text-xs text-orange-700 bg-orange-50 rounded px-3 py-2 border border-orange-200 mb-4">
-            선택한 지역을 3시간 단위로 자동 재시작하며 무한 반복 수집합니다. 수동으로 중단하지 않으면 계속됩니다.
+            선택한 지역을 5시간 단위로 자동 재시작하며 무한 반복 수집합니다. 수동으로 중단하지 않으면 계속됩니다.
           </div>
         )}
 

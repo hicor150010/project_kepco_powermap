@@ -42,25 +42,31 @@ crawl.yml (워크플로우 1개)
 ```
 KEPCO API → 크롤러 (crawler.py)
     ↓ (100건 버퍼)
-UPSERT → kepco_data 테이블
+1. kepco_addr UPSERT (주소 마스터)
     ↓
-지오코딩 (카카오 REST API) → lat/lng 업데이트
+2. kepco_capa UPSERT (용량 데이터, addr_id FK)
     ↓
-MV 새로고침 (kepco_map_summary)
+3. 지오코딩 (카카오 REST API) → lat/lng 업데이트
+    ↓
+4. MV 새로고침 (kepco_map_summary)
+    ↓
+5. ref 스냅샷 동기화 (새 지번만, ON CONFLICT DO NOTHING)
+    ↓
+6. 변화 감지 (ref 대비 → kepco_capa_changelog)
     ↓
 체크포인트 저장 (crawl_jobs.checkpoint)
-    ↓
-변화 감지 (DB 트리거 → kepco_data_history)
 ```
 
 ### flush 사이클 (100건마다)
 
-1. 크롤러가 100건 수집
-2. Supabase에 UPSERT (merge-duplicates)
-3. 새 주소 지오코딩 (카카오 API → geocode_cache → kepco_data.lat/lng)
+1. kepco_addr UPSERT (캐시 miss인 주소만, 응답으로 addr_id 캐시)
+2. kepco_capa UPSERT (addr_id 붙여서, 응답으로 upserted_ids 수집)
+3. 새 주소 지오코딩 (카카오 API → geocode_cache → kepco_addr.lat/lng)
 4. Materialized View 새로고침
-5. 체크포인트 저장
-6. DB 트리거가 변경된 값 감지 → kepco_data_history에 이전값 기록
+5. sync_capa_ref(upserted_ids) — 새 지번만 ref에 추가
+6. detect_changes(upserted_ids) — ref 대비 변화 감지 → changelog 기록
+
+> 상세 흐름은 [COMPARE.md](./COMPARE.md) 참조
 
 ---
 
@@ -110,7 +116,7 @@ MV 새로고침 (kepco_map_summary)
 | 트리거 실패 복구 | 3회 재시도 | run_crawl.py auto_continue() |
 | 반복 무한루프 방지 | max_cycles 설정 | run_crawl.py |
 | KEPCO 차단 방지 | 세션 재생성, UA 랜덤, 점진적 백오프 | api_client.py |
-| 변화 감지 | DB 트리거 (fn_kepco_history) | 009_history_trigger.sql |
+| 변화 감지 | ref 대비 changelog (detect_changes RPC) | 016_changelog.sql |
 
 ---
 
@@ -166,8 +172,10 @@ cron 실행 시 matrix로 스레드 1/2/3 모두 체크.
 
 ## 10. 변경 이력
 
+- 2026-04-12: 변화 감지 시스템 전환 — 트리거 → ref + changelog 방식 ([COMPARE.md](./COMPARE.md))
+- 2026-04-12: sync_capa_ref 파라미터화 (전체 스캔 → flush ID만)
+- 2026-04-12: detect_changes ON CONFLICT DO NOTHING (하루 첫 감지만 기록)
 - 2026-04-10: 멀티스레드 시스템 도입 (3개 독립 스레드, 반복 모드)
-- 2026-04-10: 변화 감지 시스템 (DB 트리거 + history 테이블 + 비교 UI)
 - 2026-04-10: 에러 상세 로그 (recent_errors + all_errors)
 - 2026-04-09: 차단 우회 강화 (세션 재생성, UA 랜덤, 점진적 백오프)
 - 2026-04-09: GitHub Actions 자동 크롤링 + 실시간 지오코딩

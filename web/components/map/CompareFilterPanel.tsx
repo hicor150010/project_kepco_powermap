@@ -597,8 +597,8 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
                         <div className="text-xs font-medium text-gray-900 truncate">
                           {v.geocode_address}
                         </div>
-                        <div className="text-[10px] mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${dirConfig.cls}`}>
+                        <div className="text-[11px] mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${dirConfig.cls}`}>
                             {dirConfig.badge}
                           </span>
                           <FacilityDelta label="변전소" change={v.subst} />
@@ -620,7 +620,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
                     {/* 지번별 상세 */}
                     {isExpanded && (
                       <div className="px-4 pb-2 bg-gray-50 border-l-2 border-orange-300">
-                        <div className="text-[10px] text-gray-500 py-1.5 font-bold">지번별 변화 상세</div>
+                        <div className="text-[11px] text-gray-500 py-1.5 font-bold">지번별 변화 상세</div>
                         <div className="space-y-1 max-h-[200px] overflow-y-auto">
                           {v.rows.map((r, i) => (
                             <JibunChangeRow key={i} row={r} />
@@ -643,7 +643,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
 function FacilityDelta({ label, change }: { label: string; change: FacilityChange }) {
   if (change.gained === 0 && change.lost === 0) return null;
   return (
-    <span className="text-[10px] text-gray-600">
+    <span className="text-[11px] text-gray-600">
       <span className="text-gray-400">{label}</span>
       {change.gained > 0 && <span className="text-green-600 ml-0.5">+{change.gained}</span>}
       {change.lost > 0 && <span className="text-red-600 ml-0.5">-{change.lost}</span>}
@@ -662,12 +662,12 @@ function JibunChangeRow({ row }: { row: CompareRefRow }) {
 
   return (
     <div className="bg-white rounded px-2.5 py-1.5 border border-gray-200">
-      <div className="text-[10px] font-medium text-gray-800 truncate">
+      <div className="text-[11px] font-medium text-gray-800 truncate">
         {row.addr_jibun || "-"} <span className="text-gray-400 font-normal">{row.dl_nm || row.subst_nm || ""}</span>
       </div>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
         {changes.map((c) => (
-          <span key={c.label} className="text-[9px]">
+          <span key={c.label} className="text-[10px]">
             <span className="text-gray-400">{c.label}</span>
             <span className={c.prev ? "text-green-600 ml-0.5" : "text-red-600 ml-0.5"}>{c.prev ? "여유" : "없음"}</span>
             <span className="text-gray-400 mx-0.5">→</span>

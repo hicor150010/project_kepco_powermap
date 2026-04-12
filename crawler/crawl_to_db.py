@@ -275,7 +275,8 @@ class CrawlDbWriter:
         self.refresh_mv()
 
         # ── 5단계: ref 스냅샷 동기화 (새 지번만 추가) ──
-        self.sync_ref()
+        if upserted_ids:
+            self.sync_ref(upserted_ids)
 
         # ── 6단계: 변화 감지 (ref 대비 달라진 지번만 changelog 기록) ──
         if upserted_ids:
@@ -378,12 +379,12 @@ class CrawlDbWriter:
         except requests.exceptions.RequestException as e:
             logger.warning(f"변화 감지 네트워크 오류: {e}")
 
-    def sync_ref(self):
+    def sync_ref(self, capa_ids: list[int] | None = None):
         """ref 스냅샷 동기화 — 새 지번만 추가 (sync_capa_ref RPC)"""
         try:
             resp = requests.post(
                 f"{self._url}/rest/v1/rpc/sync_capa_ref",
-                json={},
+                json={"capa_ids": capa_ids},
                 headers=self._headers(),
                 timeout=120,
             )

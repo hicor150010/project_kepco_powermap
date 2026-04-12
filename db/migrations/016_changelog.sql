@@ -74,10 +74,7 @@ BEGIN
         AND (COALESCE(c.dl_capa, 0) - COALESCE(c.g_dl_capa, 0) > 0)
       )
     )
-  ON CONFLICT (capa_id, changed_date) DO UPDATE SET
-    subst_ok = EXCLUDED.subst_ok,
-    mtr_ok = EXCLUDED.mtr_ok,
-    dl_ok = EXCLUDED.dl_ok;
+  ON CONFLICT (capa_id, changed_date) DO NOTHING;
 
   GET DIAGNOSTICS inserted_count = ROW_COUNT;
   RETURN inserted_count;
