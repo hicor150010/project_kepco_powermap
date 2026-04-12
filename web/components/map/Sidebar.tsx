@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import Link from "next/link";
 import LogoutButton from "@/components/auth/LogoutButton";
 import FilterPanel from "./FilterPanel";
@@ -31,6 +31,10 @@ interface Props {
   refreshing?: boolean;
   /** 현재 선택된 마을 주소 (결과 하이라이트용) */
   selectedAddr?: string | null;
+  /** 지도 필터 적용 (2단계 결과 진입 시) */
+  onMapFilter?: (addrs: Set<string>, source: "filter" | "compare") => void;
+  /** 지도 필터 해제 */
+  onClearMapFilter?: () => void;
 }
 
 // ── 검색 히스토리 ──
@@ -77,8 +81,21 @@ export default function Sidebar({
   onRefresh,
   refreshing,
   selectedAddr,
+  onMapFilter,
+  onClearMapFilter,
 }: Props) {
   const [activeTab, setActiveTab] = useState<SidebarTab>("search");
+  const [showGuide, setShowGuide] = useState(false);
+
+  // 첫 방문 가이드
+  useEffect(() => {
+    const key = "kepco_guide_dismissed";
+    if (!localStorage.getItem(key)) setShowGuide(true);
+  }, []);
+  const dismissGuide = () => {
+    setShowGuide(false);
+    localStorage.setItem("kepco_guide_dismissed", "1");
+  };
 
   // ── 검색 상태 ──
   const [query, setQuery] = useState("");
@@ -230,7 +247,7 @@ export default function Sidebar({
                 : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
             }`}
           >
-            🔍 검색
+            🔍 주소검색
           </button>
           <button
             type="button"
@@ -252,7 +269,7 @@ export default function Sidebar({
                 : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
             }`}
           >
-            📊 비교
+            📊 변화추적
           </button>
         </div>
 
@@ -313,7 +330,7 @@ export default function Sidebar({
                         >{h}</button>
                         <button
                           type="button"
-                          className="text-gray-300 hover:text-red-400 text-[10px] opacity-0 group-hover:opacity-100"
+                          className="text-gray-400 hover:text-red-400 active:text-red-500 text-xs p-1 -m-1"
                           onMouseDown={(e) => { e.preventDefault(); removeHistory(h); setHistory(getHistory()); }}
                         >✕</button>
                       </div>
@@ -385,14 +402,40 @@ export default function Sidebar({
                   </>
                 )}
                 {!searchState.loading && !searchState.error && searchState.ri.length === 0 && searchState.ji.length === 0 && (
-                  <div className="px-4 py-10 text-center">
-                    <div className="text-2xl mb-2">🔍</div>
-                    <div className="text-xs text-gray-500">
-                      주소나 지번을 입력해 검색하세요
-                    </div>
-                    <div className="text-[10px] text-gray-400 mt-1">
-                      예: <span className="text-gray-600 font-medium">담양읍</span>,{" "}
-                      <span className="text-gray-600 font-medium">용구리 100</span>
+                  <div className="px-4 py-6 space-y-4">
+                    {/* 첫 방문 가이드 */}
+                    {showGuide && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-3 relative">
+                        <button
+                          onClick={dismissGuide}
+                          className="absolute top-1.5 right-2 text-blue-400 hover:text-blue-600 text-xs p-1"
+                        >✕</button>
+                        <div className="text-xs font-bold text-blue-800 mb-2">처음이신가요? 이렇게 시작하세요!</div>
+                        <div className="text-[11px] text-blue-700 space-y-1.5">
+                          <div className="flex items-start gap-1.5">
+                            <span className="shrink-0">1.</span>
+                            <span><b>지도에서 마을 터치</b> → 상세 정보 확인</span>
+                          </div>
+                          <div className="flex items-start gap-1.5">
+                            <span className="shrink-0">2.</span>
+                            <span><b>검색창에 주소 입력</b> → 원하는 지역 바로 이동</span>
+                          </div>
+                          <div className="flex items-start gap-1.5">
+                            <span className="shrink-0">3.</span>
+                            <span><b>조건검색 탭</b> → 여유용량 있는 곳만 찾기</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <div className="text-center">
+                      <div className="text-2xl mb-2">🔍</div>
+                      <div className="text-xs text-gray-500">
+                        주소나 지번을 입력해 검색하세요
+                      </div>
+                      <div className="text-[10px] text-gray-400 mt-1">
+                        예: <span className="text-gray-600 font-medium">담양읍</span>,{" "}
+                        <span className="text-gray-600 font-medium">용구리 100</span>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -412,6 +455,8 @@ export default function Sidebar({
                 if (window.innerWidth < 768) onToggle();
               }}
               selectedAddr={selectedAddr}
+              onMapFilter={(addrs) => onMapFilter?.(addrs, "filter")}
+              onClearMapFilter={onClearMapFilter}
             />
           )}
 
@@ -423,6 +468,8 @@ export default function Sidebar({
               }}
               selectedAddr={selectedAddr}
               isAdmin={isAdmin}
+              onMapFilter={(addrs) => onMapFilter?.(addrs, "compare")}
+              onClearMapFilter={onClearMapFilter}
             />
           )}
         </div>
@@ -436,12 +483,14 @@ export default function Sidebar({
       {/* ── 엣지 탭 핸들: 사이드바 오른쪽에 붙은 열기/닫기 토글 ── */}
       <button
         onClick={onToggle}
-        className="absolute left-full top-1/2 -translate-y-1/2
-          w-6 h-14 flex items-center justify-center
-          bg-white border border-l-0 border-gray-200
-          rounded-r-lg shadow-md
-          text-gray-500 hover:text-gray-800 hover:bg-gray-50
-          transition-colors"
+        className={`absolute left-full top-1/2 -translate-y-1/2
+          w-7 h-16 flex items-center justify-center
+          border border-l-0 rounded-r-lg shadow-md
+          transition-colors
+          ${isOpen
+            ? "bg-white border-gray-200 text-gray-500 hover:text-gray-800 hover:bg-gray-50"
+            : "bg-blue-500 border-blue-500 text-white hover:bg-blue-600 animate-pulse-subtle"
+          }`}
         aria-label={isOpen ? "사이드바 닫기" : "사이드바 열기"}
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"

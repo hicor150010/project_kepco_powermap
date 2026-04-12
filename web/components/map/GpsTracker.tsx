@@ -366,8 +366,13 @@ export default function GpsTracker({
           <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
         </span>
         GPS 추적 중
-        {gpsInfo.filtered && (
-          <span className="text-[9px] font-normal text-orange-500 ml-1">(필터링됨)</span>
+        {gpsInfo.filtered && gpsInfo.filterReason && (
+          <span className="text-[9px] font-normal text-orange-500 ml-1">
+            ({gpsInfo.filterReason === "accuracy" ? "신호 약함"
+              : gpsInfo.filterReason === "speed" ? "위치 점프"
+              : gpsInfo.filterReason === "distance" ? "정지 중"
+              : "대기 중"})
+          </span>
         )}
       </div>
 
@@ -402,6 +407,9 @@ export default function GpsTracker({
               : "text-red-600"
         }`}>
           ±{gpsInfo.accuracy.toFixed(0)}m
+          <span className="font-normal text-[9px] ml-0.5">
+            {gpsInfo.accuracy <= 10 ? "좋음" : gpsInfo.accuracy <= 50 ? "보통" : "나쁨"}
+          </span>
         </span>
       </div>
 
@@ -431,9 +439,9 @@ export default function GpsTracker({
 
       <div className="pt-1 border-t border-gray-100 text-[10px] text-gray-400">
         <div className="flex justify-between">
-          <span>필터</span>
+          <span>무시됨</span>
           <span className="tabular-nums">
-            정확도:{fs.rejectedAccuracy} 속도:{fs.rejectedSpeed} 거리:{fs.rejectedDistance}
+            신호약함 {fs.rejectedAccuracy} · 점프 {fs.rejectedSpeed} · 정지 {fs.rejectedDistance}
           </span>
         </div>
       </div>

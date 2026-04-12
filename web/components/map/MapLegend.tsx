@@ -8,11 +8,23 @@
  * 사용자가 한눈에 파악할 수 있도록 예시 마커 + 한 문장 설명만 둔다.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { STATUS_RED, STATUS_BLUE } from "@/lib/markerColor";
 
+const LEGEND_SEEN_KEY = "kepco_legend_seen";
+
 export default function MapLegend() {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return !localStorage.getItem(LEGEND_SEEN_KEY);
+  });
+
+  // 첫 방문 후 한 번 펼치면 기록
+  useEffect(() => {
+    if (open && !localStorage.getItem(LEGEND_SEEN_KEY)) {
+      localStorage.setItem(LEGEND_SEEN_KEY, "1");
+    }
+  }, [open]);
 
   return (
     <div>

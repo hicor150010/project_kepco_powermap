@@ -37,6 +37,15 @@ body.measure-mode * {
   cursor: crosshair !important;
 }
 
+/* 사이드바 토글 버튼 — 은은한 펄스 (닫혀 있을 때) */
+.animate-pulse-subtle {
+  animation: pulseSubtle 2.5s ease-in-out infinite;
+}
+@keyframes pulseSubtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
 /* 카드/패널 등장 — 아래에서 슬라이드 업 + 페이드 인 */
 .kepco-slide-up {
   animation: kepcoSlideUp 0.3s ease-out both;

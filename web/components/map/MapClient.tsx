@@ -61,7 +61,21 @@ export default function MapClient({ isAdmin, email }: Props) {
   const [mapType, setMapType] = useState<"roadmap" | "skyview" | "hybrid">("roadmap");
   const [zoomLevel, setZoomLevel] = useState<number | undefined>(undefined);
 
-  // 비교 모드
+  // 지도 필터 — 2단계 결과 진입 시 해당 마을만 표시
+  const [mapFilteredAddrs, setMapFilteredAddrs] = useState<Set<string> | null>(null);
+  const [mapFilterSource, setMapFilterSource] = useState<"filter" | "compare" | null>(null);
+
+  // 필터 해제 (전체 보기)
+  const clearMapFilter = useCallback(() => {
+    setMapFilteredAddrs(null);
+    setMapFilterSource(null);
+  }, []);
+
+  // 필터 적용
+  const applyMapFilter = useCallback((addrs: Set<string>, source: "filter" | "compare") => {
+    setMapFilteredAddrs(addrs);
+    setMapFilterSource(source);
+  }, []);
 
   // GPS 실시간 추적
   const [gpsActive, setGpsActive] = useState(false);
@@ -652,6 +666,8 @@ export default function MapClient({ isAdmin, email }: Props) {
         onRefresh={handleRefresh}
         refreshing={refreshing}
         selectedAddr={selectedAddr}
+        onMapFilter={applyMapFilter}
+        onClearMapFilter={clearMapFilter}
       />
 
       <main className="flex-1 relative min-w-0">
@@ -687,9 +703,30 @@ export default function MapClient({ isAdmin, email }: Props) {
           measureAddPointRef={measureAddPointRef}
           selectedAddr={selectedAddr}
           mapType={mapType}
+          visibleAddrs={mapFilteredAddrs}
         />
 
-        {/* 사이드바 열기/닫기 — Sidebar 컴포넌트의 엣지 탭으로 이동 */}
+        {/* 지도 필터 적용 중 배너 */}
+        {mapFilteredAddrs && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 kepco-slide-up">
+            <div className="flex items-center gap-2 bg-white/95 backdrop-blur border border-gray-200 shadow-lg rounded-full px-3 py-1.5 md:px-4 md:py-2 text-xs">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${mapFilterSource === "compare" ? "bg-orange-500" : "bg-blue-500"}`} />
+              <span className="text-gray-700 font-medium">
+                {mapFilterSource === "compare" ? "변화추적" : "조건검색"} 적용 중
+              </span>
+              <span className="text-gray-400">
+                {mapFilteredAddrs.size.toLocaleString()} / {allRows.length.toLocaleString()} 마을
+              </span>
+              <button
+                type="button"
+                onClick={clearMapFilter}
+                className="ml-1 px-2 py-0.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800 text-[11px] font-medium transition-colors"
+              >
+                전체 보기
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 우상단 도구 패널 (거리재기 / 유망 부지 TOP) */}
         <MapToolbar

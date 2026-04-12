@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import ChipToggle from "./ChipToggle";
 import SearchResultList, { type SearchPick } from "./SearchResultList";
 import type { MapSummaryRow, ColumnFilters as Filters } from "@/lib/types";
@@ -16,6 +16,10 @@ interface Props {
   onTogglePromising?: () => void;
   onSearchPick?: (pick: SearchPick) => void;
   selectedAddr?: string | null;
+  /** 지도 필터 적용 */
+  onMapFilter?: (addrs: Set<string>) => void;
+  /** 지도 필터 해제 */
+  onClearMapFilter?: () => void;
 }
 
 /** 여유용량 토글 — 콤팩트 1줄 레이아웃 */
@@ -67,6 +71,7 @@ type SortKey = "remaining_desc" | "count_desc" | "name_asc";
 export default function FilterPanel({
   totalRows, filters, onChange,
   isPromisingMode, onTogglePromising, onSearchPick, selectedAddr,
+  onMapFilter, onClearMapFilter,
 }: Props) {
   const [step, setStep] = useState<"volume" | "results">("volume");
   const [step1Rows, setStep1Rows] = useState<MapSummaryRow[]>([]);
@@ -193,6 +198,14 @@ export default function FilterPanel({
     });
   }, [step, step1Rows, volumeFiltered, filters.addr_do, filters.addr_si, filters.addr_gu, filters.addr_dong, filters.addr_li]);
 
+  // 2단계 지역 필터 변경 시 지도 마커도 갱신
+  const onMapFilterRef = useRef(onMapFilter);
+  onMapFilterRef.current = onMapFilter;
+  useEffect(() => {
+    if (step !== "results") return;
+    onMapFilterRef.current?.(new Set(filteredRows.map((r) => r.geocode_address)));
+  }, [step, filteredRows]);
+
   const conditionResults: SearchRiResult[] = useMemo(() => {
     if (step !== "results") return [];
 
@@ -227,7 +240,8 @@ export default function FilterPanel({
   // ── 핸들러 ──
 
   const handleSearch = () => {
-    setStep1Rows([...volumeFiltered]);
+    const snapshot = [...volumeFiltered];
+    setStep1Rows(snapshot);
     onChange({
       ...filters,
       addr_do: new Set(),
@@ -237,6 +251,8 @@ export default function FilterPanel({
       addr_li: new Set(),
     });
     setStep("results");
+    // 지도에 해당 마을만 표시
+    onMapFilter?.(new Set(snapshot.map((r) => r.geocode_address)));
   };
 
   const handleBack = () => {
@@ -250,6 +266,7 @@ export default function FilterPanel({
     });
     setStep1Rows([]);
     setStep("volume");
+    onClearMapFilter?.();
   };
 
   const reset = () => {
@@ -257,6 +274,7 @@ export default function FilterPanel({
     setSortKey("remaining_desc");
     setStep1Rows([]);
     setStep("volume");
+    onClearMapFilter?.();
   };
 
   const volumeActiveCount = (
@@ -278,6 +296,13 @@ export default function FilterPanel({
   return (
     <div className="overflow-y-auto h-full">
       <div className="px-3 py-3 space-y-3">
+
+        {/* 스텝 인디케이터 */}
+        <div className="flex items-center gap-1 text-[10px]">
+          <span className={`px-2 py-0.5 rounded-full font-bold ${step === "volume" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-500"}`}>①  조건</span>
+          <span className="text-gray-300">→</span>
+          <span className={`px-2 py-0.5 rounded-full font-bold ${step === "results" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-500"}`}>② 지역</span>
+        </div>
 
         {step === "volume" ? (
           <>
@@ -325,7 +350,7 @@ export default function FilterPanel({
               onClick={handleSearch}
               className="w-full py-2.5 rounded-lg bg-blue-500 text-white text-xs font-semibold hover:bg-blue-600 transition-colors"
             >
-              검색 ({volumeFiltered.length.toLocaleString()}개 마을)
+              다음: 지역 선택 → ({volumeFiltered.length.toLocaleString()}개 마을)
             </button>
           </>
         ) : (

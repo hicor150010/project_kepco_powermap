@@ -181,7 +181,7 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
                 }`}
                 title="번지 단위 표 보기"
               >
-                📋 일반
+                📋 번지별
               </button>
               <button
                 type="button"
@@ -193,7 +193,7 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
                 }`}
                 title="같은 시설끼리 묶어서 보기"
               >
-                🗂 그룹
+                🗂 시설별
               </button>
             </div>
             <button
@@ -236,7 +236,7 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
             </div>
 
             <div className="overflow-auto flex-1 min-h-0">
-              <table className="w-full text-xs">
+              <table className="w-full text-sm md:text-xs">
                 {/* 2단 헤더 — 모바일에서는 시설 이름 컬럼 숨김 */}
                 <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                   <tr className="border-b border-gray-200">
@@ -244,13 +244,13 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
                     <th className="px-2 md:px-3 py-2 bg-gray-100 cursor-pointer" onClick={() => setSort("addr_jibun")}>
                       <SortHeaderInline label="번지" col="addr_jibun" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
                     </th>
-                    <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-blue-800 bg-blue-50 border-l border-r border-blue-200 cursor-pointer" onClick={() => setSort("cap_subst")}>
+                    <th className="px-2 md:px-3 py-1.5 text-center text-xs md:text-[10px] font-bold text-blue-800 bg-blue-50 border-l border-r border-blue-200 cursor-pointer" onClick={() => setSort("cap_subst")}>
                       <SortHeaderInline label="변전소" col="cap_subst" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
                     </th>
-                    <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-emerald-800 bg-emerald-50 border-r border-emerald-200 cursor-pointer" onClick={() => setSort("cap_mtr")}>
+                    <th className="px-2 md:px-3 py-1.5 text-center text-xs md:text-[10px] font-bold text-emerald-800 bg-emerald-50 border-r border-emerald-200 cursor-pointer" onClick={() => setSort("cap_mtr")}>
                       <SortHeaderInline label="주변압기" col="cap_mtr" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
                     </th>
-                    <th className="px-2 md:px-3 py-1.5 text-center text-[10px] font-bold text-amber-800 bg-amber-50 border-r border-amber-200 cursor-pointer" onClick={() => setSort("cap_dl")}>
+                    <th className="px-2 md:px-3 py-1.5 text-center text-xs md:text-[10px] font-bold text-amber-800 bg-amber-50 border-r border-amber-200 cursor-pointer" onClick={() => setSort("cap_dl")}>
                       <SortHeaderInline label="배전선로" col="cap_dl" sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
                     </th>
                   </tr>
@@ -342,9 +342,9 @@ function FacilityCell({ name, ok }: { name: string; ok: boolean }) {
     <div className="flex items-center justify-between gap-1.5">
       <span className="text-gray-700 truncate">{name}</span>
       {ok ? (
-        <span className="flex-shrink-0 text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">여유</span>
+        <span className="flex-shrink-0 text-[11px] md:text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">여유</span>
       ) : (
-        <span className="flex-shrink-0 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">없음</span>
+        <span className="flex-shrink-0 text-[11px] md:text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">없음</span>
       )}
     </div>
   );
@@ -442,7 +442,7 @@ function DetailContent({ it }: { it: KepcoDataRow }) {
       {/* 전체 주소 — 펼친 행의 핵심 식별자이므로 옅은 파랑 배너로 살짝 강조 */}
       <div className="flex items-center gap-2 text-xs bg-blue-50 border border-blue-100 rounded-md px-3 py-2">
         <span className="text-blue-500 flex-shrink-0">📍</span>
-        <span className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide flex-shrink-0">
+        <span className="text-[11px] md:text-[10px] font-semibold text-blue-700 uppercase tracking-wide flex-shrink-0">
           전체 주소
         </span>
         <span className="font-semibold text-gray-900 truncate"><AddrLine parts={fullAddrParts} /></span>

@@ -42,6 +42,8 @@ interface Props {
   mapType?: "roadmap" | "skyview" | "hybrid";
   /** 비교 결과 — 값이 있으면 변경 마커 오버레이 표시 */
   compareRows?: CompareRefRow[];
+  /** 표시할 마을 주소 집합 — null이면 전체, Set이면 해당 마을만 표시 */
+  visibleAddrs?: Set<string> | null;
 }
 
 /**
@@ -209,6 +211,7 @@ export default function KakaoMap({
   selectedAddr = null,
   mapType = "roadmap",
   compareRows = [],
+  visibleAddrs = null,
 }: Props) {
   // 측정 모드 여부를 클릭 핸들러에서 참조하기 위한 ref
   // (state로 전달하면 마커 재생성이 발생하므로 ref로 우회)
@@ -310,6 +313,7 @@ export default function KakaoMap({
     }
 
     const filtered = rows.filter((r) => {
+      if (visibleAddrs && !visibleAddrs.has(r.geocode_address)) return false;
       const color = colorForMarker(r);
       return colorFilter.has(color);
     });
@@ -494,7 +498,7 @@ export default function KakaoMap({
     return () => { cancelled = true; };
     // selectedAddr은 의도적으로 deps에서 제외 — 전체 재생성 X, 아래 별도 effect에서 해당 마커만 이미지 교체
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded, rows, colorFilter, fitBoundsKey, onMarkerClick]);
+  }, [loaded, rows, colorFilter, fitBoundsKey, onMarkerClick, visibleAddrs]);
 
   /**
    * 선택 마을 변경 시, 이전/새 마커의 이미지만 교체한다.

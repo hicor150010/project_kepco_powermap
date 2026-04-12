@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import ChipToggle from "./ChipToggle";
 import type { SearchPick } from "./SearchResultList";
 import type { CompareRefRow } from "@/app/api/compare/route";
@@ -332,10 +332,12 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
   }, [step, step1Villages, addrDo, addrSi, addrGu, addrDong, addrLi]);
 
   // 2단계 지역 필터 변경 시 지도 마커도 갱신
+  const onMapFilterRef = useRef(onMapFilter);
+  onMapFilterRef.current = onMapFilter;
   useEffect(() => {
     if (step !== "results") return;
-    onMapFilter?.(new Set(filteredVillages.map((v) => v.geocode_address)));
-  }, [step, filteredVillages, onMapFilter]);
+    onMapFilterRef.current?.(new Set(filteredVillages.map((v) => v.geocode_address)));
+  }, [step, filteredVillages]);
 
   const sortedVillages = useMemo(() => {
     const arr = [...filteredVillages];
