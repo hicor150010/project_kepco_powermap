@@ -108,6 +108,7 @@ export type MarkerColor = "red" | "blue" | "yellow" | "green";
 /** 컬럼별 필터 (빈 Set이면 전체 통과) */
 export interface ColumnFilters {
   addr_do: Set<string>;
+  addr_si: Set<string>;
   addr_gu: Set<string>;
   addr_dong: Set<string>;
   addr_li: Set<string>;
@@ -122,6 +123,7 @@ export interface ColumnFilters {
 export function emptyFilters(): ColumnFilters {
   return {
     addr_do: new Set(),
+    addr_si: new Set(),
     addr_gu: new Set(),
     addr_dong: new Set(),
     addr_li: new Set(),

@@ -84,7 +84,7 @@ export default function ChipToggle({
       >
         <button
           onClick={clearAll}
-          className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors shrink-0 ${
+          className={`px-2.5 py-1.5 text-[11px] rounded-full border transition-colors shrink-0 ${
             isAll
               ? "bg-gray-700 border-gray-700 text-white font-medium"
               : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
@@ -98,7 +98,7 @@ export default function ChipToggle({
             <button
               key={opt}
               onClick={() => toggle(opt)}
-              className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors shrink-0 ${
+              className={`px-2.5 py-1.5 text-[11px] rounded-full border transition-colors shrink-0 ${
                 active
                   ? "bg-blue-500 border-blue-500 text-white font-medium"
                   : "bg-white border-gray-300 text-gray-700 hover:border-blue-400 hover:bg-blue-50"
