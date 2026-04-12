@@ -570,55 +570,53 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
                 return (
                   <li key={v.geocode_address}>
                     <div
-                      className={`w-full text-left px-4 py-2.5 transition-colors ${
-                        isSelected
-                          ? "bg-orange-50 border-l-2 border-orange-500"
-                          : "hover:bg-orange-50"
+                      className={`w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 transition-colors ${
+                        isSelected ? "bg-orange-50 border-l-2 border-orange-500"
+                          : isExpanded ? "bg-orange-50/50" : "hover:bg-orange-50"
                       }`}
                     >
-                      <div className="flex items-center gap-2">
-                        {/* 펼침 토글 (클릭 = 펼침만) */}
-                        <button
-                          type="button"
-                          onClick={() => setExpandedAddr(isExpanded ? null : v.geocode_address)}
-                          className="flex-1 min-w-0 text-left"
-                        >
-                          <div className="text-xs font-medium text-gray-900 truncate">
-                            {v.geocode_address}
-                          </div>
-                          <div className="text-[10px] mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${dirConfig.cls}`}>
-                              {dirConfig.badge}
-                            </span>
-                            <FacilityDelta label="변전소" change={v.subst} />
-                            <FacilityDelta label="주변압기" change={v.mtr} />
-                            <FacilityDelta label="배전선로" change={v.dl} />
-                          </div>
-                        </button>
-                        {/* 지도 이동 버튼 (모바일: 사이드바 닫힘) */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onSearchPick?.({
-                              kind: "ri",
-                              row: {
-                                addr_do: v.addr_do,
-                                addr_si: v.addr_si,
-                                addr_gu: v.addr_gu,
-                                addr_dong: v.addr_dong,
-                                addr_li: v.addr_li,
-                                geocode_address: v.geocode_address,
-                                cnt: v.totalRows,
-                                lat: v.lat,
-                                lng: v.lng,
-                              },
-                            });
-                          }}
-                          className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full hover:bg-orange-100 active:bg-orange-200 transition-colors"
-                        >
-                          <span className="text-orange-500 text-sm">📍</span>
-                        </button>
+                      {/* 텍스트 클릭 = 지도 이동 (모바일: 사이드바 닫힘) */}
+                      <div
+                        className="min-w-0 flex-1 cursor-pointer active:opacity-70"
+                        onClick={() => {
+                          onSearchPick?.({
+                            kind: "ri",
+                            row: {
+                              addr_do: v.addr_do,
+                              addr_si: v.addr_si,
+                              addr_gu: v.addr_gu,
+                              addr_dong: v.addr_dong,
+                              addr_li: v.addr_li,
+                              geocode_address: v.geocode_address,
+                              cnt: v.totalRows,
+                              lat: v.lat,
+                              lng: v.lng,
+                            },
+                          });
+                        }}
+                      >
+                        <div className="text-xs font-medium text-gray-900 truncate">
+                          {v.geocode_address}
+                        </div>
+                        <div className="text-[10px] mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${dirConfig.cls}`}>
+                            {dirConfig.badge}
+                          </span>
+                          <FacilityDelta label="변전소" change={v.subst} />
+                          <FacilityDelta label="주변압기" change={v.mtr} />
+                          <FacilityDelta label="배전선로" change={v.dl} />
+                        </div>
                       </div>
+                      {/* ▶ 클릭 = 펼침/접기 (사이드바 유지) */}
+                      <button
+                        type="button"
+                        onClick={() => setExpandedAddr(isExpanded ? null : v.geocode_address)}
+                        className={`text-orange-500 text-xs flex-shrink-0 transition-transform p-2 -m-2 ${
+                          isExpanded ? "rotate-90" : ""
+                        }`}
+                      >
+                        ▶
+                      </button>
                     </div>
                     {/* 지번별 상세 */}
                     {isExpanded && (
