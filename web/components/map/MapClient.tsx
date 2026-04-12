@@ -733,18 +733,22 @@ export default function MapClient({ isAdmin, email }: Props) {
               ${selectedAddr ? "bottom-44 md:bottom-auto md:top-2" : "bottom-4 md:bottom-auto md:top-2"}`}
             >
               <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur border border-gray-200 shadow-lg rounded-full px-3 py-1.5 text-[11px] whitespace-nowrap">
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />
-                <span className="text-gray-600 font-medium">{sourceLabel}</span>
-                <span className="text-gray-500 tabular-nums">
-                  <b className="text-gray-800">{visibleCount.toLocaleString()}</b>마을
-                  <span className="text-gray-300 mx-0.5">·</span>
-                  <b className="text-gray-800">{visibleJibun.toLocaleString()}</b>지번
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white shrink-0 ${dotColor}`}>
+                  {sourceLabel}
                 </span>
+                <span className="text-gray-800 font-bold tabular-nums">{visibleCount.toLocaleString()}</span>
+                <span className="text-gray-400 text-[10px]">마을</span>
+                <span className="text-gray-300">·</span>
+                <span className="text-gray-800 font-bold tabular-nums">{visibleJibun.toLocaleString()}</span>
+                <span className="text-gray-400 text-[10px]">지번</span>
+                {isFiltered && (
+                  <span className="w-px h-3 bg-gray-200 mx-0.5" />
+                )}
                 {isFiltered && (
                   <button
                     type="button"
                     onClick={clearMapFilter}
-                    className="ml-0.5 px-1.5 py-0.5 rounded-full bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-600 text-[10px] font-medium transition-colors"
+                    className="px-1.5 py-0.5 rounded-full bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-600 text-[10px] font-medium transition-colors"
                   >
                     전체
                   </button>
