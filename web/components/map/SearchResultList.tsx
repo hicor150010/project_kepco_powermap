@@ -31,6 +31,7 @@ interface Props {
   ji: KepcoDataRow[];
   onPick: (pick: SearchPick) => void;
   onJibunPin?: (row: KepcoDataRow) => void;
+  selectedAddr?: string | null;
 }
 
 /** 행정구역 5개 컬럼을 한 줄 주소 텍스트로 합친다 */
@@ -63,7 +64,7 @@ function AddrSpan({ text }: { text: string }) {
   );
 }
 
-export default function SearchResultList({ mode, ri, ji, onPick, onJibunPin }: Props) {
+export default function SearchResultList({ mode, ri, ji, onPick, onJibunPin, selectedAddr }: Props) {
   // 지번 행 펼침 상태 (id 집합)
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
@@ -90,7 +91,11 @@ export default function SearchResultList({ mode, ri, ji, onPick, onJibunPin }: P
             <button
               type="button"
               onClick={() => onPick({ kind: "ri", row: r })}
-              className="w-full text-left px-4 py-2.5 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-between gap-3 transition-colors"
+              className={`w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 transition-colors ${
+                selectedAddr && r.geocode_address === selectedAddr
+                  ? "bg-blue-50 border-l-2 border-blue-500"
+                  : "hover:bg-blue-50 active:bg-blue-100"
+              }`}
             >
               <div className="min-w-0">
                 <div className="text-xs font-medium text-gray-900 truncate">
@@ -126,14 +131,18 @@ export default function SearchResultList({ mode, ri, ji, onPick, onJibunPin }: P
     );
   }
 
-  // 지번 행 클릭: ① 지도 이동(onPick) ② 인라인 펼침 토글 동시 처리
-  const handleJiClick = (row: KepcoDataRow) => {
+  // 펼침/접기만 (사이드바 닫지 않음)
+  const handleToggleExpand = (row: KepcoDataRow) => {
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(row.id)) next.delete(row.id);
       else next.add(row.id);
       return next;
     });
+  };
+
+  // 지도 이동 (onPick 호출 → 사이드바 닫힘)
+  const handleJiPick = (row: KepcoDataRow) => {
     onPick({ kind: "ji", row });
   };
 
@@ -143,14 +152,15 @@ export default function SearchResultList({ mode, ri, ji, onPick, onJibunPin }: P
         const isOpen = expanded.has(row.id);
         return (
           <li key={row.id}>
-            <button
-              type="button"
-              onClick={() => handleJiClick(row)}
+            <div
               className={`w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 transition-colors ${
-                isOpen ? "bg-blue-50" : "hover:bg-blue-50 active:bg-blue-100"
+                isOpen ? "bg-blue-50" : "hover:bg-blue-50"
               }`}
             >
-              <div className="min-w-0 flex-1">
+              <div
+                className="min-w-0 flex-1 cursor-pointer active:opacity-70"
+                onClick={() => handleJiPick(row)}
+              >
                 <div className="text-xs font-medium text-gray-900 truncate">
                   <AddrSpan text={joinAddress(row)} />{" "}
                   {onJibunPin && row.addr_jibun ? (
@@ -160,7 +170,7 @@ export default function SearchResultList({ mode, ri, ji, onPick, onJibunPin }: P
                         e.stopPropagation();
                         onJibunPin(row);
                       }}
-                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 -my-0.5 rounded text-blue-600 font-semibold hover:bg-blue-100 active:bg-blue-200 cursor-pointer transition-colors"
+                      className="inline-flex items-center gap-0.5 px-2 py-1 -my-0.5 rounded text-blue-600 font-semibold hover:bg-blue-100 active:bg-blue-200 cursor-pointer transition-colors"
                       title="지도에서 이 지번 위치 보기"
                     >
                       <span className="text-[10px]">📍</span>
@@ -171,14 +181,16 @@ export default function SearchResultList({ mode, ri, ji, onPick, onJibunPin }: P
                   )}
                 </div>
               </div>
-              <div
-                className={`text-blue-500 text-xs flex-shrink-0 transition-transform ${
+              <button
+                type="button"
+                onClick={() => handleToggleExpand(row)}
+                className={`text-blue-500 text-xs flex-shrink-0 transition-transform p-2 -m-2 ${
                   isOpen ? "rotate-90" : ""
                 }`}
               >
                 ▶
-              </div>
-            </button>
+              </button>
+            </div>
 
             {/* 인라인 펼침 — 시설 카드 3장 + STEP 정보 */}
             {isOpen && <JibunDetail row={row} />}

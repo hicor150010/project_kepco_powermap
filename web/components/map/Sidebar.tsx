@@ -28,6 +28,8 @@ interface Props {
   /** 데이터 새로고침 */
   onRefresh?: () => void;
   refreshing?: boolean;
+  /** 현재 선택된 마을 주소 (결과 하이라이트용) */
+  selectedAddr?: string | null;
 }
 
 // ── 검색 히스토리 ──
@@ -73,6 +75,7 @@ export default function Sidebar({
   onSearchFocus,
   onRefresh,
   refreshing,
+  selectedAddr,
 }: Props) {
   const [activeTab, setActiveTab] = useState<SidebarTab>("search");
 
@@ -356,6 +359,7 @@ export default function Sidebar({
                       mode={searchTab}
                       ri={searchState.ri}
                       ji={searchState.ji}
+                      selectedAddr={selectedAddr}
                       onPick={(pick) => {
                         onSearchPick?.(pick);
                         // 모바일에서는 사이드바 닫아서 지도 보여주기
@@ -395,6 +399,7 @@ export default function Sidebar({
                 onSearchPick?.(pick);
                 if (window.innerWidth < 768) onToggle();
               }}
+              selectedAddr={selectedAddr}
             />
           )}
         </div>

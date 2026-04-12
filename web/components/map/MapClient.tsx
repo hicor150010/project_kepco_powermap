@@ -655,6 +655,7 @@ export default function MapClient({ isAdmin, email }: Props) {
         }}
         onRefresh={handleRefresh}
         refreshing={refreshing}
+        selectedAddr={selectedAddr}
       />
 
       <main className="flex-1 relative min-w-0">

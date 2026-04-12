@@ -15,6 +15,7 @@ interface Props {
   isPromisingMode?: boolean;
   onTogglePromising?: () => void;
   onSearchPick?: (pick: SearchPick) => void;
+  selectedAddr?: string | null;
 }
 
 /** 여유용량 토글 — 콤팩트 1줄 레이아웃 */
@@ -65,7 +66,7 @@ type SortKey = "remaining_desc" | "count_desc" | "name_asc";
 
 export default function FilterPanel({
   totalRows, filters, onChange,
-  isPromisingMode, onTogglePromising, onSearchPick,
+  isPromisingMode, onTogglePromising, onSearchPick, selectedAddr,
 }: Props) {
   const [step, setStep] = useState<"volume" | "results">("volume");
   const [step1Rows, setStep1Rows] = useState<MapSummaryRow[]>([]);
@@ -412,6 +413,7 @@ export default function FilterPanel({
             mode="ri"
             ri={conditionResults}
             ji={[]}
+            selectedAddr={selectedAddr}
             onPick={(pick) => onSearchPick?.(pick)}
           />
         </div>
