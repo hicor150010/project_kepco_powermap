@@ -12,9 +12,7 @@ import DistanceTool from "./DistanceTool";
 import type { SearchPick } from "./SearchResultList";
 import Toast from "./Toast";
 import TopRemainingList from "./TopRemainingList";
-import ComparePanel from "./ComparePanel";
 import GpsTracker from "./GpsTracker";
-import type { CompareRefRow } from "@/app/api/compare/route";
 import {
   emptyFilters,
   type ColumnFilters,
@@ -64,8 +62,6 @@ export default function MapClient({ isAdmin, email }: Props) {
   const [zoomLevel, setZoomLevel] = useState<number | undefined>(undefined);
 
   // 비교 모드
-  const [compareActive, setCompareActive] = useState(false);
-  const [compareRows, setCompareRows] = useState<CompareRefRow[]>([]);
 
   // GPS 실시간 추적
   const [gpsActive, setGpsActive] = useState(false);
@@ -691,7 +687,6 @@ export default function MapClient({ isAdmin, email }: Props) {
           measureAddPointRef={measureAddPointRef}
           selectedAddr={selectedAddr}
           mapType={mapType}
-          compareRows={compareRows}
         />
 
         {/* 사이드바 열기/닫기 — Sidebar 컴포넌트의 엣지 탭으로 이동 */}
@@ -707,14 +702,6 @@ export default function MapClient({ isAdmin, email }: Props) {
           }}
           topListActive={topListOpen}
           onToggleTopList={() => setTopListOpen((v) => !v)}
-          compareActive={compareActive}
-          onToggleCompare={() => {
-            setCompareActive((v) => {
-              if (!v) setSimpleToast("용량 변화 비교 모드");
-              return !v;
-            });
-            if (compareActive) setCompareRows([]);
-          }}
           gpsActive={gpsActive}
           gpsAutoFollow={gpsAutoFollow}
           onToggleGps={() => {
@@ -735,24 +722,7 @@ export default function MapClient({ isAdmin, email }: Props) {
           onShare={handleShare}
         />
 
-        {/* 비교 패널 */}
-        {compareActive && (
-          <ComparePanel
-            onResults={setCompareRows}
-            onClose={() => {
-              setCompareActive(false);
-              setCompareRows([]);
-            }}
-            onVillageClick={async (addr, lat, lng) => {
-              if (mapInstance) {
-                const pos = new window.kakao.maps.LatLng(lat, lng);
-                mapInstance.setCenter(pos);
-                mapInstance.setLevel(5);
-              }
-              await openLocationDetail(addr);
-            }}
-          />
-        )}
+        {/* 비교 패널은 사이드바 탭으로 이동됨 */}
 
         {/* 유망 부지 TOP 플로팅 패널 — open 일 때만 마운트 */}
         {topListOpen && (
@@ -813,7 +783,7 @@ export default function MapClient({ isAdmin, email }: Props) {
               setDetailModalOpen(false);
               clearJibunPin();
             }}
-            compareRows={compareRows.filter((r) => r.geocode_address === selectedAddr)}
+            compareRows={[]}
           />
         )}
 

@@ -4,12 +4,13 @@ import { useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import LogoutButton from "@/components/auth/LogoutButton";
 import FilterPanel from "./FilterPanel";
+import CompareFilterPanel from "./CompareFilterPanel";
 import SearchResultList, { type SearchPick } from "./SearchResultList";
 import type { MapSummaryRow, ColumnFilters, KepcoDataRow } from "@/lib/types";
 import type { SearchRiResult } from "@/lib/search/searchKepco";
 import MapLegend from "./MapLegend";
 
-type SidebarTab = "search" | "filter";
+type SidebarTab = "search" | "filter" | "compare";
 
 interface Props {
   isAdmin: boolean;
@@ -242,6 +243,17 @@ export default function Sidebar({
           >
             📋 조건검색
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("compare")}
+            className={`flex-1 py-2 text-xs font-semibold text-center transition-colors ${
+              activeTab === "compare"
+                ? "text-orange-600 border-b-2 border-orange-500 bg-orange-50/30"
+                : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+            }`}
+          >
+            📊 비교
+          </button>
         </div>
 
         {/* ── 탭 콘텐츠 ── */}
@@ -400,6 +412,17 @@ export default function Sidebar({
                 if (window.innerWidth < 768) onToggle();
               }}
               selectedAddr={selectedAddr}
+            />
+          )}
+
+          {activeTab === "compare" && (
+            <CompareFilterPanel
+              onSearchPick={(pick) => {
+                onSearchPick?.(pick);
+                if (window.innerWidth < 768) onToggle();
+              }}
+              selectedAddr={selectedAddr}
+              isAdmin={isAdmin}
             />
           )}
         </div>
