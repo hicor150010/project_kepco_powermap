@@ -354,96 +354,42 @@ export default function GpsTracker({
   if (!active || !gpsInfo) return null;
 
   const speedKmh = gpsInfo.speed != null ? gpsInfo.speed * 3.6 : null;
-  const headingDir = gpsInfo.heading != null ? degToDir(gpsInfo.heading) : null;
-  const fs = gpsInfo.filterStats ?? { total: 0, accepted: 0, rejectedAccuracy: 0, rejectedSpeed: 0, rejectedDistance: 0 };
-  const acceptRate = fs.total > 0 ? (fs.accepted / fs.total) * 100 : 0;
+
+  const accuracyColor = gpsInfo.accuracy <= 10 ? "text-green-600"
+    : gpsInfo.accuracy <= 50 ? "text-yellow-600" : "text-red-600";
+  const accuracyLabel = gpsInfo.accuracy <= 10 ? "좋음"
+    : gpsInfo.accuracy <= 50 ? "보통" : "나쁨";
 
   return (
-    <div className="absolute bottom-16 md:bottom-4 right-3 md:right-4 z-20 bg-white/95 backdrop-blur rounded-lg shadow-lg border border-gray-200 px-3 py-2.5 text-xs space-y-1.5 min-w-[160px] max-w-[calc(100vw-24px)] kepco-slide-up">
-      <div className="flex items-center gap-1.5 text-blue-600 font-bold text-[11px]">
-        <span className="relative flex h-2 w-2">
+    <div className="absolute bottom-16 md:bottom-4 left-1/2 -translate-x-1/2 z-20 kepco-slide-up">
+      <div className="flex items-center gap-2 bg-white/95 backdrop-blur rounded-full shadow-lg border border-gray-200 px-3 py-1.5 text-[11px] whitespace-nowrap">
+        <span className="relative flex h-2 w-2 shrink-0">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
           <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
         </span>
-        GPS 추적 중
-        {gpsInfo.filtered && gpsInfo.filterReason && (
-          <span className="text-[9px] font-normal text-orange-500 ml-1">
-            ({gpsInfo.filterReason === "accuracy" ? "신호 약함"
-              : gpsInfo.filterReason === "speed" ? "위치 점프"
-              : gpsInfo.filterReason === "distance" ? "정지 중"
-              : "대기 중"})
-          </span>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between">
-        <span className="text-gray-500">속도</span>
-        <span className="font-bold text-gray-900 tabular-nums">
-          {speedKmh != null ? `${speedKmh.toFixed(1)} km/h` : "정지"}
-        </span>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <span className="text-gray-500">방향</span>
-        <span className="font-bold text-gray-900 tabular-nums">
-          {headingDir != null ? (
-            <>
-              {headingDir}{" "}
-              <span className="text-gray-400">({gpsInfo.heading!.toFixed(0)}°)</span>
-            </>
-          ) : (
-            "-"
-          )}
-        </span>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <span className="text-gray-500">정확도</span>
-        <span className={`font-bold tabular-nums ${
-          gpsInfo.accuracy <= 10
-            ? "text-green-600"
-            : gpsInfo.accuracy <= 50
-              ? "text-yellow-600"
-              : "text-red-600"
-        }`}>
+        <span className="text-blue-600 font-bold">GPS</span>
+        <span className={`font-bold tabular-nums ${accuracyColor}`}>
           ±{gpsInfo.accuracy.toFixed(0)}m
-          <span className="font-normal text-[9px] ml-0.5">
-            {gpsInfo.accuracy <= 10 ? "좋음" : gpsInfo.accuracy <= 50 ? "보통" : "나쁨"}
-          </span>
         </span>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <span className="text-gray-500">채택률</span>
-        <span className={`font-bold tabular-nums ${
-          acceptRate >= 80 ? "text-green-600" :
-          acceptRate >= 50 ? "text-yellow-600" : "text-red-600"
-        }`}>
-          {fs.total > 0 ? `${acceptRate.toFixed(0)}%` : "-"}
-          <span className="text-gray-400 font-normal ml-1">
-            ({fs.accepted}/{fs.total})
-          </span>
-        </span>
-      </div>
-
-      <div className="pt-1 border-t border-gray-100">
-        <div className="flex items-center justify-between text-gray-400">
-          <span>위도</span>
-          <span className="tabular-nums">{gpsInfo.lat.toFixed(6)}</span>
-        </div>
-        <div className="flex items-center justify-between text-gray-400">
-          <span>경도</span>
-          <span className="tabular-nums">{gpsInfo.lng.toFixed(6)}</span>
-        </div>
-      </div>
-
-      <div className="pt-1 border-t border-gray-100 text-[10px] text-gray-400">
-        <div className="flex justify-between">
-          <span>무시됨</span>
-          <span className="tabular-nums">
-            신호약함 {fs.rejectedAccuracy} · 점프 {fs.rejectedSpeed} · 정지 {fs.rejectedDistance}
-          </span>
-        </div>
+        <span className={`text-[10px] ${accuracyColor}`}>{accuracyLabel}</span>
+        {speedKmh != null && speedKmh > 0.5 && (
+          <>
+            <span className="text-gray-300">·</span>
+            <span className="text-gray-700 font-bold tabular-nums">{speedKmh.toFixed(1)}</span>
+            <span className="text-gray-400 text-[10px]">km/h</span>
+          </>
+        )}
+        {gpsInfo.filtered && gpsInfo.filterReason && (
+          <>
+            <span className="text-gray-300">·</span>
+            <span className="text-orange-500 text-[10px]">
+              {gpsInfo.filterReason === "accuracy" ? "신호약함"
+                : gpsInfo.filterReason === "speed" ? "점프무시"
+                : gpsInfo.filterReason === "distance" ? "정지중"
+                : "대기중"}
+            </span>
+          </>
+        )}
       </div>
     </div>
   );
