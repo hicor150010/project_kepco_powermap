@@ -20,6 +20,8 @@ interface Props {
   onMapFilter?: (addrs: Set<string>) => void;
   /** 지도 필터 해제 */
   onClearMapFilter?: () => void;
+  /** 외부에서 값이 바뀌면 1단계로 리셋 */
+  resetKey?: number;
 }
 
 /** 여유용량 토글 — 콤팩트 1줄 레이아웃 */
@@ -71,7 +73,7 @@ type SortKey = "remaining_desc" | "count_desc" | "name_asc";
 export default function FilterPanel({
   totalRows, filters, onChange,
   isPromisingMode, onTogglePromising, onSearchPick, selectedAddr,
-  onMapFilter, onClearMapFilter,
+  onMapFilter, onClearMapFilter, resetKey = 0,
 }: Props) {
   const [step, setStep] = useState<"volume" | "results">("volume");
   const [step1Rows, setStep1Rows] = useState<MapSummaryRow[]>([]);
@@ -277,6 +279,15 @@ export default function FilterPanel({
     onClearMapFilter?.();
   };
 
+  // 외부에서 resetKey가 바뀌면 1단계로 리셋
+  const prevResetKey = useRef(resetKey);
+  useEffect(() => {
+    if (resetKey !== prevResetKey.current) {
+      prevResetKey.current = resetKey;
+      if (step === "results") handleBack();
+    }
+  }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const volumeActiveCount = (
     (filters.cap_subst.size > 0 ? 1 : 0) +
     (filters.cap_mtr.size > 0 ? 1 : 0) +
@@ -296,13 +307,6 @@ export default function FilterPanel({
   return (
     <div className="overflow-y-auto h-full">
       <div className="px-3 py-3 space-y-3">
-
-        {/* 스텝 인디케이터 */}
-        <div className="flex items-center gap-1 text-[10px]">
-          <span className={`px-2 py-0.5 rounded-full font-bold ${step === "volume" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-500"}`}>①  조건</span>
-          <span className="text-gray-300">→</span>
-          <span className={`px-2 py-0.5 rounded-full font-bold ${step === "results" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-500"}`}>② 지역</span>
-        </div>
 
         {step === "volume" ? (
           <>
@@ -356,15 +360,11 @@ export default function FilterPanel({
         ) : (
           <>
             {/* ── 2단계: 결과 내 지역 필터링 ── */}
-            <div className="flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={handleBack}
-                className="flex items-center gap-1 px-3 py-2 text-[11px] font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 transition-colors shrink-0"
-              >
-                <span>←</span> 조건 변경
+            <div className="flex items-center justify-between">
+              <button type="button" onClick={handleBack} className="text-[10px] text-blue-600 hover:bg-blue-100 font-bold shrink-0 active:opacity-70 px-2 py-1 rounded-md border border-blue-200 bg-blue-50 transition-colors">
+                ← 조건 변경
               </button>
-              <div className="text-[11px] text-gray-500 truncate">
+              <div className="text-[11px] text-gray-500">
                 <span className="font-semibold text-gray-700">{conditionResults.length.toLocaleString()}</span>
                 <span className="text-gray-400"> / {step1Rows.length.toLocaleString()}개</span>
               </div>

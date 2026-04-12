@@ -63,16 +63,18 @@ export default function MapClient({ isAdmin, email }: Props) {
 
   // 지도 필터 — 2단계 결과 진입 시 해당 마을만 표시
   const [mapFilteredAddrs, setMapFilteredAddrs] = useState<Set<string> | null>(null);
-  const [mapFilterSource, setMapFilterSource] = useState<"filter" | "compare" | null>(null);
+  const [mapFilterSource, setMapFilterSource] = useState<"search" | "filter" | "compare" | null>(null);
+  const [panelResetKey, setPanelResetKey] = useState(0);
 
-  // 필터 해제 (전체 보기)
+  // 필터 해제 + 패널 리셋 (배너 "전체 보기", 탭 전환, 주소검색 등)
   const clearMapFilter = useCallback(() => {
     setMapFilteredAddrs(null);
     setMapFilterSource(null);
+    setPanelResetKey((k) => k + 1);
   }, []);
 
   // 필터 적용
-  const applyMapFilter = useCallback((addrs: Set<string>, source: "filter" | "compare") => {
+  const applyMapFilter = useCallback((addrs: Set<string>, source: "search" | "filter" | "compare") => {
     setMapFilteredAddrs(addrs);
     setMapFilterSource(source);
   }, []);
@@ -322,29 +324,32 @@ export default function MapClient({ isAdmin, email }: Props) {
     (pick: SearchPick) => {
       if (!mapInstance) return;
 
-      // 좌표·geocode_address 모두 검색 결과에서 직접 사용 (같은 DB)
       const targetAddr = pick.row.geocode_address;
       const lat = pick.row.lat;
       const lng = pick.row.lng;
 
-      // GPS 추적 중이면 autoFollow 해제 — 검색 이동을 GPS가 덮어쓰지 않도록
+      // GPS 추적 중이면 autoFollow 해제
       if (gpsActive && gpsAutoFollow) {
         setGpsAutoFollow(false);
       }
 
-      // 지도 이동 — 좌표가 있을 때만
+      // 필터가 걸려 있고, 이 마을이 필터에 없으면 → 필터 해제
+      if (mapFilteredAddrs && !mapFilteredAddrs.has(targetAddr)) {
+        clearMapFilter();
+      }
+
+      // 지도 이동
       if (lat != null && lng != null) {
         const pos = new window.kakao.maps.LatLng(lat, lng);
         mapInstance.setCenter(pos);
         mapInstance.setLevel(5);
       }
 
-      // 데이터 fetch + 시각 피드백 (좌표 없어도 상세 카드는 열어줌)
       if (targetAddr) {
         openLocationDetail(targetAddr);
       }
     },
-    [mapInstance, openLocationDetail, gpsActive, gpsAutoFollow]
+    [mapInstance, openLocationDetail, gpsActive, gpsAutoFollow, mapFilteredAddrs, clearMapFilter]
   );
 
   // 5. 공유 링크 생성 + 클립보드 복사
@@ -668,6 +673,7 @@ export default function MapClient({ isAdmin, email }: Props) {
         selectedAddr={selectedAddr}
         onMapFilter={applyMapFilter}
         onClearMapFilter={clearMapFilter}
+        panelResetKey={panelResetKey}
       />
 
       <main className="flex-1 relative min-w-0">
@@ -706,27 +712,47 @@ export default function MapClient({ isAdmin, email }: Props) {
           visibleAddrs={mapFilteredAddrs}
         />
 
-        {/* 지도 필터 적용 중 배너 */}
-        {mapFilteredAddrs && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 kepco-slide-up">
-            <div className="flex items-center gap-2 bg-white/95 backdrop-blur border border-gray-200 shadow-lg rounded-full px-3 py-1.5 md:px-4 md:py-2 text-xs">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${mapFilterSource === "compare" ? "bg-orange-500" : "bg-blue-500"}`} />
-              <span className="text-gray-700 font-medium">
-                {mapFilterSource === "compare" ? "변화추적" : "조건검색"} 적용 중
-              </span>
-              <span className="text-gray-400">
-                {mapFilteredAddrs.size.toLocaleString()} / {allRows.length.toLocaleString()} 마을
-              </span>
-              <button
-                type="button"
-                onClick={clearMapFilter}
-                className="ml-1 px-2 py-0.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800 text-[11px] font-medium transition-colors"
-              >
-                전체 보기
-              </button>
+        {/* 지도 상태 바 — 항상 표시 (모바일: 하단, 데스크톱: 상단) */}
+        {allRows.length > 0 && (() => {
+          const isFiltered = mapFilteredAddrs != null;
+          const visibleCount = isFiltered ? mapFilteredAddrs.size : allRows.length;
+          const visibleJibun = isFiltered
+            ? allRows.filter((r) => mapFilteredAddrs.has(r.geocode_address)).reduce((s, r) => s + r.total, 0)
+            : allRows.reduce((s, r) => s + r.total, 0);
+          const sourceLabel = mapFilterSource === "search" ? "주소검색"
+            : mapFilterSource === "filter" ? "조건검색"
+            : mapFilterSource === "compare" ? "변화추적"
+            : "전체 보기";
+          const dotColor = mapFilterSource === "compare" ? "bg-orange-500"
+            : mapFilterSource === "search" ? "bg-green-500"
+            : mapFilterSource === "filter" ? "bg-blue-500"
+            : "bg-gray-400";
+
+          return (
+            <div className={`absolute z-20 left-1/2 -translate-x-1/2
+              ${selectedAddr ? "bottom-44 md:bottom-auto md:top-2" : "bottom-4 md:bottom-auto md:top-2"}`}
+            >
+              <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur border border-gray-200 shadow-lg rounded-full px-3 py-1.5 text-[11px] whitespace-nowrap">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />
+                <span className="text-gray-600 font-medium">{sourceLabel}</span>
+                <span className="text-gray-500 tabular-nums">
+                  <b className="text-gray-800">{visibleCount.toLocaleString()}</b>마을
+                  <span className="text-gray-300 mx-0.5">·</span>
+                  <b className="text-gray-800">{visibleJibun.toLocaleString()}</b>지번
+                </span>
+                {isFiltered && (
+                  <button
+                    type="button"
+                    onClick={clearMapFilter}
+                    className="ml-0.5 px-1.5 py-0.5 rounded-full bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-600 text-[10px] font-medium transition-colors"
+                  >
+                    전체
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* 우상단 도구 패널 (거리재기 / 유망 부지 TOP) */}
         <MapToolbar

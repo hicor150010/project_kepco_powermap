@@ -11,6 +11,7 @@ interface Props {
   isAdmin?: boolean;
   onMapFilter?: (addrs: Set<string>) => void;
   onClearMapFilter?: () => void;
+  resetKey?: number;
 }
 
 type FilterValue = "any" | "same" | "gained" | "lost";
@@ -141,7 +142,7 @@ function groupToVillages(rows: CompareRefRow[]): VillageStats[] {
   return Array.from(map.values()).map(analyzeVillage);
 }
 
-export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin, onMapFilter, onClearMapFilter }: Props) {
+export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin, onMapFilter, onClearMapFilter, resetKey = 0 }: Props) {
   const [step, setStep] = useState<"filter" | "results">("filter");
   const [snapshotDate, setSnapshotDate] = useState<string | null>(null);
   const [availableDates, setAvailableDates] = useState<string[]>([]);
@@ -225,6 +226,15 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
     setStep("filter");
     onClearMapFilter?.();
   };
+
+  // 외부에서 resetKey가 바뀌면 1단계로 리셋
+  const prevResetKey = useRef(resetKey);
+  useEffect(() => {
+    if (resetKey !== prevResetKey.current) {
+      prevResetKey.current = resetKey;
+      if (step === "results") handleBack();
+    }
+  }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const clearRegionFilters = () => {
     setAddrDo(new Set());
@@ -364,18 +374,11 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
   // ── 렌더링 ──
   return (
     <div className="overflow-y-auto h-full">
-      <div className="px-3 py-3 space-y-3">
-        {/* 스텝 인디케이터 */}
-        <div className="flex items-center gap-1 text-[10px]">
-          <span className={`px-2 py-0.5 rounded-full font-bold ${step === "filter" ? "bg-orange-500 text-white" : "bg-gray-200 text-gray-500"}`}>① 조건</span>
-          <span className="text-gray-300">→</span>
-          <span className={`px-2 py-0.5 rounded-full font-bold ${step === "results" ? "bg-orange-500 text-white" : "bg-gray-200 text-gray-500"}`}>② 지역</span>
-        </div>
-
+      <div className="px-3 py-2 space-y-2">
         {step === "filter" ? (
           <>
             {/* ── 1단계: 비교 조건 설정 ── */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between -mt-0.5">
               <span className="text-xs font-bold text-gray-700">비교 설정</span>
               {activeFilterCount > 0 && (
                 <div className="flex items-center gap-2">
@@ -447,13 +450,13 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
               type="button"
               onClick={handleSearch}
               disabled={loading}
-              className="w-full py-2.5 rounded-lg bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 disabled:opacity-50 transition-colors"
+              className="w-full py-2 rounded-lg bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 disabled:opacity-50 transition-colors"
             >
               {loading ? "분석 중..." : "다음: 지역 선택 →"}
             </button>
 
             {!loading && allVillages.length === 0 && (
-              <div className="text-center py-4">
+              <div className="text-center py-3">
                 <div className="text-xs text-gray-500 space-y-1">
                   <p>기준일 대비 현재의 <b>여유 상태 변화</b>를 분석합니다.</p>
                   <p className="text-[10px] text-gray-400">
@@ -466,15 +469,11 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
         ) : (
           <>
             {/* ── 2단계: 결과 내 지역 필터링 ── */}
-            <div className="flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={handleBack}
-                className="flex items-center gap-1 px-3 py-2 text-[11px] font-medium text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-md border border-orange-200 transition-colors shrink-0"
-              >
-                <span>←</span> 조건 변경
+            <div className="flex items-center justify-between">
+              <button type="button" onClick={handleBack} className="text-[10px] text-orange-600 hover:bg-orange-100 font-bold shrink-0 active:opacity-70 px-2 py-1 rounded-md border border-orange-200 bg-orange-50 transition-colors">
+                ← 조건 변경
               </button>
-              <div className="text-[11px] text-gray-500 truncate">
+              <div className="text-[11px] text-gray-500">
                 <span className="font-semibold text-gray-700">{sortedVillages.length.toLocaleString()}</span>
                 <span className="text-gray-400"> / {step1Villages.length.toLocaleString()}개</span>
               </div>
@@ -483,24 +482,24 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
               )}
             </div>
 
-            {/* 요약 통계 */}
-            <div className="grid grid-cols-3 gap-1.5 text-center">
-              <div className="bg-green-50 rounded-lg py-1.5">
-                <div className="text-sm font-bold text-green-700">{sortedVillages.filter((v) => v.direction === "improved").length}</div>
-                <div className="text-[9px] text-green-600">없음→있음</div>
-              </div>
-              <div className="bg-red-50 rounded-lg py-1.5">
-                <div className="text-sm font-bold text-red-700">{sortedVillages.filter((v) => v.direction === "worsened").length}</div>
-                <div className="text-[9px] text-red-600">있음→없음</div>
-              </div>
-              <div className="bg-amber-50 rounded-lg py-1.5">
-                <div className="text-sm font-bold text-amber-700">{sortedVillages.filter((v) => v.direction === "mixed").length}</div>
-                <div className="text-[9px] text-amber-600">혼합</div>
-              </div>
+            {/* 요약 통계 — 인라인 배지 */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700 border border-green-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                없음→있음 {sortedVillages.filter((v) => v.direction === "improved").length}
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700 border border-red-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                있음→없음 {sortedVillages.filter((v) => v.direction === "worsened").length}
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                혼합 {sortedVillages.filter((v) => v.direction === "mixed").length}
+              </span>
             </div>
 
             {/* 지역 필터 */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <ChipToggle label="시/도" options={addrDoOptions} selected={addrDo} onChange={setAddrDo} />
               <ChipToggle label="시" options={addrSiOptions} selected={addrSi} onChange={setAddrSi} searchable />
               <button
@@ -526,26 +525,24 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
             </div>
 
             {/* 정렬 */}
-            <div>
-              <label className="text-xs font-medium text-gray-700 mb-1.5 block">정렬</label>
-              <div className="flex flex-wrap gap-1">
-                {([
-                  ["changed_desc", "변화 많은 순"],
-                  ["name_asc", "가나다순"],
-                ] as const).map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => setSortKey(key)}
-                    className={`px-2.5 py-1.5 text-[11px] rounded-full border transition-colors ${
-                      sortKey === key
-                        ? "bg-gray-700 border-gray-700 text-white font-medium"
-                        : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-medium text-gray-500 shrink-0">정렬</span>
+              {([
+                ["changed_desc", "변화 많은 순"],
+                ["name_asc", "가나다순"],
+              ] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setSortKey(key)}
+                  className={`px-2 py-1 text-[10px] rounded-full border transition-colors ${
+                    sortKey === key
+                      ? "bg-gray-700 border-gray-700 text-white font-medium"
+                      : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </>
         )}
@@ -572,7 +569,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
                 return (
                   <li key={v.geocode_address}>
                     <div
-                      className={`w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 transition-colors ${
+                      className={`w-full text-left px-3 py-2 flex items-center justify-between gap-2 transition-colors ${
                         isSelected ? "bg-orange-50 border-l-2 border-orange-500"
                           : isExpanded ? "bg-orange-50/50" : "hover:bg-orange-50"
                       }`}

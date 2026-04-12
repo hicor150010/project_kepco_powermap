@@ -136,72 +136,80 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/40 md:p-4">
       <div className="bg-white rounded-t-xl md:rounded-xl shadow-2xl w-full md:max-w-4xl h-[80dvh] md:h-auto md:max-h-[90vh] flex flex-col overflow-hidden pb-[env(safe-area-inset-bottom)]">
-        <div className="px-4 py-3 md:px-5 md:py-4 border-b flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <div className="text-xs text-gray-500 mb-0.5">상세 목록</div>
-            <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
-              {addrFields
-                .filter((f) => f.value)
-                .map((f) => (
-                  <div key={f.label} className="flex items-baseline gap-1">
-                    <span className="text-[10px] text-gray-400">{f.label}</span>
-                    <span className={`text-sm font-semibold ${
-                      f.value?.includes("기타지역")
-                        ? "text-gray-400 font-normal"
-                        : "text-gray-900"
-                    }`}>
-                      {f.value}
-                    </span>
-                  </div>
-                ))}
-            </div>
-            <div className="text-xs text-gray-500 mt-0.5">
-              {viewMode === "table"
-                ? `${filtered.length.toLocaleString()}건${
-                    search ? ` (전체 ${rows.length.toLocaleString()}건 중 검색)` : ""
-                  }`
-                : `전체 ${rows.length.toLocaleString()}건`}
-            </div>
-          </div>
-
-          {/* 보기 모드 전환 + 닫기 */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <div
-              className="inline-flex rounded-md border border-gray-300 overflow-hidden text-xs"
-              role="tablist"
-              aria-label="보기 모드"
-            >
-              <button
-                type="button"
-                onClick={() => setViewMode("table")}
-                className={`px-3 py-1.5 transition-colors ${
-                  viewMode === "table"
-                    ? "bg-blue-500 text-white font-semibold"
-                    : "bg-white text-gray-600 hover:bg-gray-50"
-                }`}
-                title="번지 단위 표 보기"
-              >
-                📋 번지별
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("group")}
-                className={`px-3 py-1.5 transition-colors border-l border-gray-300 ${
-                  viewMode === "group"
-                    ? "bg-blue-500 text-white font-semibold"
-                    : "bg-white text-gray-600 hover:bg-gray-50"
-                }`}
-                title="같은 시설끼리 묶어서 보기"
-              >
-                🗂 시설별
-              </button>
+        <div className="px-3 py-2 md:px-5 md:py-4 border-b space-y-1.5">
+          {/* 1행: 주소 + 닫기 */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              {/* 모바일: 한 줄 주소 */}
+              <div className="md:hidden">
+                <div className="text-sm font-bold text-gray-900 truncate">{locationName}</div>
+                <div className="text-[11px] text-gray-500 mt-0.5">
+                  {viewMode === "table"
+                    ? `${filtered.length.toLocaleString()}건${search ? ` (전체 ${rows.length.toLocaleString()}건)` : ""}`
+                    : `전체 ${rows.length.toLocaleString()}건`}
+                </div>
+              </div>
+              {/* 데스크톱: 필드별 표시 */}
+              <div className="hidden md:block">
+                <div className="text-xs text-gray-500 mb-0.5">상세 목록</div>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+                  {addrFields
+                    .filter((f) => f.value)
+                    .map((f) => (
+                      <div key={f.label} className="flex items-baseline gap-1">
+                        <span className="text-[10px] text-gray-400">{f.label}</span>
+                        <span className={`text-sm font-semibold ${
+                          f.value?.includes("기타지역")
+                            ? "text-gray-400 font-normal"
+                            : "text-gray-900"
+                        }`}>
+                          {f.value}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {viewMode === "table"
+                    ? `${filtered.length.toLocaleString()}건${search ? ` (전체 ${rows.length.toLocaleString()}건 중 검색)` : ""}`
+                    : `전체 ${rows.length.toLocaleString()}건`}
+                </div>
+              </div>
             </div>
             <button
               onClick={onClose}
-              className="w-10 h-10 md:w-9 md:h-9 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-2xl leading-none"
+              className="w-10 h-10 md:w-9 md:h-9 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-2xl leading-none flex-shrink-0"
               aria-label="닫기"
             >
               ×
+            </button>
+          </div>
+          {/* 2행: 보기 모드 탭 */}
+          <div
+            className="inline-flex rounded-md border border-gray-300 overflow-hidden text-xs"
+            role="tablist"
+            aria-label="보기 모드"
+          >
+            <button
+              type="button"
+              onClick={() => setViewMode("table")}
+              className={`px-3 py-1.5 transition-colors ${
+                viewMode === "table"
+                  ? "bg-blue-500 text-white font-semibold"
+                  : "bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              📋 번지별
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("group")}
+              className={`px-3 py-1.5 transition-colors border-l border-gray-300 ${
+                viewMode === "group"
+                  ? "bg-blue-500 text-white font-semibold"
+                  : "bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              🗂 시설별
             </button>
           </div>
         </div>

@@ -32,9 +32,11 @@ interface Props {
   /** 현재 선택된 마을 주소 (결과 하이라이트용) */
   selectedAddr?: string | null;
   /** 지도 필터 적용 (2단계 결과 진입 시) */
-  onMapFilter?: (addrs: Set<string>, source: "filter" | "compare") => void;
+  onMapFilter?: (addrs: Set<string>, source: "search" | "filter" | "compare") => void;
   /** 지도 필터 해제 */
   onClearMapFilter?: () => void;
+  /** 패널 리셋 키 — 값이 바뀌면 현재 패널 1단계로 복귀 */
+  panelResetKey?: number;
 }
 
 // ── 검색 히스토리 ──
@@ -83,8 +85,17 @@ export default function Sidebar({
   selectedAddr,
   onMapFilter,
   onClearMapFilter,
+  panelResetKey = 0,
 }: Props) {
   const [activeTab, setActiveTab] = useState<SidebarTab>("search");
+
+  // 탭 전환 시: 지도 필터 해제 (패널은 언마운트되므로 자동 리셋)
+  const handleTabChange = (tab: SidebarTab) => {
+    if (tab === activeTab) return;
+    onClearMapFilter?.();
+    setActiveTab(tab);
+  };
+
   const [showGuide, setShowGuide] = useState(false);
 
   // 첫 방문 가이드
@@ -116,18 +127,26 @@ export default function Sidebar({
       if (!res.ok) throw new Error("검색이 잘 안 돼요. 잠시 후 다시 시도해 주세요.");
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "검색이 잘 안 돼요.");
-      setSearchState({ loading: false, error: null, ri: data.ri ?? [], ji: data.ji ?? [], jiFallback: data.jiFallback ?? false, parsed: data.parsed ?? null });
+      const ri = data.ri ?? [];
+      const ji = data.ji ?? [];
+      setSearchState({ loading: false, error: null, ri, ji, jiFallback: data.jiFallback ?? false, parsed: data.parsed ?? null });
       setSearchTab(data.parsed?.lotNo != null ? "ji" : "ri");
+
+      // 검색 결과 마을을 지도에 표시
+      const addrs = new Set<string>();
+      ri.forEach((r: SearchRiResult) => r.geocode_address && addrs.add(r.geocode_address));
+      ji.forEach((r: KepcoDataRow) => r.geocode_address && addrs.add(r.geocode_address));
+      if (addrs.size > 0) onMapFilter?.(addrs, "search");
     } catch (err: any) {
       setSearchState({ ...EMPTY_SEARCH, error: String(err?.message || err) });
     }
-  }, []);
+  }, [onMapFilter]);
 
-  const handleClear = () => { setQuery(""); setSearchState(EMPTY_SEARCH); };
-
-  // 통계
-  const totalMarkers = totalRows.length;
-  const totalDataRows = totalRows.reduce((sum, r) => sum + r.total, 0);
+  const handleClear = () => {
+    setQuery("");
+    setSearchState(EMPTY_SEARCH);
+    onClearMapFilter?.();
+  };
 
   // "여유 있는 곳만 보기" 빠른 토글
   const isPromisingMode =
@@ -184,25 +203,13 @@ export default function Sidebar({
       >
         {/* ── 헤더: 타이틀 ── */}
         <div className="px-3 py-2 border-b border-gray-200">
-          <div className="flex items-center">
+          <div className="flex items-center justify-between">
             <h1 className="text-sm font-bold text-gray-900">배전선로 여유용량 지도</h1>
-          </div>
-          {/* 통계 + 새로고침 */}
-          <div className="flex items-center gap-3 mt-1.5">
-            <div className="flex items-baseline gap-1">
-              <span className="text-lg font-bold text-gray-900">{totalDataRows.toLocaleString()}</span>
-              <span className="text-[10px] text-gray-400">건</span>
-            </div>
-            <span className="text-gray-300">·</span>
-            <div className="flex items-baseline gap-1">
-              <span className="text-lg font-bold text-blue-600">{totalMarkers.toLocaleString()}</span>
-              <span className="text-[10px] text-gray-400">마을</span>
-            </div>
             {onRefresh && (
               <button
                 onClick={onRefresh}
                 disabled={refreshing}
-                className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded-md border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-700 disabled:opacity-50 text-[11px] font-medium transition-colors"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-700 disabled:opacity-50 text-[11px] font-medium transition-colors"
                 title="최신 데이터 새로고침"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
@@ -240,7 +247,7 @@ export default function Sidebar({
         <div className="flex border-b border-gray-200">
           <button
             type="button"
-            onClick={() => setActiveTab("search")}
+            onClick={() => handleTabChange("search")}
             className={`flex-1 py-2 text-xs font-semibold text-center transition-colors ${
               activeTab === "search"
                 ? "text-blue-600 border-b-2 border-blue-500 bg-blue-50/30"
@@ -251,7 +258,7 @@ export default function Sidebar({
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab("filter")}
+            onClick={() => handleTabChange("filter")}
             className={`flex-1 py-2 text-xs font-semibold text-center transition-colors ${
               activeTab === "filter"
                 ? "text-blue-600 border-b-2 border-blue-500 bg-blue-50/30"
@@ -262,7 +269,7 @@ export default function Sidebar({
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab("compare")}
+            onClick={() => handleTabChange("compare")}
             className={`flex-1 py-2 text-xs font-semibold text-center transition-colors ${
               activeTab === "compare"
                 ? "text-orange-600 border-b-2 border-orange-500 bg-orange-50/30"
@@ -457,6 +464,7 @@ export default function Sidebar({
               selectedAddr={selectedAddr}
               onMapFilter={(addrs) => onMapFilter?.(addrs, "filter")}
               onClearMapFilter={onClearMapFilter}
+              resetKey={panelResetKey}
             />
           )}
 
@@ -470,6 +478,7 @@ export default function Sidebar({
               isAdmin={isAdmin}
               onMapFilter={(addrs) => onMapFilter?.(addrs, "compare")}
               onClearMapFilter={onClearMapFilter}
+              resetKey={panelResetKey}
             />
           )}
         </div>
