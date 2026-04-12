@@ -241,13 +241,16 @@ def auto_continue(job: dict, checkpoint: dict | None, thread: int):
 
     try:
         # 1. 새 crawl_jobs row 생성
+        child_options = dict(job.get("options") or {})
+        child_options["_parent_job_id"] = job["id"]
+
         new_job = {
             "sido": job["sido"],
             "si": job.get("si"),
             "gu": job.get("gu"),
             "dong": job.get("dong"),
             "li": job.get("li"),
-            "options": job.get("options") or {},
+            "options": child_options,
             "checkpoint": checkpoint,
             "requested_by": job.get("requested_by"),
             "thread": thread,
@@ -322,6 +325,18 @@ def run(job: dict, thread: int):
     cycle_count = job.get("cycle_count", 0)
     max_cycles = job.get("max_cycles")
     logger.info(f"=== Job #{job_id} 시작: {job['sido']} (thread={thread}, mode={mode}, cycle={cycle_count}) ===")
+
+    # 부모 Job이 사용자에 의해 중단되었으면 자기도 종료
+    parent_job_id = (job.get("options") or {}).get("_parent_job_id")
+    if parent_job_id:
+        parent = read_job(parent_job_id)
+        if parent:
+            parent_result = parent.get("result") or {}
+            parent_reason = parent_result.get("stopped_reason")
+            if parent.get("status") == "stopped" and parent_reason != "timeout":
+                logger.info(f"부모 Job #{parent_job_id}이 사용자 중단 — 이 Job도 종료합니다.")
+                update_job(job_id, {"status": "stopped", "result": {"stopped_reason": "parent_stopped"}})
+                return
 
     # 옵션 파싱
     options = job.get("options") or {}
@@ -450,11 +465,17 @@ def run(job: dict, thread: int):
     if crawler.progress.all_errors:
         final_progress["all_errors"] = crawler.progress.all_errors
 
+    # stopped 사유 기록 (타임아웃 vs 사용자 중단 구분)
+    result_json: dict = {}
+    if final_status == "stopped":
+        result_json["stopped_reason"] = "timeout" if timeout_triggered.is_set() else "user"
+
     update_job(job_id, {
         "status": final_status,
         "progress": final_progress,
         "checkpoint": checkpoint,
         "completed_at": "now()",
+        **({"result": result_json} if result_json else {}),
     })
 
     timer.cancel()
