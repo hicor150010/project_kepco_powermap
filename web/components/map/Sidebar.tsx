@@ -293,14 +293,12 @@ export default function Sidebar({
                       ref={inputRef}
                       type="text"
                       value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") doSearch(query.trim()); }}
-                      onFocus={() => {
-                        const h = getHistory();
-                        setHistory(h);
-                        if (h.length > 0 && searchState.ri.length === 0 && searchState.ji.length === 0) setHistoryOpen(true);
-                        onSearchFocus?.();
+                      onChange={(e) => {
+                        setQuery(e.target.value);
+                        setHistoryOpen(true);
                       }}
+                      onKeyDown={(e) => { if (e.key === "Enter") { setHistoryOpen(false); doSearch(query.trim()); } }}
+                      onClick={() => { if (!query.trim()) setHistoryOpen(true); }}
                       onBlur={() => setTimeout(() => setHistoryOpen(false), 150)}
                       placeholder="주소·지번 검색"
                       className="flex-1 min-w-0 text-sm text-gray-900 placeholder:text-gray-400 bg-transparent outline-none"
@@ -324,26 +322,32 @@ export default function Sidebar({
                 </div>
 
                 {/* 히스토리 드롭다운 */}
-                {historyOpen && history.length > 0 && (
-                  <div className="absolute left-3 right-3 top-full mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-20">
-                    <div className="px-3 py-1 text-[10px] text-gray-400 font-semibold border-b border-gray-100">최근 검색</div>
-                    {history.map((h) => (
-                      <div key={h} className="flex items-center gap-2 px-3 py-1.5 hover:bg-blue-50 cursor-pointer group">
-                        <span className="text-gray-300 text-[10px]">🕐</span>
-                        <button
-                          type="button"
-                          className="flex-1 text-left text-xs text-gray-700 truncate"
-                          onMouseDown={(e) => { e.preventDefault(); setQuery(h); doSearch(h); }}
-                        >{h}</button>
-                        <button
-                          type="button"
-                          className="text-gray-400 hover:text-red-400 active:text-red-500 text-xs p-1 -m-1"
-                          onMouseDown={(e) => { e.preventDefault(); removeHistory(h); setHistory(getHistory()); }}
-                        >✕</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {(() => {
+                  if (!historyOpen) return null;
+                  const all = getHistory();
+                  const filtered = query.trim() ? all.filter((h) => h.includes(query.trim())) : all;
+                  if (filtered.length === 0) return null;
+                  return (
+                    <div className="absolute left-3 right-3 top-full mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-20">
+                      <div className="px-3 py-1 text-[10px] text-gray-400 font-semibold border-b border-gray-100">최근 검색</div>
+                      {filtered.map((h) => (
+                        <div key={h} className="flex items-center gap-2 px-3 py-1.5 hover:bg-blue-50 cursor-pointer group">
+                          <span className="text-gray-300 text-[10px]">🕐</span>
+                          <button
+                            type="button"
+                            className="flex-1 text-left text-xs text-gray-700 truncate"
+                            onMouseDown={(e) => { e.preventDefault(); setQuery(h); doSearch(h); }}
+                          >{h}</button>
+                          <button
+                            type="button"
+                            className="text-gray-400 hover:text-red-400 active:text-red-500 text-xs p-1 -m-1"
+                            onMouseDown={(e) => { e.preventDefault(); removeHistory(h); setHistory(getHistory()); }}
+                          >✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* 검색 결과 */}

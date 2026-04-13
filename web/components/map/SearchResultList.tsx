@@ -153,28 +153,28 @@ export default function SearchResultList({ mode, ri, ji, onPick, onJibunPin, sel
               }`}
             >
               <div
-                className="min-w-0 flex-1 cursor-pointer active:opacity-70"
+                className="min-w-0 flex-1 flex items-center gap-1.5 cursor-pointer active:opacity-70"
                 onClick={() => handleJiPick(row)}
               >
-                <div className="text-xs font-medium text-gray-900 truncate">
-                  <AddrSpan text={joinAddress(row)} />{" "}
-                  {onJibunPin && row.addr_jibun ? (
-                    <span
-                      role="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onJibunPin(row);
-                      }}
-                      className="inline-flex items-center gap-0.5 px-2 py-1 -my-0.5 rounded text-blue-600 font-semibold hover:bg-blue-100 active:bg-blue-200 cursor-pointer transition-colors"
-                      title="지도에서 이 지번 위치 보기"
-                    >
-                      <span className="text-[10px]">📍</span>
-                      {row.addr_jibun}
-                    </span>
-                  ) : (
-                    <span className="text-blue-600 font-semibold">{row.addr_jibun}</span>
-                  )}
+                <div className="text-xs font-medium text-gray-900 truncate min-w-0 flex-1">
+                  <AddrSpan text={joinAddress(row)} />
                 </div>
+                {onJibunPin && row.addr_jibun ? (
+                  <span
+                    role="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onJibunPin(row);
+                    }}
+                    className="flex-shrink-0 inline-flex items-center gap-0.5 px-2 py-1 rounded text-blue-600 font-semibold hover:bg-blue-100 active:bg-blue-200 cursor-pointer transition-colors text-xs"
+                    title="지도에서 이 지번 위치 보기"
+                  >
+                    <span className="text-[10px]">📍</span>
+                    {row.addr_jibun}
+                  </span>
+                ) : (
+                  <span className="flex-shrink-0 text-xs text-blue-600 font-semibold">{row.addr_jibun}</span>
+                )}
               </div>
               <button
                 type="button"
@@ -232,10 +232,10 @@ function JibunDetail({ row }: { row: KepcoDataRow }) {
 
       {hasStep && (
         <div className="bg-white border border-gray-200 rounded-md p-2.5">
-          <div className="text-[11px] font-bold text-gray-700 mb-1.5">
+          <div className="text-[12px] font-bold text-gray-700 mb-1.5">
             📋 접속 예정 단계
           </div>
-          <div className="grid grid-cols-1 gap-2 text-[11px]">
+          <div className="grid grid-cols-1 gap-2 text-[12px]">
             <StepBlock label="접수" cnt={row.step1_cnt} pwr={row.step1_pwr} />
             <StepBlock label="공용망 보강" cnt={row.step2_cnt} pwr={row.step2_pwr} />
             <StepBlock label="접속 공사" cnt={row.step3_cnt} pwr={row.step3_pwr} />

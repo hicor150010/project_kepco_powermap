@@ -485,10 +485,10 @@ function DetailContent({ it }: { it: KepcoDataRow }) {
 
       {hasStep && (
         <div className="bg-white border border-gray-200 rounded-md p-3">
-          <div className="text-[11px] font-bold text-gray-700 mb-2">
+          <div className="text-[12px] font-bold text-gray-700 mb-2">
             📋 접속 예정 단계
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-1.5 md:gap-2 text-[11px]">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-1.5 md:gap-2 text-[12px]">
             <StepBlock label="접수" cnt={it.step1_cnt} pwr={it.step1_pwr} />
             <StepBlock label="공용망 보강" cnt={it.step2_cnt} pwr={it.step2_pwr} />
             <StepBlock label="접속 공사" cnt={it.step3_cnt} pwr={it.step3_pwr} />
