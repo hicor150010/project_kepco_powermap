@@ -48,12 +48,7 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin, initial
   }, [onClose]);
 
   const toggleExpand = (id: number) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    setExpanded((prev) => prev.has(id) ? new Set() : new Set([id]));
   };
 
   const expandAll = () => {
