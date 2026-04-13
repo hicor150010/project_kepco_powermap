@@ -888,6 +888,16 @@ export default function MapClient({ isAdmin, email }: Props) {
           />
         )}
 
+        {/* 마을 정보 로딩 스피너 */}
+        {detailLoading && (
+          <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+            <div className="bg-white/90 rounded-xl px-5 py-4 shadow-lg flex items-center gap-3">
+              <div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm text-gray-600">마을 정보를 불러오는 중...</span>
+            </div>
+          </div>
+        )}
+
         {/* 마커 클릭 시 카드 */}
         {selectedAddr && (
           <LocationSummaryCard
