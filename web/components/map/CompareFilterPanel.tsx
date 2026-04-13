@@ -28,21 +28,24 @@ function KoreanDateInput({
   max?: string;
   onChange: (v: string) => void;
 }) {
+  const ref = useRef<HTMLInputElement>(null);
   // YYYY-MM-DD → YYYY.MM.DD
   const display = value ? value.replace(/-/g, ".") : "";
   return (
-    <div className="relative flex-1 min-w-0">
+    <div
+      className="relative flex-1 min-w-0 border border-gray-300 rounded px-1.5 py-1 text-[11px] text-gray-900 bg-white truncate cursor-pointer"
+      onClick={() => ref.current?.showPicker?.()}
+    >
       <input
+        ref={ref}
         type="date"
         value={value}
         min={min}
         max={max}
         onChange={(e) => onChange(e.target.value)}
-        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+        className="absolute inset-0 w-full h-full opacity-0 pointer-events-none"
       />
-      <div className="border border-gray-300 rounded px-1.5 py-1 text-[11px] text-gray-900 bg-white truncate pointer-events-none">
-        {display || <span className="text-gray-400">날짜 선택</span>}
-      </div>
+      {display || <span className="text-gray-400">날짜 선택</span>}
     </div>
   );
 }
