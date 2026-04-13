@@ -37,13 +37,13 @@ export default function LocationSummaryCard({
   onClose,
   compareRows = [],
 }: Props) {
-  if (loading || !rows || rows.length === 0) {
+  if (loading) return null;
+
+  if (!rows || rows.length === 0) {
     return (
       <div className="absolute left-4 right-4 bottom-4 md:left-auto md:right-4 md:bottom-4 md:w-[380px] max-w-[calc(100%-32px)] bg-white rounded-xl shadow-2xl border border-gray-200 p-6 z-10 kepco-slide-up">
         <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-600">
-            {loading ? "마을 정보를 불러오는 중..." : "데이터 없음"}
-          </div>
+          <div className="text-sm text-gray-600">데이터 없음</div>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 text-xl leading-none"

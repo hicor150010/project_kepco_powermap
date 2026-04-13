@@ -16,8 +16,8 @@ interface Props {
 type FilterValue = "any" | "same" | "gained" | "lost";
 type SortKey = "changed_desc" | "name_asc";
 
-/** 한국식 날짜 표시 date input — iOS에서 미국식으로 보이는 문제 해결 */
-function KoreanDateInput({
+/** 날짜 input — 네이티브 date picker 그대로 사용 */
+function DateInput({
   value,
   min,
   max,
@@ -28,22 +28,15 @@ function KoreanDateInput({
   max?: string;
   onChange: (v: string) => void;
 }) {
-  // YYYY-MM-DD → YYYY.MM.DD
-  const display = value ? value.replace(/-/g, ".") : "";
   return (
-    <div className="relative flex-1 min-w-0">
-      <input
-        type="date"
-        value={value}
-        min={min}
-        max={max}
-        onChange={(e) => onChange(e.target.value)}
-        className="absolute inset-0 w-full h-full opacity-0 z-10"
-      />
-      <div className="border border-gray-300 rounded px-1.5 py-1 text-[11px] text-gray-900 bg-white truncate pointer-events-none">
-        {display || <span className="text-gray-400">날짜 선택</span>}
-      </div>
-    </div>
+    <input
+      type="date"
+      value={value}
+      min={min}
+      max={max}
+      onChange={(e) => onChange(e.target.value)}
+      className="border border-gray-300 rounded px-1.5 py-1 text-[11px] text-gray-900 bg-white flex-1 min-w-0"
+    />
   );
 }
 
@@ -326,14 +319,14 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
             {/* 시점 선택: A → B 한 줄 */}
             <div className="bg-gray-50 rounded px-2 py-2 space-y-2">
               <div className="flex items-center gap-1.5">
-                <KoreanDateInput
+                <DateInput
                   value={dateA}
                   min={snapshotDate ?? undefined}
                   max={today}
                   onChange={setDateA}
                 />
                 <span className="text-sm font-bold text-gray-500 shrink-0">→</span>
-                <KoreanDateInput
+                <DateInput
                   value={dateB || today}
                   min={snapshotDate ?? undefined}
                   max={today}
