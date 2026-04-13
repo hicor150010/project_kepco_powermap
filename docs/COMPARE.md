@@ -170,7 +170,68 @@ flush() — 100건 버퍼 소진 시 실행
 
 ---
 
-## 7. 설계 결정 사항
+## 7. 특정 시점 데이터 복원 방법
+
+비교 기능의 핵심은 **과거 특정 시점의 여유 상태를 복원**하여 현재와 비교하는 것.
+
+### 복원 원리
+
+```
+changelog = ref 대비 변화가 있을 때만 기록됨
+→ changelog에 해당 날짜가 없다 = 그 시점에 ref와 동일하다
+```
+
+### 복원 순서 (특정 날짜 + 특정 지번)
+
+```
+1. changelog에서 해당 지번의 해당 날짜를 정확히 검색
+2. 있으면 → 그 값 (ref와 달라진 상태)
+3. 없으면 → ref 확인
+   - ref.snapshot_at <= 특정날짜 → ref 값 (ref와 동일한 상태)
+   - ref.snapshot_at >  특정날짜 → None (그 시점에 데이터 자체가 없음)
+```
+
+### 시나리오 예시
+
+```
+ref:       capa_id=101, snapshot_at=04-05, (T, T, F)
+changelog: capa_id=101, changed_date=04-08, (F, T, F)
+           capa_id=101, changed_date=04-12, (F, F, T)
+```
+
+| 복원 시점 | 결과 | 근거 |
+|-----------|------|------|
+| 04-03 | None | changelog 없음 → ref(04-05) > 04-03 → 데이터 없음 |
+| 04-05 | T,T,F | changelog 없음 → ref(04-05) ≤ 04-05 → ref 값 |
+| 04-07 | T,T,F | changelog 없음 → ref(04-05) ≤ 04-07 → ref 값 |
+| 04-08 | F,T,F | changelog에 04-08 있음 → 그 값 |
+| 04-10 | T,T,F | changelog에 04-10 없음 → ref(04-05) ≤ 04-10 → ref 값 |
+| 04-12 | F,F,T | changelog에 04-12 있음 → 그 값 |
+
+### 주의: changelog 없음 ≠ 직전 changelog 값
+
+- changelog에 해당 날짜가 **없다**는 것은 **ref와 동일하다**는 뜻이지, 직전 changelog 값을 이어받는 게 아님
+- 예: 04-10에 changelog 없음 → 04-08의 (F,T,F)가 아니라 ref의 (T,T,F)가 정답
+- detect_changes는 항상 **ref 대비** 변화만 감지하므로, changelog가 없으면 ref로 돌아간 것
+
+### 비교 기능 = 복원 + 비교
+
+```
+모드 1 (과거 vs 현재): 복원(date_a)  vs  현재 kepco_capa 실시간 계산값
+모드 2 (과거 vs 과거): 복원(date_a)  vs  복원(date_b)
+```
+
+- date_b 생략 또는 오늘 → 모드 1 (현재값 사용)
+- date_b 지정 → 모드 2 (양쪽 모두 동일한 복원 로직)
+
+---
+
+## 8. 설계 결정 사항
+
+### changelog 없음 = ref와 동일
+- detect_changes는 **ref 대비** 변화만 기록
+- changelog에 특정 날짜가 없으면 → 그 시점에 ref와 같았다는 뜻
+- 직전 changelog 값을 이어받는 것이 **아님** (이 점 헷갈리기 쉬움)
 
 ### 하루 단위 정밀도
 - `changed_date`는 DATE 타입 (시간 없음)
@@ -190,33 +251,55 @@ flush() — 100건 버퍼 소진 시 실행
 
 ---
 
-## 8. 마이그레이션 파일
+## 9. 마이그레이션 파일
 
 | 파일 | 내용 |
 |------|------|
 | `db/migrations/014_compare_ref.sql` | ref 테이블 + sync/reset/compare_with_ref/get_ref_info RPC |
 | `db/migrations/016_changelog.sql` | changelog 테이블 + detect_changes/compare_changelog RPC |
+| `db/migrations/017_compare_at.sql` | **시점 복원 기반 비교** — compare_at RPC |
 
 ### Supabase 적용 순서
 1. `014_compare_ref.sql` 실행 → ref 테이블 + 초기 스냅샷 생성
 2. `016_changelog.sql` 실행 → changelog 테이블 + 감지 함수
+3. `017_compare_at.sql` 실행 → 시점 복원 비교 함수
 
 ---
 
-## 9. 웹 API
+## 10. RPC — compare_at (시점 복원 비교)
+
+```sql
+compare_at(
+  date_a       DATE,              -- 시점 A (필수)
+  date_b       DATE DEFAULT NULL, -- 시점 B (NULL이면 현재값)
+  subst_filter TEXT DEFAULT 'any',
+  mtr_filter   TEXT DEFAULT 'any',
+  dl_filter    TEXT DEFAULT 'any'
+)
+```
+
+- date_b = NULL → 현재 kepco_capa에서 여유 판정 실시간 계산
+- date_b = 날짜 → 해당 날짜의 복원값
+- 필터: any / gained(없음→있음) / lost(있음→없음)
+- 기존 compare_changelog, compare_with_ref는 호환용으로 유지
+
+---
+
+## 11. 웹 API
 
 | 엔드포인트 | 용도 |
 |------------|------|
-| `GET /api/compare/dates` | 기준일 + changelog 날짜 목록 |
-| `GET /api/compare?date=&subst=&mtr=&dl=` | changelog 기반 비교 조회 |
+| `GET /api/compare/dates` | ref 기준일 조회 |
+| `GET /api/compare?date_a=&date_b=&subst=&mtr=&dl=` | 시점 복원 비교 (date_b 생략=현재) |
 | `POST /api/compare/reset` | 관리자 ref 리셋 |
 
 ---
 
-## 10. UI (CompareFilterPanel)
+## 12. UI (CompareFilterPanel)
 
 ### 1단계: 조건 설정
-- 기준일 표시 + 비교 시점 선택 (changelog 날짜)
+- 시점 A / 시점 B 날짜 입력 (date input)
+- 시점 B 기본값 = 오늘 (현재값 사용), 과거 날짜 선택 가능
 - 시설별 변화 유형 필터 (전체/없음→있음/있음→없음)
 - "변화 있는 곳만 보기" 토글
 
@@ -228,7 +311,7 @@ flush() — 100건 버퍼 소진 시 실행
 
 ---
 
-## 11. 관리자 기능
+## 12. 관리자 기능
 
 ### ref 리셋
 - 누적 변화가 너무 많아졌을 때 사용
@@ -237,9 +320,12 @@ flush() — 100건 버퍼 소진 시 실행
 
 ---
 
-## 12. 변경 이력
+## 13. 변경 이력
 
 - 2026-04-12: ref + changelog 시스템 신규 구축
 - 2026-04-12: sync_capa_ref에 capa_ids 파라미터 추가 (전체 스캔 제거)
 - 2026-04-12: detect_changes ON CONFLICT DO NOTHING으로 변경 (거짓 양성 방지)
 - 2026-04-12: 기존 kepco_capa_history 트리거 기반 시스템 삭제
+- 2026-04-13: compare_at RPC 추가 (시점 복원 기반 비교, 두 시점 비교 지원)
+- 2026-04-13: API date → date_a/date_b 파라미터 변경
+- 2026-04-13: UI — changelog 드롭다운 → date input 2개로 변경

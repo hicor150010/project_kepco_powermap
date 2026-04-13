@@ -483,7 +483,6 @@ export default function Sidebar({
                 if (window.innerWidth < 768) onToggle();
               }}
               selectedAddr={selectedAddr}
-              isAdmin={isAdmin}
               onMapFilter={(addrs) => onMapFilter?.(addrs, "compare")}
               onClearMapFilter={onClearMapFilter}
               resetKey={panelResetKey}

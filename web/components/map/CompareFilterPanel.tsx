@@ -8,7 +8,6 @@ import type { CompareRefRow } from "@/app/api/compare/route";
 interface Props {
   onSearchPick?: (pick: SearchPick) => void;
   selectedAddr?: string | null;
-  isAdmin?: boolean;
   onMapFilter?: (addrs: Set<string>) => void;
   onClearMapFilter?: () => void;
   resetKey?: number;
@@ -142,13 +141,13 @@ function groupToVillages(rows: CompareRefRow[]): VillageStats[] {
   return Array.from(map.values()).map(analyzeVillage);
 }
 
-export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin, onMapFilter, onClearMapFilter, resetKey = 0 }: Props) {
+export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFilter, onClearMapFilter, resetKey = 0 }: Props) {
   const [step, setStep] = useState<"filter" | "results">("filter");
   const [snapshotDate, setSnapshotDate] = useState<string | null>(null);
-  const [availableDates, setAvailableDates] = useState<string[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string>("");
+  const today = new Date().toISOString().slice(0, 10);
+  const [dateA, setDateA] = useState<string>("");   // 시점 A (과거)
+  const [dateB, setDateB] = useState<string>("");   // 시점 B (기본=오늘=현재)
   const [loading, setLoading] = useState(false);
-  const [resetting, setResetting] = useState(false);
 
   // 필터 상태
   const [substFilter, setSubstFilter] = useState<FilterValue>("any");
@@ -170,17 +169,14 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
   const [addrDong, setAddrDong] = useState<Set<string>>(new Set());
   const [addrLi, setAddrLi] = useState<Set<string>>(new Set());
 
-  // 기준일 + 날짜 목록 로드
+  // ref 기준일 로드 (선택 가능한 최소 날짜)
   useEffect(() => {
     fetch("/api/compare/dates")
       .then((r) => r.json())
       .then((d) => {
-        if (d.ok) {
-          if (d.snapshotDate) setSnapshotDate(d.snapshotDate);
-          if (d.dates && d.dates.length > 0) {
-            setAvailableDates(d.dates);
-            setSelectedDate(d.dates[0]);
-          }
+        if (d.ok && d.snapshotDate) {
+          setSnapshotDate(d.snapshotDate);
+          setDateA(d.snapshotDate);
         }
       })
       .catch(() => {});
@@ -188,10 +184,17 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
 
   // ── 검색 (API 호출) ──
   const handleSearch = async () => {
+    if (!dateA) return;
     setLoading(true);
     try {
-      const dateToUse = selectedDate || snapshotDate || new Date().toISOString().slice(0, 10);
-      const params = new URLSearchParams({ date: dateToUse, subst: substFilter, mtr: mtrFilter, dl: dlFilter });
+      const params = new URLSearchParams({
+        date_a: dateA,
+        subst: substFilter,
+        mtr: mtrFilter,
+        dl: dlFilter,
+      });
+      // dateB가 오늘이면 생략 (현재값 사용), 과거 날짜면 전달
+      if (dateB && dateB !== today) params.set("date_b", dateB);
       const res = await fetch(`/api/compare?${params}`);
       const data = await res.json();
       if (data.ok) {
@@ -215,6 +218,8 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
   };
 
   const reset = () => {
+    setDateA(snapshotDate ?? "");
+    setDateB("");
     setSubstFilter("any");
     setMtrFilter("any");
     setDlFilter("any");
@@ -244,19 +249,6 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
     setAddrLi(new Set());
   };
 
-  const handleReset = async () => {
-    if (!confirm("기준 스냅샷을 현재 상태로 리셋하시겠습니까?\n모든 비교 기록이 초기화됩니다.")) return;
-    setResetting(true);
-    try {
-      const res = await fetch("/api/compare/reset", { method: "POST" });
-      const data = await res.json();
-      if (data.ok) {
-        setSnapshotDate(new Date().toISOString().slice(0, 10));
-        reset();
-      }
-    } catch { /* ignore */ }
-    finally { setResetting(false); }
-  };
 
   // ── 2단계: 지역 옵션 (step1Villages 기준) ──
   const regionSource = step === "results" ? step1Villages : [];
@@ -390,60 +382,51 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
               )}
             </div>
 
-            {/* 기준일 + 비교 날짜 */}
-            <div className="text-[11px] text-gray-500 bg-gray-50 rounded px-2 py-1.5 space-y-1">
-              <div>
-                <span>📅 기준일: <b className="text-gray-800">{snapshotDate ?? "로딩 중..."}</b></span>
-                {isAdmin && (
-                  <button
-                    onClick={handleReset}
-                    disabled={resetting}
-                    className="ml-2 text-[10px] text-gray-400 hover:text-red-500 disabled:opacity-50"
-                  >
-                    {resetting ? "리셋 중..." : "리셋"}
-                  </button>
-                )}
-              </div>
+            {/* 시점 선택: A → B 한 줄 */}
+            <div className="bg-gray-50 rounded px-2 py-2 space-y-2">
               <div className="flex items-center gap-1.5">
-                <span>📆 비교 시점:</span>
-                {availableDates.length > 0 ? (
-                  <select
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="border border-gray-300 rounded px-1.5 py-0.5 text-[11px] text-gray-900 bg-white"
-                  >
-                    {availableDates.map((d) => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <span className="text-gray-400">기록 없음 (수집 후 생성)</span>
-                )}
-                <span className="text-gray-400">~ 현재</span>
+                <input
+                  type="date"
+                  value={dateA}
+                  min={snapshotDate ?? undefined}
+                  max={today}
+                  onChange={(e) => setDateA(e.target.value)}
+                  className="border border-gray-300 rounded px-1.5 py-1 text-[11px] text-gray-900 bg-white flex-1 min-w-0"
+                />
+                <span className="text-sm font-bold text-gray-500 shrink-0">→</span>
+                <input
+                  type="date"
+                  value={dateB || today}
+                  min={snapshotDate ?? undefined}
+                  max={today}
+                  onChange={(e) => setDateB(e.target.value)}
+                  className="border border-gray-300 rounded px-1.5 py-1 text-[11px] text-gray-900 bg-white flex-1 min-w-0"
+                />
               </div>
-            </div>
+              {(!dateB || dateB === today) && (
+                <div className="text-[10px] text-gray-400 text-right">시점 B = 현재</div>
+              )}
 
-            {/* 변화 유형 필터 */}
-            <div className="space-y-1.5">
-              <div className="text-[11px] font-bold text-gray-700 flex items-center gap-1">
-                <span>📊</span> 변화 유형
+              {/* 변화 유형 필터 */}
+              <div className="space-y-1.5 pt-1 border-t border-gray-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-gray-700">변화 유형</span>
+                  <button
+                    type="button"
+                    onClick={() => setChangedOnly(!changedOnly)}
+                    className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+                      changedOnly
+                        ? "bg-orange-500 border-orange-500 text-white"
+                        : "bg-white border-gray-300 text-gray-500 hover:border-orange-300"
+                    }`}
+                  >
+                    변화만
+                  </button>
+                </div>
+                <ChangeToggle label="변전소" value={substFilter} onChange={setSubstFilter} />
+                <ChangeToggle label="주변압기" value={mtrFilter} onChange={setMtrFilter} />
+                <ChangeToggle label="배전선로" value={dlFilter} onChange={setDlFilter} />
               </div>
-              <button
-                type="button"
-                onClick={() => setChangedOnly(!changedOnly)}
-                className={`w-full rounded-md px-2 py-1.5 text-[11px] font-semibold transition-all flex items-center justify-center gap-1.5 ${
-                  changedOnly
-                    ? "bg-orange-100 hover:bg-orange-200 text-orange-800 border border-orange-300"
-                    : "bg-white hover:bg-orange-50 text-gray-600 border border-gray-200 hover:border-orange-200"
-                }`}
-              >
-                <span className={`w-1.5 h-1.5 rounded-full ${changedOnly ? "bg-orange-500" : "bg-gray-400"}`} />
-                {changedOnly ? "변화 있는 곳만 보는 중" : "변화 있는 곳만 보기"}
-                {changedOnly && <span className="text-[10px] text-orange-400 ml-auto">✕</span>}
-              </button>
-              <ChangeToggle label="변전소" value={substFilter} onChange={setSubstFilter} />
-              <ChangeToggle label="주변압기" value={mtrFilter} onChange={setMtrFilter} />
-              <ChangeToggle label="배전선로" value={dlFilter} onChange={setDlFilter} />
             </div>
 
             <button
@@ -458,7 +441,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, isAdmin
             {!loading && allVillages.length === 0 && (
               <div className="text-center py-3">
                 <div className="text-xs text-gray-500 space-y-1">
-                  <p>기준일 대비 현재의 <b>여유 상태 변화</b>를 분석합니다.</p>
+                  <p>두 시점의 <b>여유 상태 변화</b>를 비교합니다.</p>
                   <p className="text-[10px] text-gray-400">
                     <span className="text-green-600">없음→있음</span> = 여유 새로 생김 · <span className="text-red-600">있음→없음</span> = 여유 사라짐
                   </p>
