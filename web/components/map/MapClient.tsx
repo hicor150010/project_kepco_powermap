@@ -331,8 +331,8 @@ export default function MapClient({ isAdmin, email }: Props) {
     async (row: MapSummaryRow) => {
       if (mapInstance && row.lat != null && row.lng != null) {
         const pos = new window.kakao.maps.LatLng(row.lat, row.lng);
-        mapInstance.setCenter(pos);
         mapInstance.setLevel(5);
+        mapInstance.setCenter(pos);
       }
       await openLocationDetail(row.geocode_address);
     },
@@ -367,8 +367,8 @@ export default function MapClient({ isAdmin, email }: Props) {
       // 지도 이동
       if (lat != null && lng != null) {
         const pos = new window.kakao.maps.LatLng(lat, lng);
-        mapInstance.setCenter(pos);
         mapInstance.setLevel(5);
+        mapInstance.setCenter(pos);
       }
 
       if (targetAddr) {

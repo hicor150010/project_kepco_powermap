@@ -16,6 +16,37 @@ interface Props {
 type FilterValue = "any" | "same" | "gained" | "lost";
 type SortKey = "changed_desc" | "name_asc";
 
+/** 한국식 날짜 표시 date input — iOS에서 미국식으로 보이는 문제 해결 */
+function KoreanDateInput({
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  value: string;
+  min?: string;
+  max?: string;
+  onChange: (v: string) => void;
+}) {
+  // YYYY-MM-DD → YYYY.MM.DD
+  const display = value ? value.replace(/-/g, ".") : "";
+  return (
+    <div className="relative flex-1 min-w-0">
+      <input
+        type="date"
+        value={value}
+        min={min}
+        max={max}
+        onChange={(e) => onChange(e.target.value)}
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+      />
+      <div className="border border-gray-300 rounded px-1.5 py-1 text-[11px] text-gray-900 bg-white truncate pointer-events-none">
+        {display || <span className="text-gray-400">날짜 선택</span>}
+      </div>
+    </div>
+  );
+}
+
 /** 변화 유형 토글 — 한 줄: 라벨 + 버튼 */
 function ChangeToggle({
   label,
@@ -292,22 +323,18 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
             {/* 시점 선택: A → B 한 줄 */}
             <div className="bg-gray-50 rounded px-2 py-2 space-y-2">
               <div className="flex items-center gap-1.5">
-                <input
-                  type="date"
+                <KoreanDateInput
                   value={dateA}
                   min={snapshotDate ?? undefined}
                   max={today}
-                  onChange={(e) => setDateA(e.target.value)}
-                  className="border border-gray-300 rounded px-1.5 py-1 text-[11px] text-gray-900 bg-white flex-1 min-w-0"
+                  onChange={setDateA}
                 />
                 <span className="text-sm font-bold text-gray-500 shrink-0">→</span>
-                <input
-                  type="date"
+                <KoreanDateInput
                   value={dateB || today}
                   min={snapshotDate ?? undefined}
                   max={today}
-                  onChange={(e) => setDateB(e.target.value)}
-                  className="border border-gray-300 rounded px-1.5 py-1 text-[11px] text-gray-900 bg-white flex-1 min-w-0"
+                  onChange={setDateB}
                 />
               </div>
               {(!dateB || dateB === today) && (
