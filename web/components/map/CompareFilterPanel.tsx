@@ -169,7 +169,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
   const [step, setStep] = useState<"filter" | "results">("filter");
   const [snapshotDate, setSnapshotDate] = useState<string | null>(null);
   const today = new Date().toISOString().slice(0, 10);
-  const [dateA, setDateA] = useState<string>("");   // 시점 A (과거)
+  const [dateA, setDateA] = useState<string>(today); // 시점 A (기본=오늘)
   const [dateB, setDateB] = useState<string>("");   // 시점 B (기본=오늘=현재)
   const [loading, setLoading] = useState(false);
 
@@ -194,15 +194,31 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
       .then((d) => {
         if (d.ok && d.snapshotDate) {
           setSnapshotDate(d.snapshotDate);
-          setDateA(d.snapshotDate);
         }
       })
       .catch(() => {});
   }, []);
 
   // ── 검색 (API 호출) ──
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
   const handleSearch = async () => {
-    if (!dateA) return;
+    if (!dateA || !DATE_RE.test(dateA)) {
+      alert("시점 A 날짜를 선택해주세요.");
+      return;
+    }
+    const effectiveB = dateB || today;
+    if (!DATE_RE.test(effectiveB)) {
+      alert("시점 B 날짜를 선택해주세요.");
+      return;
+    }
+    if (dateA > effectiveB) {
+      alert("시점 A가 시점 B보다 미래일 수 없습니다.");
+      return;
+    }
+    if (snapshotDate && dateA < snapshotDate) {
+      alert(`시점 A는 기준일(${snapshotDate}) 이후여야 합니다.`);
+      return;
+    }
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -237,7 +253,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
   };
 
   const reset = () => {
-    setDateA(snapshotDate ?? "");
+    setDateA(today);
     setDateB("");
     setSubstFilter("any");
     setMtrFilter("any");
@@ -395,7 +411,12 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
               )}
             </div>
 
-            {/* 요약 통계 — 인라인 배지 */}
+            {/* 비교 기간 표시 */}
+            <div className="text-[11px] text-gray-500 text-center">
+              {dateA.replace(/-/g, ".")} → {(dateB || today).replace(/-/g, ".")}{!dateB || dateB === today ? " (현재)" : ""}
+            </div>
+
+            {/* 요약 통계 — 인라인 배지 (임시 비활성)
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700 border border-green-200">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
@@ -410,6 +431,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
                 혼합 {sortedVillages.filter((v) => v.direction === "mixed").length}
               </span>
             </div>
+            */}
 
             {/* 지역 필터 — 드롭다운 4개 한 줄 */}
             <RegionFilter rows={step1Villages} value={region} onChange={setRegion} />
