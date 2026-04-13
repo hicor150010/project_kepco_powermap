@@ -24,6 +24,7 @@ import { formatRemaining } from "@/lib/summarize";
 interface Props {
   rows: KepcoDataRow[];
   onJibunPin?: (row: KepcoDataRow) => void;
+  initialSearch?: string;
 }
 
 interface FacilityGroup {
@@ -50,12 +51,12 @@ function jibunSortKey(jibun: string | null): number {
   return m ? parseInt(m[0], 10) : Number.MAX_SAFE_INTEGER;
 }
 
-export default function LocationDetailGrouped({ rows, onJibunPin }: Props) {
+export default function LocationDetailGrouped({ rows, onJibunPin, initialSearch = "" }: Props) {
   // 기본 "모두 접힘" — 사용자가 그룹 전체 구조를 먼저 파악하도록.
   // null = 모두 접힘, Set = 열린 그룹들(화이트리스트)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const [onlyBad, setOnlyBad] = useState(false);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
 
   // ─────────────────────────────────────────────
   // 행들을 (변전소 | 주변압기 | 배전선로) 복합키로 그룹화

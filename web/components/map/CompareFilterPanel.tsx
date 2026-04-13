@@ -192,6 +192,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
   const [sortKey, setSortKey] = useState<SortKey>("changed_desc");
   const [expandedAddr, setExpandedAddr] = useState<string | null>(null);
   const [region, setRegion] = useState<RegionSelection>(EMPTY_REGION);
+  const [clickedJibun, setClickedJibun] = useState<string | null>(null);
 
   // ref 기준일 로드 (선택 가능한 최소 날짜)
   useEffect(() => {
@@ -237,6 +238,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
   const handleBack = () => {
     setRegion(EMPTY_REGION);
     setStep1Villages([]);
+    setClickedJibun(null);
     setStep("filter");
     onClearMapFilter?.();
   };
@@ -252,6 +254,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
     setAllVillages([]);
     setStep1Villages([]);
     setRegion(EMPTY_REGION);
+    setClickedJibun(null);
     setStep("filter");
     onClearMapFilter?.();
   };
@@ -516,9 +519,23 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
                       <div className="px-4 pb-2 bg-gray-50 border-l-2 border-orange-300">
                         <div className="text-[11px] text-gray-500 py-1.5 font-bold">지번별 변화 상세</div>
                         <div className="space-y-1 max-h-[200px] overflow-y-auto">
-                          {v.rows.map((r, i) => (
-                            <JibunChangeRow key={i} row={r} />
-                          ))}
+                          {v.rows.map((r, i) => {
+                            const jibunKey = `${v.geocode_address}::${r.addr_jibun}`;
+                            return (
+                              <JibunChangeRow key={i} row={r} active={clickedJibun === jibunKey} onClick={() => {
+                                setClickedJibun(jibunKey);
+                                onSearchPick?.({
+                                  kind: "ji_compare",
+                                  row: {
+                                    geocode_address: v.geocode_address,
+                                    lat: v.lat,
+                                    lng: v.lng,
+                                  },
+                                  jibun: r.addr_jibun ?? "",
+                                });
+                              }} />
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -546,7 +563,7 @@ function FacilityDelta({ label, change }: { label: string; change: FacilityChang
 }
 
 /** 지번별 변화 행 */
-function JibunChangeRow({ row }: { row: CompareRefRow }) {
+function JibunChangeRow({ row, onClick, active }: { row: CompareRefRow; onClick?: () => void; active?: boolean }) {
   const changes: { label: string; prev: boolean; curr: boolean }[] = [];
   if (row.prev_subst_ok !== row.curr_subst_ok) changes.push({ label: "변전소", prev: row.prev_subst_ok, curr: row.curr_subst_ok });
   if (row.prev_mtr_ok !== row.curr_mtr_ok) changes.push({ label: "주변압기", prev: row.prev_mtr_ok, curr: row.curr_mtr_ok });
@@ -555,7 +572,14 @@ function JibunChangeRow({ row }: { row: CompareRefRow }) {
   if (changes.length === 0) return null;
 
   return (
-    <div className="bg-white rounded px-2.5 py-1.5 border border-gray-200">
+    <div
+      className={`rounded px-2.5 py-1.5 border cursor-pointer transition-colors ${
+        active
+          ? "bg-orange-50 border-orange-400"
+          : "bg-white border-gray-200 hover:border-orange-400 hover:bg-orange-50 active:bg-orange-100"
+      }`}
+      onClick={onClick}
+    >
       <div className="text-[11px] font-medium text-gray-800 truncate">
         {row.addr_jibun || "-"} <span className="text-gray-400 font-normal">{row.dl_nm || row.subst_nm || ""}</span>
       </div>

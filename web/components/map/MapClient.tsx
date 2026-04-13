@@ -55,6 +55,7 @@ export default function MapClient({ isAdmin, email }: Props) {
   const [selectedRows, setSelectedRows] = useState<KepcoDataRow[] | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [initialJibunSearch, setInitialJibunSearch] = useState("");
   const [detailCache] = useState<Map<string, KepcoDataRow[]>>(new Map());
 
   // 편의 도구: 카카오 지도 인스턴스 + 거리재기 모드 + 유망부지 패널
@@ -371,8 +372,17 @@ export default function MapClient({ isAdmin, email }: Props) {
         mapInstance.setCenter(pos);
       }
 
-      if (targetAddr) {
-        openLocationDetail(targetAddr);
+      // 변화추적 지번 클릭 → 상세 모달 자동 열기 + 지번 필터
+      if (pick.kind === "ji_compare") {
+        setInitialJibunSearch(pick.jibun);
+        if (targetAddr) {
+          openLocationDetail(targetAddr).then(() => setDetailModalOpen(true));
+        }
+      } else {
+        setInitialJibunSearch("");
+        if (targetAddr) {
+          openLocationDetail(targetAddr);
+        }
       }
     },
     [mapInstance, openLocationDetail, gpsActive, gpsAutoFollow, mapFilteredAddrs, clearMapFilter]
@@ -901,8 +911,10 @@ export default function MapClient({ isAdmin, email }: Props) {
             rows={selectedRows}
             onClose={() => {
               setDetailModalOpen(false);
+              setInitialJibunSearch("");
             }}
             onJibunPin={handleJibunPin}
+            initialSearch={initialJibunSearch}
           />
         )}
 

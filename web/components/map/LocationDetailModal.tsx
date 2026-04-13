@@ -18,6 +18,7 @@ interface Props {
   rows: KepcoDataRow[];
   onClose: () => void;
   onJibunPin?: (row: KepcoDataRow) => void;
+  initialSearch?: string;
 }
 
 type SortKey =
@@ -28,9 +29,9 @@ type SortKey =
 type SortDir = "asc" | "desc";
 const PAGE_SIZE = 50;
 
-export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props) {
+export default function LocationDetailModal({ rows, onClose, onJibunPin, initialSearch = "" }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>("table");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
   const [sortKey, setSortKey] = useState<SortKey>("addr_jibun");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [page, setPage] = useState(0);
@@ -217,7 +218,7 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin }: Props
         {/* 그룹 보기 모드 — flex 영역 안에 넣어 overflow가 부모 경계를 넘지 않도록 */}
         {viewMode === "group" && (
           <div className="flex flex-col flex-1 min-h-0">
-            <LocationDetailGrouped rows={rows} onJibunPin={onJibunPin} />
+            <LocationDetailGrouped rows={rows} onJibunPin={onJibunPin} initialSearch={initialSearch} />
           </div>
         )}
 
