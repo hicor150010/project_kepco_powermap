@@ -465,6 +465,10 @@ export default function Sidebar({
                 onSearchPick?.(pick);
                 if (window.innerWidth < 768) onToggle();
               }}
+              onJibunPin={onJibunPin ? (row) => {
+                onJibunPin(row);
+                if (window.innerWidth < 768) onToggle();
+              } : undefined}
               selectedAddr={selectedAddr}
               onMapFilter={(addrs) => onMapFilter?.(addrs, "filter")}
               onClearMapFilter={onClearMapFilter}

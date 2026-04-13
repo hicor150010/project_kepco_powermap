@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import ChipToggle from "./ChipToggle";
 import SearchResultList, { type SearchPick } from "./SearchResultList";
-import type { MapSummaryRow, ColumnFilters as Filters } from "@/lib/types";
+import type { MapSummaryRow, ColumnFilters as Filters, KepcoDataRow } from "@/lib/types";
 import type { SearchRiResult } from "@/lib/search/searchKepco";
 import { emptyFilters } from "@/lib/types";
 import { matchesVolumeFilter } from "@/lib/filterUtil";
@@ -15,6 +15,8 @@ interface Props {
   isPromisingMode?: boolean;
   onTogglePromising?: () => void;
   onSearchPick?: (pick: SearchPick) => void;
+  /** 지번 핀 표시 */
+  onJibunPin?: (row: KepcoDataRow) => void;
   selectedAddr?: string | null;
   /** 지도 필터 적용 */
   onMapFilter?: (addrs: Set<string>) => void;
@@ -68,17 +70,22 @@ function VolumeToggle({
   );
 }
 
-type SortKey = "remaining_desc" | "count_desc" | "name_asc";
+type RiSortKey = "remaining_desc" | "count_desc" | "name_asc";
+type JiSortKey = "remaining_desc" | "jibun_asc" | "name_asc";
 
 export default function FilterPanel({
   totalRows, filters, onChange,
-  isPromisingMode, onTogglePromising, onSearchPick, selectedAddr,
+  isPromisingMode, onTogglePromising, onSearchPick, onJibunPin, selectedAddr,
   onMapFilter, onClearMapFilter, resetKey = 0,
 }: Props) {
   const [step, setStep] = useState<"volume" | "results">("volume");
   const [step1Rows, setStep1Rows] = useState<MapSummaryRow[]>([]);
-  const [sortKey, setSortKey] = useState<SortKey>("remaining_desc");
+  const [riSortKey, setRiSortKey] = useState<RiSortKey>("remaining_desc");
+  const [jiSortKey, setJiSortKey] = useState<JiSortKey>("remaining_desc");
   const [detailRegionOpen, setDetailRegionOpen] = useState(false);
+  const [searchTab, setSearchTab] = useState<"ri" | "ji">("ri");
+  const [jiRows, setJiRows] = useState<KepcoDataRow[]>([]);
+  const [jiLoading, setJiLoading] = useState(false);
 
   const update = (key: keyof Filters, value: Set<string>) =>
     onChange({ ...filters, [key]: value });
@@ -224,7 +231,7 @@ export default function FilterPanel({
       lng: r.lng,
     }));
 
-    switch (sortKey) {
+    switch (riSortKey) {
       case "remaining_desc":
         mapped.sort((a, b) => (kwMap.get(b.geocode_address) ?? 0) - (kwMap.get(a.geocode_address) ?? 0));
         break;
@@ -237,7 +244,73 @@ export default function FilterPanel({
     }
 
     return mapped;
-  }, [filteredRows, step, sortKey]);
+  }, [filteredRows, step, riSortKey]);
+
+  // ── 지번 데이터 fetch ──
+
+  const fetchJi = useCallback(async (addrs: string[]) => {
+    if (addrs.length === 0) { setJiRows([]); return; }
+    setJiLoading(true);
+    try {
+      const res = await fetch("/api/filter-ji", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ addrs, limit: 200 }),
+      });
+      if (!res.ok) throw new Error("조회 실패");
+      const data = await res.json();
+      setJiRows(data.rows ?? []);
+    } catch {
+      setJiRows([]);
+    } finally {
+      setJiLoading(false);
+    }
+  }, []);
+
+  // 지번 정렬 (클라이언트)
+  const sortedJi = useMemo(() => {
+    const arr = [...jiRows];
+    switch (jiSortKey) {
+      case "remaining_desc": {
+        // 3시설 중 최소 잔여 기준
+        const minRemaining = (r: KepcoDataRow) => Math.min(
+          (r.subst_capa ?? 0) - (r.subst_pwr ?? 0),
+          (r.mtr_capa ?? 0) - (r.mtr_pwr ?? 0),
+          (r.dl_capa ?? 0) - (r.dl_pwr ?? 0),
+        );
+        arr.sort((a, b) => minRemaining(b) - minRemaining(a));
+        break;
+      }
+      case "jibun_asc": {
+        const jibunNum = (j: string | null) => {
+          if (!j) return Number.MAX_SAFE_INTEGER;
+          const m = j.match(/\d+/);
+          return m ? parseInt(m[0], 10) : Number.MAX_SAFE_INTEGER;
+        };
+        arr.sort((a, b) => {
+          const addrCmp = (a.geocode_address ?? "").localeCompare(b.geocode_address ?? "", "ko");
+          if (addrCmp !== 0) return addrCmp;
+          return jibunNum(a.addr_jibun) - jibunNum(b.addr_jibun);
+        });
+        break;
+      }
+      case "name_asc":
+        arr.sort((a, b) => (a.geocode_address ?? "").localeCompare(b.geocode_address ?? "", "ko"));
+        break;
+    }
+    return arr;
+  }, [jiRows, jiSortKey]);
+
+  // 지역 필터 변경 시 지번 데이터도 갱신
+  const prevFilteredAddrsRef = useRef<string>("");
+  useEffect(() => {
+    if (step !== "results") return;
+    const addrs = filteredRows.map((r) => r.geocode_address);
+    const key = addrs.join(",");
+    if (key === prevFilteredAddrsRef.current) return;
+    prevFilteredAddrsRef.current = key;
+    fetchJi(addrs);
+  }, [step, filteredRows, fetchJi]);
 
   // ── 핸들러 ──
 
@@ -253,6 +326,7 @@ export default function FilterPanel({
       addr_li: new Set(),
     });
     setStep("results");
+    setSearchTab("ri");
     // 지도에 해당 마을만 표시
     onMapFilter?.(new Set(snapshot.map((r) => r.geocode_address)));
   };
@@ -267,14 +341,21 @@ export default function FilterPanel({
       addr_li: new Set(),
     });
     setStep1Rows([]);
+    setJiRows([]);
+    prevFilteredAddrsRef.current = "";
+    setSearchTab("ri");
     setStep("volume");
     onClearMapFilter?.();
   };
 
   const reset = () => {
     onChange(emptyFilters());
-    setSortKey("remaining_desc");
+    setRiSortKey("remaining_desc");
+    setJiSortKey("remaining_desc");
     setStep1Rows([]);
+    setJiRows([]);
+    prevFilteredAddrsRef.current = "";
+    setSearchTab("ri");
     setStep("volume");
     onClearMapFilter?.();
   };
@@ -404,29 +485,7 @@ export default function FilterPanel({
               )}
             </div>
 
-            {/* 정렬 */}
-            <div>
-              <label className="text-xs font-medium text-gray-700 mb-1.5 block">정렬</label>
-              <div className="flex flex-wrap gap-1">
-                {([
-                  ["remaining_desc", "잔여용량 큰 순"],
-                  ["count_desc", "건수 많은 순"],
-                  ["name_asc", "가나다순"],
-                ] as const).map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => setSortKey(key)}
-                    className={`px-2.5 py-1.5 text-[11px] rounded-full border transition-colors ${
-                      sortKey === key
-                        ? "bg-gray-700 border-gray-700 text-white font-medium"
-                        : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* 정렬은 탭 내부로 이동 */}
           </>
         )}
       </div>
@@ -434,13 +493,91 @@ export default function FilterPanel({
       {/* 결과 리스트 — 2단계에서만 표시 */}
       {step === "results" && (
         <div className="border-t border-gray-200">
-          <SearchResultList
-            mode="ri"
-            ri={conditionResults}
-            ji={[]}
-            selectedAddr={selectedAddr}
-            onPick={(pick) => onSearchPick?.(pick)}
-          />
+          {/* 리/지번 탭 + 정렬 한 줄 */}
+          <div className="flex items-center justify-between border-b border-gray-100 px-2">
+            <div className="flex">
+              {(["ri", "ji"] as const).map((t) => {
+                const count = t === "ri" ? conditionResults.length : sortedJi.length;
+                const label = t === "ri" ? "리 단위" : "지번 단위";
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setSearchTab(t)}
+                    className={`px-3 py-1.5 text-[11px] font-semibold border-b-2 transition-colors flex items-center gap-1 ${
+                      searchTab === t
+                        ? "border-blue-500 text-blue-600"
+                        : "border-transparent text-gray-400 hover:text-gray-600"
+                    }`}
+                  >
+                    {label}
+                    <span className={`text-[10px] px-1 rounded-full ${
+                      count > 0
+                        ? searchTab === t ? "bg-blue-500 text-white" : "bg-blue-100 text-blue-700"
+                        : "bg-gray-200 text-gray-500"
+                    }`}>{jiLoading && t === "ji" ? "…" : count}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {/* 정렬 — 탭 오른쪽에 콤팩트하게 */}
+            <div className="flex gap-1">
+              {searchTab === "ri"
+                ? ([
+                    ["remaining_desc", "잔여용량"],
+                    ["count_desc", "건수"],
+                    ["name_asc", "가나다"],
+                  ] as const).map(([key, label]) => (
+                    <button
+                      key={key}
+                      onClick={() => setRiSortKey(key)}
+                      className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors ${
+                        riSortKey === key
+                          ? "bg-gray-700 border-gray-700 text-white font-medium"
+                          : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))
+                : ([
+                    ["remaining_desc", "여유용량"],
+                    ["jibun_asc", "지번순"],
+                    ["name_asc", "가나다"],
+                  ] as const).map(([key, label]) => (
+                    <button
+                      key={key}
+                      onClick={() => setJiSortKey(key)}
+                      className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors ${
+                        jiSortKey === key
+                          ? "bg-gray-700 border-gray-700 text-white font-medium"
+                          : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))
+              }
+            </div>
+          </div>
+          {/* 지번 limit 안내 */}
+          {searchTab === "ji" && sortedJi.length >= 200 && (
+            <div className="bg-amber-50 border-b border-amber-200 px-3 py-1.5 text-[11px] text-amber-800">
+              최대 200건까지 표시됩니다. 지역 필터로 범위를 좁혀 보세요.
+            </div>
+          )}
+          {jiLoading && searchTab === "ji" ? (
+            <div className="px-4 py-8 text-center text-xs text-gray-500">지번 데이터 조회 중...</div>
+          ) : (
+            <SearchResultList
+              mode={searchTab}
+              ri={conditionResults}
+              ji={sortedJi}
+              selectedAddr={selectedAddr}
+              onPick={(pick) => onSearchPick?.(pick)}
+              onJibunPin={onJibunPin}
+            />
+          )}
         </div>
       )}
     </div>
