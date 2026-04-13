@@ -2,11 +2,8 @@ name: KEPCO Geocode
 
 on:
   workflow_dispatch: {}
-  workflow_run:
-    workflows: ["KEPCO Crawl"]
-    types: [completed]
   schedule:
-    # 매주 일요일 05:00 KST (토요일 20:00 UTC) — 크롤링 2시간 후
+    # 매주 일요일 05:00 KST (토요일 20:00 UTC) — 놓친 좌표 보정용
     - cron: '0 20 * * 0'
 
 jobs:
