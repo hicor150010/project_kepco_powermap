@@ -5,6 +5,7 @@ import Link from "next/link";
 import LogoutButton from "@/components/auth/LogoutButton";
 import FilterPanel from "./FilterPanel";
 import CompareFilterPanel from "./CompareFilterPanel";
+import RegionFilter, { applyRegionFilter, EMPTY_REGION, type RegionSelection } from "./RegionFilter";
 import SearchResultList, { type SearchPick } from "./SearchResultList";
 import type { MapSummaryRow, ColumnFilters, KepcoDataRow } from "@/lib/types";
 import type { SearchRiResult } from "@/lib/search/searchKepco";
@@ -112,6 +113,7 @@ export default function Sidebar({
   const [query, setQuery] = useState("");
   const [searchState, setSearchState] = useState<SearchState>(EMPTY_SEARCH);
   const [searchTab, setSearchTab] = useState<"ri" | "ji">("ri");
+  const [searchRegion, setSearchRegion] = useState<RegionSelection>(EMPTY_REGION);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -131,6 +133,7 @@ export default function Sidebar({
       const ji = data.ji ?? [];
       setSearchState({ loading: false, error: null, ri, ji, jiFallback: data.jiFallback ?? false, parsed: data.parsed ?? null });
       setSearchTab(data.parsed?.lotNo != null ? "ji" : "ri");
+      setSearchRegion(EMPTY_REGION);
 
       // 검색 결과 마을을 지도에 표시
       const addrs = new Set<string>();
@@ -145,6 +148,7 @@ export default function Sidebar({
   const handleClear = () => {
     setQuery("");
     setSearchState(EMPTY_SEARCH);
+    setSearchRegion(EMPTY_REGION);
     onClearMapFilter?.();
   };
 
@@ -363,53 +367,64 @@ export default function Sidebar({
                 )}
                 {!searchState.loading && !searchState.error && (searchState.ri.length > 0 || searchState.ji.length > 0) && (
                   <>
-                    {/* 리/지번 탭 */}
-                    <div className="flex border-b border-gray-100 px-2">
-                      {(["ri", "ji"] as const).map((t) => {
-                        const count = t === "ri" ? searchState.ri.length : searchState.ji.length;
-                        const label = t === "ri" ? "리 단위" : "지번 단위";
-                        return (
-                          <button
-                            key={t}
-                            type="button"
-                            onClick={() => setSearchTab(t)}
-                            className={`px-3 py-1.5 text-[11px] font-semibold border-b-2 transition-colors flex items-center gap-1 ${
-                              searchTab === t
-                                ? "border-blue-500 text-blue-600"
-                                : "border-transparent text-gray-400 hover:text-gray-600"
-                            }`}
-                          >
-                            {label}
-                            <span className={`text-[10px] px-1 rounded-full ${
-                              count > 0
-                                ? searchTab === t ? "bg-blue-500 text-white" : "bg-blue-100 text-blue-700"
-                                : "bg-gray-200 text-gray-500"
-                            }`}>{count}</span>
-                          </button>
-                        );
-                      })}
+                    {/* 지역 필터 */}
+                    <div className="border-b border-gray-100">
+                      <RegionFilter rows={searchState.ri} value={searchRegion} onChange={setSearchRegion} />
                     </div>
-                    {/* 폴백 안내 */}
-                    {searchTab === "ji" && searchState.jiFallback && searchState.parsed?.lotNo != null && searchState.ji.length > 0 && (
-                      <div className="bg-amber-50 border-b border-amber-200 px-3 py-1.5 text-[11px] text-amber-800">
-                        💡 <b>{searchState.parsed.lotNo}번지</b>가 없어 가장 가까운 지번을 보여드려요.
-                      </div>
-                    )}
-                    <SearchResultList
-                      mode={searchTab}
-                      ri={searchState.ri}
-                      ji={searchState.ji}
-                      selectedAddr={selectedAddr}
-                      onPick={(pick) => {
-                        onSearchPick?.(pick);
-                        // 모바일에서는 사이드바 닫아서 지도 보여주기
-                        if (window.innerWidth < 768) onToggle();
-                      }}
-                      onJibunPin={onJibunPin ? (row) => {
-                        onJibunPin(row);
-                        if (window.innerWidth < 768) onToggle();
-                      } : undefined}
-                    />
+                    {/* 리/지번 탭 */}
+                    {(() => {
+                      const filteredRi = applyRegionFilter(searchState.ri, searchRegion);
+                      const filteredJi = applyRegionFilter(searchState.ji, searchRegion);
+                      return (
+                        <>
+                          <div className="flex border-b border-gray-100 px-2">
+                            {(["ri", "ji"] as const).map((t) => {
+                              const count = t === "ri" ? filteredRi.length : filteredJi.length;
+                              const label = t === "ri" ? "리 단위" : "지번 단위";
+                              return (
+                                <button
+                                  key={t}
+                                  type="button"
+                                  onClick={() => setSearchTab(t)}
+                                  className={`px-3 py-1.5 text-[11px] font-semibold border-b-2 transition-colors flex items-center gap-1 ${
+                                    searchTab === t
+                                      ? "border-blue-500 text-blue-600"
+                                      : "border-transparent text-gray-400 hover:text-gray-600"
+                                  }`}
+                                >
+                                  {label}
+                                  <span className={`text-[10px] px-1 rounded-full ${
+                                    count > 0
+                                      ? searchTab === t ? "bg-blue-500 text-white" : "bg-blue-100 text-blue-700"
+                                      : "bg-gray-200 text-gray-500"
+                                  }`}>{count}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {/* 폴백 안내 */}
+                          {searchTab === "ji" && searchState.jiFallback && searchState.parsed?.lotNo != null && searchState.ji.length > 0 && (
+                            <div className="bg-amber-50 border-b border-amber-200 px-3 py-1.5 text-[11px] text-amber-800">
+                              💡 <b>{searchState.parsed.lotNo}번지</b>가 없어 가장 가까운 지번을 보여드려요.
+                            </div>
+                          )}
+                          <SearchResultList
+                            mode={searchTab}
+                            ri={filteredRi}
+                            ji={filteredJi}
+                            selectedAddr={selectedAddr}
+                            onPick={(pick) => {
+                              onSearchPick?.(pick);
+                              if (window.innerWidth < 768) onToggle();
+                            }}
+                            onJibunPin={onJibunPin ? (row) => {
+                              onJibunPin(row);
+                              if (window.innerWidth < 768) onToggle();
+                            } : undefined}
+                          />
+                        </>
+                      );
+                    })()}
                   </>
                 )}
                 {!searchState.loading && !searchState.error && searchState.ri.length === 0 && searchState.ji.length === 0 && (

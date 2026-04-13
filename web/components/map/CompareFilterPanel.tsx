@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
-import ChipToggle from "./ChipToggle";
+import RegionFilter, { applyRegionFilter, EMPTY_REGION, type RegionSelection } from "./RegionFilter";
 import type { SearchPick } from "./SearchResultList";
 import type { CompareRefRow } from "@/app/api/compare/route";
 
@@ -159,15 +159,8 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
   const [allVillages, setAllVillages] = useState<VillageStats[]>([]);
   const [step1Villages, setStep1Villages] = useState<VillageStats[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("changed_desc");
-  const [detailRegionOpen, setDetailRegionOpen] = useState(false);
   const [expandedAddr, setExpandedAddr] = useState<string | null>(null);
-
-  // 지역 필터
-  const [addrDo, setAddrDo] = useState<Set<string>>(new Set());
-  const [addrSi, setAddrSi] = useState<Set<string>>(new Set());
-  const [addrGu, setAddrGu] = useState<Set<string>>(new Set());
-  const [addrDong, setAddrDong] = useState<Set<string>>(new Set());
-  const [addrLi, setAddrLi] = useState<Set<string>>(new Set());
+  const [region, setRegion] = useState<RegionSelection>(EMPTY_REGION);
 
   // ref 기준일 로드 (선택 가능한 최소 날짜)
   useEffect(() => {
@@ -202,7 +195,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
         if (changedOnly) villages = villages.filter((v) => v.direction !== "unchanged");
         setAllVillages(villages);
         setStep1Villages([...villages]);
-        clearRegionFilters();
+        setRegion(EMPTY_REGION);
         setStep("results");
         onMapFilter?.(new Set(villages.map((v) => v.geocode_address)));
       }
@@ -211,7 +204,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
   };
 
   const handleBack = () => {
-    clearRegionFilters();
+    setRegion(EMPTY_REGION);
     setStep1Villages([]);
     setStep("filter");
     onClearMapFilter?.();
@@ -227,7 +220,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
     setSortKey("changed_desc");
     setAllVillages([]);
     setStep1Villages([]);
-    clearRegionFilters();
+    setRegion(EMPTY_REGION);
     setStep("filter");
     onClearMapFilter?.();
   };
@@ -241,97 +234,11 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
     }
   }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const clearRegionFilters = () => {
-    setAddrDo(new Set());
-    setAddrSi(new Set());
-    setAddrGu(new Set());
-    setAddrDong(new Set());
-    setAddrLi(new Set());
-  };
-
-
-  // ── 2단계: 지역 옵션 (step1Villages 기준) ──
-  const regionSource = step === "results" ? step1Villages : [];
-
-  const addrDoOptions = useMemo(() => {
-    const set = new Set<string>();
-    regionSource.forEach((r) => r.addr_do && set.add(r.addr_do));
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "ko"));
-  }, [regionSource]);
-
-  const addrSiOptions = useMemo(() => {
-    const set = new Set<string>();
-    regionSource.forEach((r) => {
-      if (addrDo.size > 0 && !addrDo.has(r.addr_do)) return;
-      if (r.addr_si) set.add(r.addr_si);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "ko"));
-  }, [regionSource, addrDo]);
-
-  const addrGuOptions = useMemo(() => {
-    const set = new Set<string>();
-    regionSource.forEach((r) => {
-      if (addrDo.size > 0 && !addrDo.has(r.addr_do)) return;
-      if (addrSi.size > 0 && (!r.addr_si || !addrSi.has(r.addr_si))) return;
-      if (r.addr_gu) set.add(r.addr_gu);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "ko"));
-  }, [regionSource, addrDo, addrSi]);
-
-  const addrDongOptions = useMemo(() => {
-    const set = new Set<string>();
-    regionSource.forEach((r) => {
-      if (addrDo.size > 0 && !addrDo.has(r.addr_do)) return;
-      if (addrSi.size > 0 && (!r.addr_si || !addrSi.has(r.addr_si))) return;
-      if (addrGu.size > 0 && (!r.addr_gu || !addrGu.has(r.addr_gu))) return;
-      if (r.addr_dong) set.add(r.addr_dong);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "ko"));
-  }, [regionSource, addrDo, addrSi, addrGu]);
-
-  const addrLiOptions = useMemo(() => {
-    const set = new Set<string>();
-    regionSource.forEach((r) => {
-      if (addrDo.size > 0 && !addrDo.has(r.addr_do)) return;
-      if (addrSi.size > 0 && (!r.addr_si || !addrSi.has(r.addr_si))) return;
-      if (addrGu.size > 0 && (!r.addr_gu || !addrGu.has(r.addr_gu))) return;
-      if (addrDong.size > 0 && (!r.addr_dong || !addrDong.has(r.addr_dong))) return;
-      if (r.addr_li) set.add(r.addr_li);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "ko"));
-  }, [regionSource, addrDo, addrSi, addrGu, addrDong]);
-
-  // 카스케이딩
-  useEffect(() => {
-    if (step !== "results") return;
-    const prune = (sel: Set<string>, valid: string[]): Set<string> | null => {
-      if (sel.size === 0) return null;
-      const vs = new Set(valid);
-      const next = new Set<string>();
-      let changed = false;
-      sel.forEach((v) => { if (vs.has(v)) next.add(v); else changed = true; });
-      return changed ? next : null;
-    };
-    const a = prune(addrDo, addrDoOptions); if (a) setAddrDo(a);
-    const b = prune(addrSi, addrSiOptions); if (b) setAddrSi(b);
-    const c = prune(addrGu, addrGuOptions); if (c) setAddrGu(c);
-    const d = prune(addrDong, addrDongOptions); if (d) setAddrDong(d);
-    const e = prune(addrLi, addrLiOptions); if (e) setAddrLi(e);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, addrDoOptions.length, addrSiOptions.length, addrGuOptions.length, addrDongOptions.length, addrLiOptions.length]);
-
   // ── 필터링된 결과 ──
   const filteredVillages = useMemo(() => {
     if (step !== "results") return [];
-    return step1Villages.filter((v) => {
-      if (addrDo.size > 0 && !addrDo.has(v.addr_do)) return false;
-      if (addrSi.size > 0 && (!v.addr_si || !addrSi.has(v.addr_si))) return false;
-      if (addrGu.size > 0 && (!v.addr_gu || !addrGu.has(v.addr_gu))) return false;
-      if (addrDong.size > 0 && (!v.addr_dong || !addrDong.has(v.addr_dong))) return false;
-      if (addrLi.size > 0 && (!v.addr_li || !addrLi.has(v.addr_li))) return false;
-      return true;
-    });
-  }, [step, step1Villages, addrDo, addrSi, addrGu, addrDong, addrLi]);
+    return applyRegionFilter(step1Villages, region);
+  }, [step, step1Villages, region]);
 
   // 2단계 지역 필터 변경 시 지도 마커도 갱신
   const onMapFilterRef = useRef(onMapFilter);
@@ -359,7 +266,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
     return arr;
   }, [filteredVillages, sortKey]);
 
-  const regionActiveCount = (addrDo.size > 0 ? 1 : 0) + (addrSi.size > 0 ? 1 : 0) + (addrGu.size > 0 ? 1 : 0) + (addrDong.size > 0 ? 1 : 0) + (addrLi.size > 0 ? 1 : 0);
+  const regionActiveCount = (region.addr_do ? 1 : 0) + (region.addr_si ? 1 : 0) + (region.addr_gu ? 1 : 0) + (region.addr_dong ? 1 : 0);
 
   const activeFilterCount = (substFilter !== "any" ? 1 : 0) + (mtrFilter !== "any" ? 1 : 0) + (dlFilter !== "any" ? 1 : 0) + (changedOnly ? 1 : 0);
 
@@ -461,7 +368,7 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
                 <span className="text-gray-400"> / {step1Villages.length.toLocaleString()}개</span>
               </div>
               {regionActiveCount > 0 && (
-                <button onClick={clearRegionFilters} className="text-[10px] text-gray-400 hover:text-red-500 shrink-0">초기화</button>
+                <button onClick={() => setRegion(EMPTY_REGION)} className="text-[10px] text-gray-400 hover:text-red-500 shrink-0">초기화</button>
               )}
             </div>
 
@@ -481,31 +388,8 @@ export default function CompareFilterPanel({ onSearchPick, selectedAddr, onMapFi
               </span>
             </div>
 
-            {/* 지역 필터 */}
-            <div className="space-y-1.5">
-              <ChipToggle label="시/도" options={addrDoOptions} selected={addrDo} onChange={setAddrDo} />
-              <ChipToggle label="시" options={addrSiOptions} selected={addrSi} onChange={setAddrSi} searchable />
-              <button
-                type="button"
-                onClick={() => setDetailRegionOpen(!detailRegionOpen)}
-                className="text-[11px] text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
-              >
-                <span className={`transition-transform text-[10px] ${detailRegionOpen ? "rotate-90" : ""}`}>▶</span>
-                상세지역설정
-                {(addrGu.size > 0 || addrDong.size > 0 || addrLi.size > 0) && (
-                  <span className="bg-blue-500 text-white text-[9px] px-1 rounded-full ml-1">
-                    {addrGu.size + addrDong.size + addrLi.size}
-                  </span>
-                )}
-              </button>
-              {detailRegionOpen && (
-                <div className="space-y-2 pl-2 border-l-2 border-blue-200">
-                  <ChipToggle label="구/군" options={addrGuOptions} selected={addrGu} onChange={setAddrGu} searchable />
-                  <ChipToggle label="동/면" options={addrDongOptions} selected={addrDong} onChange={setAddrDong} searchable />
-                  <ChipToggle label="리" options={addrLiOptions} selected={addrLi} onChange={setAddrLi} searchable maxHeight="160px" />
-                </div>
-              )}
-            </div>
+            {/* 지역 필터 — 드롭다운 4개 한 줄 */}
+            <RegionFilter rows={step1Villages} value={region} onChange={setRegion} />
 
             {/* 정렬 */}
             <div className="flex items-center gap-1.5">

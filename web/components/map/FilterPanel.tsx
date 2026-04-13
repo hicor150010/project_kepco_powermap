@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import ChipToggle from "./ChipToggle";
+import RegionFilter, { applyRegionFilter, EMPTY_REGION, type RegionSelection } from "./RegionFilter";
 import SearchResultList, { type SearchPick } from "./SearchResultList";
 import type { MapSummaryRow, ColumnFilters as Filters, KepcoDataRow } from "@/lib/types";
 import type { SearchRiResult } from "@/lib/search/searchKepco";
@@ -82,10 +82,10 @@ export default function FilterPanel({
   const [step1Rows, setStep1Rows] = useState<MapSummaryRow[]>([]);
   const [riSortKey, setRiSortKey] = useState<RiSortKey>("remaining_desc");
   const [jiSortKey, setJiSortKey] = useState<JiSortKey>("remaining_desc");
-  const [detailRegionOpen, setDetailRegionOpen] = useState(false);
   const [searchTab, setSearchTab] = useState<"ri" | "ji">("ri");
   const [jiRows, setJiRows] = useState<KepcoDataRow[]>([]);
   const [jiLoading, setJiLoading] = useState(false);
+  const [region, setRegion] = useState<RegionSelection>(EMPTY_REGION);
 
   const update = (key: keyof Filters, value: Set<string>) =>
     onChange({ ...filters, [key]: value });
@@ -101,111 +101,12 @@ export default function FilterPanel({
     });
   }, [totalRows, filters.cap_subst, filters.cap_mtr, filters.cap_dl]);
 
-  // ── 2단계: 지역 옵션 (step1Rows 기준) ──
-
-  const regionSource = step === "results" ? step1Rows : [];
-
-  const addrDoOptions = useMemo(() => {
-    const set = new Set<string>();
-    regionSource.forEach((r) => r.addr_do && set.add(r.addr_do));
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "ko"));
-  }, [regionSource]);
-
-  const addrSiOptions = useMemo(() => {
-    const set = new Set<string>();
-    regionSource.forEach((r) => {
-      if (filters.addr_do.size > 0 && (!r.addr_do || !filters.addr_do.has(r.addr_do))) return;
-      if (r.addr_si) set.add(r.addr_si);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "ko"));
-  }, [regionSource, filters.addr_do]);
-
-  const addrGuOptions = useMemo(() => {
-    const set = new Set<string>();
-    regionSource.forEach((r) => {
-      if (filters.addr_do.size > 0 && (!r.addr_do || !filters.addr_do.has(r.addr_do))) return;
-      if (filters.addr_si.size > 0 && (!r.addr_si || !filters.addr_si.has(r.addr_si))) return;
-      if (r.addr_gu) set.add(r.addr_gu);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "ko"));
-  }, [regionSource, filters.addr_do, filters.addr_si]);
-
-  const addrDongOptions = useMemo(() => {
-    const set = new Set<string>();
-    regionSource.forEach((r) => {
-      if (filters.addr_do.size > 0 && (!r.addr_do || !filters.addr_do.has(r.addr_do))) return;
-      if (filters.addr_si.size > 0 && (!r.addr_si || !filters.addr_si.has(r.addr_si))) return;
-      if (filters.addr_gu.size > 0 && (!r.addr_gu || !filters.addr_gu.has(r.addr_gu))) return;
-      if (r.addr_dong) set.add(r.addr_dong);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "ko"));
-  }, [regionSource, filters.addr_do, filters.addr_si, filters.addr_gu]);
-
-  const addrLiOptions = useMemo(() => {
-    const set = new Set<string>();
-    regionSource.forEach((r) => {
-      if (filters.addr_do.size > 0 && (!r.addr_do || !filters.addr_do.has(r.addr_do))) return;
-      if (filters.addr_si.size > 0 && (!r.addr_si || !filters.addr_si.has(r.addr_si))) return;
-      if (filters.addr_gu.size > 0 && (!r.addr_gu || !filters.addr_gu.has(r.addr_gu))) return;
-      if (filters.addr_dong.size > 0 && (!r.addr_dong || !filters.addr_dong.has(r.addr_dong))) return;
-      if (r.addr_li) set.add(r.addr_li);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "ko"));
-  }, [regionSource, filters.addr_do, filters.addr_si, filters.addr_gu, filters.addr_dong]);
-
-  // 카스케이딩: 상위 필터 변경 시 하위 선택 정리
-  useEffect(() => {
-    if (step !== "results") return;
-    const prune = (selected: Set<string>, valid: string[]): Set<string> | null => {
-      if (selected.size === 0) return null;
-      const validSet = new Set(valid);
-      let changed = false;
-      const next = new Set<string>();
-      selected.forEach((v) => {
-        if (validSet.has(v)) next.add(v);
-        else changed = true;
-      });
-      return changed ? next : null;
-    };
-
-    const updates: Partial<Filters> = {};
-    const a = prune(filters.addr_do, addrDoOptions);
-    if (a) updates.addr_do = a;
-    const si = prune(filters.addr_si, addrSiOptions);
-    if (si) updates.addr_si = si;
-    const b = prune(filters.addr_gu, addrGuOptions);
-    if (b) updates.addr_gu = b;
-    const dong = prune(filters.addr_dong, addrDongOptions);
-    if (dong) updates.addr_dong = dong;
-    const li = prune(filters.addr_li, addrLiOptions);
-    if (li) updates.addr_li = li;
-
-    if (Object.keys(updates).length > 0) {
-      onChange({ ...filters, ...updates });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    step,
-    addrDoOptions.length,
-    addrSiOptions.length,
-    addrGuOptions.length,
-    addrDongOptions.length,
-    addrLiOptions.length,
-  ]);
-
   // ── 2단계: 지역 필터 적용 + 결과 ──
 
   const filteredRows = useMemo(() => {
     const source = step === "results" ? step1Rows : volumeFiltered;
-    return source.filter((r) => {
-      if (filters.addr_do.size > 0 && (!r.addr_do || !filters.addr_do.has(r.addr_do))) return false;
-      if (filters.addr_si.size > 0 && (!r.addr_si || !filters.addr_si.has(r.addr_si))) return false;
-      if (filters.addr_gu.size > 0 && (!r.addr_gu || !filters.addr_gu.has(r.addr_gu))) return false;
-      if (filters.addr_dong.size > 0 && (!r.addr_dong || !filters.addr_dong.has(r.addr_dong))) return false;
-      if (filters.addr_li.size > 0 && (!r.addr_li || !filters.addr_li.has(r.addr_li))) return false;
-      return true;
-    });
-  }, [step, step1Rows, volumeFiltered, filters.addr_do, filters.addr_si, filters.addr_gu, filters.addr_dong, filters.addr_li]);
+    return applyRegionFilter(source, region);
+  }, [step, step1Rows, volumeFiltered, region]);
 
   // 2단계 지역 필터 변경 시 지도 마커도 갱신
   const onMapFilterRef = useRef(onMapFilter);
@@ -317,29 +218,14 @@ export default function FilterPanel({
   const handleSearch = () => {
     const snapshot = [...volumeFiltered];
     setStep1Rows(snapshot);
-    onChange({
-      ...filters,
-      addr_do: new Set(),
-      addr_si: new Set(),
-      addr_gu: new Set(),
-      addr_dong: new Set(),
-      addr_li: new Set(),
-    });
+    setRegion(EMPTY_REGION);
     setStep("results");
     setSearchTab("ri");
-    // 지도에 해당 마을만 표시
     onMapFilter?.(new Set(snapshot.map((r) => r.geocode_address)));
   };
 
   const handleBack = () => {
-    onChange({
-      ...filters,
-      addr_do: new Set(),
-      addr_si: new Set(),
-      addr_gu: new Set(),
-      addr_dong: new Set(),
-      addr_li: new Set(),
-    });
+    setRegion(EMPTY_REGION);
     setStep1Rows([]);
     setJiRows([]);
     prevFilteredAddrsRef.current = "";
@@ -350,6 +236,7 @@ export default function FilterPanel({
 
   const reset = () => {
     onChange(emptyFilters());
+    setRegion(EMPTY_REGION);
     setRiSortKey("remaining_desc");
     setJiSortKey("remaining_desc");
     setStep1Rows([]);
@@ -376,11 +263,10 @@ export default function FilterPanel({
   );
 
   const regionActiveCount = (
-    (filters.addr_do.size > 0 ? 1 : 0) +
-    (filters.addr_si.size > 0 ? 1 : 0) +
-    (filters.addr_gu.size > 0 ? 1 : 0) +
-    (filters.addr_dong.size > 0 ? 1 : 0) +
-    (filters.addr_li.size > 0 ? 1 : 0)
+    (region.addr_do ? 1 : 0) +
+    (region.addr_si ? 1 : 0) +
+    (region.addr_gu ? 1 : 0) +
+    (region.addr_dong ? 1 : 0)
   );
 
   // ── 렌더링 ──
@@ -451,7 +337,7 @@ export default function FilterPanel({
               </div>
               {regionActiveCount > 0 && (
                 <button
-                  onClick={() => onChange({ ...filters, addr_do: new Set(), addr_si: new Set(), addr_gu: new Set(), addr_dong: new Set(), addr_li: new Set() })}
+                  onClick={() => setRegion(EMPTY_REGION)}
                   className="text-[10px] text-gray-400 hover:text-red-500 shrink-0"
                 >
                   초기화
@@ -459,33 +345,8 @@ export default function FilterPanel({
               )}
             </div>
 
-            {/* 지역 필터 — 전부 ChipToggle 스타일 */}
-            <div className="space-y-2">
-              <ChipToggle label="시/도" options={addrDoOptions} selected={filters.addr_do} onChange={(v) => update("addr_do", v)} />
-              <ChipToggle label="시" options={addrSiOptions} selected={filters.addr_si} onChange={(v) => update("addr_si", v)} searchable />
-              <button
-                type="button"
-                onClick={() => setDetailRegionOpen(!detailRegionOpen)}
-                className="text-[11px] text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
-              >
-                <span className={`transition-transform text-[10px] ${detailRegionOpen ? "rotate-90" : ""}`}>▶</span>
-                상세지역설정
-                {(filters.addr_gu.size > 0 || filters.addr_dong.size > 0 || filters.addr_li.size > 0) && (
-                  <span className="bg-blue-500 text-white text-[9px] px-1 rounded-full ml-1">
-                    {filters.addr_gu.size + filters.addr_dong.size + filters.addr_li.size}
-                  </span>
-                )}
-              </button>
-              {detailRegionOpen && (
-                <div className="space-y-2 pl-2 border-l-2 border-blue-200">
-                  <ChipToggle label="구/군" options={addrGuOptions} selected={filters.addr_gu} onChange={(v) => update("addr_gu", v)} searchable />
-                  <ChipToggle label="동/면" options={addrDongOptions} selected={filters.addr_dong} onChange={(v) => update("addr_dong", v)} searchable />
-                  <ChipToggle label="리" options={addrLiOptions} selected={filters.addr_li} onChange={(v) => update("addr_li", v)} searchable maxHeight="160px" />
-                </div>
-              )}
-            </div>
-
-            {/* 정렬은 탭 내부로 이동 */}
+            {/* 지역 필터 — 드롭다운 4개 한 줄 */}
+            <RegionFilter rows={step1Rows} value={region} onChange={setRegion} />
           </>
         )}
       </div>
@@ -493,72 +354,70 @@ export default function FilterPanel({
       {/* 결과 리스트 — 2단계에서만 표시 */}
       {step === "results" && (
         <div className="border-t border-gray-200">
-          {/* 리/지번 탭 + 정렬 한 줄 */}
-          <div className="flex items-center justify-between border-b border-gray-100 px-2">
-            <div className="flex">
-              {(["ri", "ji"] as const).map((t) => {
-                const count = t === "ri" ? conditionResults.length : sortedJi.length;
-                const label = t === "ri" ? "리 단위" : "지번 단위";
-                return (
+          {/* 리/지번 탭 */}
+          <div className="flex border-b border-gray-100 px-2">
+            {(["ri", "ji"] as const).map((t) => {
+              const count = t === "ri" ? conditionResults.length : sortedJi.length;
+              const label = t === "ri" ? "리 단위" : "지번 단위";
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setSearchTab(t)}
+                  className={`px-3 py-1.5 text-[11px] font-semibold border-b-2 transition-colors flex items-center gap-1 ${
+                    searchTab === t
+                      ? "border-blue-500 text-blue-600"
+                      : "border-transparent text-gray-400 hover:text-gray-600"
+                  }`}
+                >
+                  {label}
+                  <span className={`text-[10px] px-1 rounded-full ${
+                    count > 0
+                      ? searchTab === t ? "bg-blue-500 text-white" : "bg-blue-100 text-blue-700"
+                      : "bg-gray-200 text-gray-500"
+                  }`}>{jiLoading && t === "ji" ? "…" : count}</span>
+                </button>
+              );
+            })}
+          </div>
+          {/* 정렬 */}
+          <div className="flex gap-1 px-2 py-1.5 border-b border-gray-100">
+            {searchTab === "ri"
+              ? ([
+                  ["remaining_desc", "잔여용량"],
+                  ["count_desc", "건수"],
+                  ["name_asc", "가나다"],
+                ] as const).map(([key, label]) => (
                   <button
-                    key={t}
-                    type="button"
-                    onClick={() => setSearchTab(t)}
-                    className={`px-3 py-1.5 text-[11px] font-semibold border-b-2 transition-colors flex items-center gap-1 ${
-                      searchTab === t
-                        ? "border-blue-500 text-blue-600"
-                        : "border-transparent text-gray-400 hover:text-gray-600"
+                    key={key}
+                    onClick={() => setRiSortKey(key)}
+                    className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors ${
+                      riSortKey === key
+                        ? "bg-gray-700 border-gray-700 text-white font-medium"
+                        : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"
                     }`}
                   >
                     {label}
-                    <span className={`text-[10px] px-1 rounded-full ${
-                      count > 0
-                        ? searchTab === t ? "bg-blue-500 text-white" : "bg-blue-100 text-blue-700"
-                        : "bg-gray-200 text-gray-500"
-                    }`}>{jiLoading && t === "ji" ? "…" : count}</span>
                   </button>
-                );
-              })}
-            </div>
-            {/* 정렬 — 탭 오른쪽에 콤팩트하게 */}
-            <div className="flex gap-1">
-              {searchTab === "ri"
-                ? ([
-                    ["remaining_desc", "잔여용량"],
-                    ["count_desc", "건수"],
-                    ["name_asc", "가나다"],
-                  ] as const).map(([key, label]) => (
-                    <button
-                      key={key}
-                      onClick={() => setRiSortKey(key)}
-                      className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors ${
-                        riSortKey === key
-                          ? "bg-gray-700 border-gray-700 text-white font-medium"
-                          : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))
-                : ([
-                    ["remaining_desc", "여유용량"],
-                    ["jibun_asc", "지번순"],
-                    ["name_asc", "가나다"],
-                  ] as const).map(([key, label]) => (
-                    <button
-                      key={key}
-                      onClick={() => setJiSortKey(key)}
-                      className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors ${
-                        jiSortKey === key
-                          ? "bg-gray-700 border-gray-700 text-white font-medium"
-                          : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))
-              }
-            </div>
+                ))
+              : ([
+                  ["remaining_desc", "여유용량"],
+                  ["jibun_asc", "지번순"],
+                  ["name_asc", "가나다"],
+                ] as const).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setJiSortKey(key)}
+                    className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors ${
+                      jiSortKey === key
+                        ? "bg-gray-700 border-gray-700 text-white font-medium"
+                        : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))
+            }
           </div>
           {/* 지번 limit 안내 */}
           {searchTab === "ji" && sortedJi.length >= 200 && (
