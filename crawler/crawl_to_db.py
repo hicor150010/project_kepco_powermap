@@ -266,11 +266,19 @@ class CrawlDbWriter:
                 self._stats["errors"] += len(chunk)
                 logger.error(f"kepco_capa 네트워크 오류: {e}")
 
-        # ── 3단계: 지오코딩 ──
-        new_addresses = set()
+        # ── 3단계: 지오코딩 (이미 좌표 있는 주소는 건너뜀) ──
+        candidates = set()
         for ga in addr_rows_map:
             if ga and ga not in self._geocode_done:
-                new_addresses.add(ga)
+                candidates.add(ga)
+
+        # kepco_addr에서 이미 좌표가 있는 주소를 제외
+        if candidates:
+            already_geocoded = self._get_geocoded_addresses(candidates)
+            self._geocode_done.update(already_geocoded)
+            new_addresses = candidates - already_geocoded
+        else:
+            new_addresses = set()
 
         if new_addresses:
             self._geocode_addresses(new_addresses)
@@ -316,6 +324,32 @@ class CrawlDbWriter:
                 self._stats["geocoded"] += 1
 
             self._geocode_done.add(address)
+
+    def _get_geocoded_addresses(self, addresses: set[str]) -> set[str]:
+        """kepco_addr에서 이미 좌표(lat)가 있는 주소 목록을 반환"""
+        result: set[str] = set()
+        addr_list = list(addresses)
+        for i in range(0, len(addr_list), 200):
+            chunk = addr_list[i:i + 200]
+            # PostgREST IN 필터: 공백 포함 값은 큰따옴표로 감싸야 함
+            in_values = ",".join(f'"{a}"' for a in chunk)
+            try:
+                resp = requests.get(
+                    f"{self._url}/rest/v1/kepco_addr",
+                    params={
+                        "geocode_address": f"in.({in_values})",
+                        "lat": "not.is.null",
+                        "select": "geocode_address",
+                    },
+                    headers=self._headers(),
+                    timeout=15,
+                )
+                if resp.status_code == 200:
+                    for row in resp.json():
+                        result.add(row["geocode_address"])
+            except Exception:
+                pass
+        return result
 
     def _lookup_cache(self, address: str) -> tuple[float, float] | None:
         """geocode_cache에서 좌표 조회"""
