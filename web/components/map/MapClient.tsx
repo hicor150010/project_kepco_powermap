@@ -56,6 +56,7 @@ export default function MapClient({ isAdmin, email }: Props) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [initialJibunSearch, setInitialJibunSearch] = useState("");
+  const [centerMessage, setCenterMessage] = useState<string | null>(null);
   const [detailCache] = useState<Map<string, KepcoDataRow[]>>(new Map());
 
   // 편의 도구: 카카오 지도 인스턴스 + 거리재기 모드 + 유망부지 패널
@@ -636,9 +637,11 @@ export default function MapClient({ isAdmin, email }: Props) {
     async (row: KepcoDataRow) => {
       if (!mapInstance) return;
 
-      // 이미 같은 지번이 표시되어 있으면 무시
-      if (jibunPinsRef.current.some((p) => p.jibun === row.addr_jibun)) {
-        setSimpleToast(`📍 ${row.addr_jibun}은 이미 표시되어 있어요`);
+      // 이미 같은 지번이 표시되어 있으면 해당 위치로 이동만
+      const existing = jibunPinsRef.current.find((p) => p.jibun === row.addr_jibun);
+      if (existing) {
+        setDetailModalOpen(false);
+        mapInstance.panTo(new window.kakao.maps.LatLng(existing.lat, existing.lng));
         return;
       }
 
@@ -650,14 +653,15 @@ export default function MapClient({ isAdmin, email }: Props) {
         .join(" ");
 
       setDetailModalOpen(false);
-      setSimpleToast(`📍 ${row.addr_jibun} 위치를 찾는 중...`);
+      setCenterMessage(`📍 ${row.addr_jibun} 위치를 찾는 중...`);
 
       try {
         const res = await fetch(`/api/geocode?address=${encodeURIComponent(fullAddr)}`);
         const data = await res.json();
 
         if (data.lat == null || data.lng == null) {
-          setSimpleToast(`⚠️ ${row.addr_jibun} 위치를 찾을 수 없어요`);
+          setCenterMessage(`⚠️ ${row.addr_jibun} 위치를 찾을 수 없어요`);
+          setTimeout(() => setCenterMessage(null), 2000);
           return;
         }
 
@@ -677,11 +681,10 @@ export default function MapClient({ isAdmin, email }: Props) {
         jibunCache.set(geoAddr, list);
 
         mapInstance.panTo(new window.kakao.maps.LatLng(data.lat, data.lng));
-
-        const cnt = jibunPinsRef.current.length;
-        setSimpleToast(`📍 ${row.addr_jibun} 표시 (총 ${cnt}개 핀)`);
+        setCenterMessage(null);
       } catch {
-        setSimpleToast(`⚠️ 위치 조회 중 오류가 발생했어요`);
+        setCenterMessage(`⚠️ 위치 조회 중 오류가 발생했어요`);
+        setTimeout(() => setCenterMessage(null), 2000);
       }
     },
     [mapInstance, allRows, jibunCache]
@@ -888,12 +891,12 @@ export default function MapClient({ isAdmin, email }: Props) {
           />
         )}
 
-        {/* 마을 정보 로딩 스피너 */}
-        {detailLoading && (
+        {/* 중앙 스피너 — 마을 로딩 / 지번 핀 로딩 등 */}
+        {(detailLoading || centerMessage) && (
           <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
             <div className="bg-white/90 rounded-xl px-5 py-4 shadow-lg flex items-center gap-3">
               <div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm text-gray-600">마을 정보를 불러오는 중...</span>
+              <span className="text-sm text-gray-600">{centerMessage ?? "마을 정보를 불러오는 중..."}</span>
             </div>
           </div>
         )}
