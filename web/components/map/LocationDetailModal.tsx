@@ -347,7 +347,7 @@ function SortHeaderInline({
 /** 시설명 + 여유 배지 통합 셀 */
 function FacilityCell({ name, ok }: { name: string; ok: boolean }) {
   return (
-    <div className="flex items-center justify-between gap-1.5">
+    <div className="flex items-center justify-center gap-1.5">
       <span className="text-gray-700 truncate">{name}</span>
       {ok ? (
         <span className="flex-shrink-0 text-[11px] md:text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">여유</span>
@@ -409,13 +409,13 @@ function FragmentRow({
             it.addr_jibun || "-"
           )}
         </td>
-        <td className="px-2 md:px-3 py-2.5">
+        <td className="px-2 md:px-3 py-2.5 text-center border-l border-r border-blue-100">
           <FacilityCell name={it.subst_nm ?? "-"} ok={hasCapacity(it.subst_capa, it.subst_pwr, it.g_subst_capa)} />
         </td>
-        <td className="px-2 md:px-3 py-2.5">
+        <td className="px-2 md:px-3 py-2.5 text-center border-r border-emerald-100">
           <FacilityCell name={`#${it.mtr_no ?? "-"}`} ok={hasCapacity(it.mtr_capa, it.mtr_pwr, it.g_mtr_capa)} />
         </td>
-        <td className="px-2 md:px-3 py-2.5">
+        <td className="px-2 md:px-3 py-2.5 text-center border-r border-amber-100">
           <FacilityCell name={it.dl_nm ?? "-"} ok={hasCapacity(it.dl_capa, it.dl_pwr, it.g_dl_capa)} />
         </td>
       </tr>
