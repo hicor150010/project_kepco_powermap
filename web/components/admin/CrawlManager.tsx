@@ -658,9 +658,6 @@ export default function CrawlManager() {
                         onChange={(e) => setOptDelay(Number(e.target.value))}
                         className="border border-gray-300 rounded px-2 py-1 text-sm text-gray-900 focus:border-blue-500 focus:outline-none"
                       >
-                        <option value={0.15}>0.15초 (병렬 테스트용)</option>
-                        <option value={0.2}>0.2초</option>
-                        <option value={0.3}>0.3초</option>
                         <option value={0.5}>0.5초 (기본)</option>
                         <option value={1.0}>1.0초</option>
                         <option value={2.0}>2.0초</option>

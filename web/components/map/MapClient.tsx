@@ -22,6 +22,9 @@ import {
 } from "@/lib/types";
 import { colorForMarker } from "@/lib/markerColor";
 
+// 지번 핀 표시 최대 줌 레벨 (카카오맵: 숫자 클수록 멀리, 8 이하에서만 표시)
+const JIBUN_PIN_MAX_LEVEL = 8;
+
 interface Props {
   isAdmin: boolean;
   email: string;
@@ -189,6 +192,19 @@ export default function MapClient({ isAdmin, email }: Props) {
       window.kakao.maps.event.removeListener(mapInstance, "zoom_changed", handler);
     };
   }, [mapInstance]);
+
+  // 줌 레벨에 따라 지번 핀 표시/숨김 (너무 멀면 안 보이게)
+  useEffect(() => {
+    if (zoomLevel == null) return;
+    const visible = zoomLevel <= JIBUN_PIN_MAX_LEVEL;
+    for (const pin of jibunPinsRef.current) {
+      pin.overlay.setMap(visible ? mapInstance : null);
+      if (pin.line) pin.line.setMap(visible ? mapInstance : null);
+    }
+    if (jibunBoundCircleRef.current) {
+      jibunBoundCircleRef.current.setMap(visible ? mapInstance : null);
+    }
+  }, [zoomLevel, mapInstance]);
 
   // 공유 링크 복원 — 데이터 로드 + 맵 준비 후 URL 파라미터 적용 (1회)
   const sharedAppliedRef = useRef(false);
