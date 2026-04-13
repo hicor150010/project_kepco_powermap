@@ -221,6 +221,14 @@ def build_progress_json(progress: CrawlProgress, geocoded: int = 0) -> dict:
             "li": progress.li_name,
             "jibun": progress.jibun_name,
         },
+        "indices": {
+            "do": [progress.do_current, progress.do_total],
+            "si": [progress.si_current, progress.si_total],
+            "gu": [progress.gu_current, progress.gu_total],
+            "dong": [progress.dong_current, progress.dong_total],
+            "li": [progress.li_current, progress.li_total],
+            "jibun": [progress.jibun_current, progress.jibun_total],
+        },
     }
     if progress.recent_errors:
         result["recent_errors"] = progress.recent_errors

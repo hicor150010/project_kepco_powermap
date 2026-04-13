@@ -28,6 +28,7 @@ interface CrawlJob {
       jibun?: string;
     };
     recent_errors?: { addr: string; error: string }[];
+    indices?: Record<string, [number, number]>;
   };
   checkpoint: Record<string, unknown> | null;
   options: Record<string, unknown>;
@@ -887,17 +888,21 @@ export default function CrawlManager() {
                           <td className="px-2 py-2 text-center text-gray-400">-</td>
                           <td className="px-2 py-2 text-center text-gray-400">-</td>
                         </tr>
-                        {job.progress.addr_parts ? (
-                          <tr className="bg-blue-50 border-l-2 border-l-blue-400">
-                            <td className="px-3 py-2 whitespace-nowrap"><span className="inline-block text-[10px] font-bold text-blue-600 bg-blue-100 rounded px-1.5 py-0.5">추출 중</span></td>
-                            <td className="px-2 py-2 text-center font-semibold text-gray-800">{job.progress.addr_parts.sido || "-"}</td>
-                            <td className="px-2 py-2 text-center font-semibold text-gray-800">{job.progress.addr_parts.si || "-"}</td>
-                            <td className="px-2 py-2 text-center font-semibold text-gray-800">{job.progress.addr_parts.gu || "-"}</td>
-                            <td className="px-2 py-2 text-center font-semibold text-gray-800">{job.progress.addr_parts.dong || "-"}</td>
-                            <td className="px-2 py-2 text-center font-semibold text-gray-800">{job.progress.addr_parts.li || "-"}</td>
-                            <td className="px-2 py-2 text-center font-bold text-blue-700">{job.progress.addr_parts.jibun || "-"}</td>
-                          </tr>
-                        ) : job.progress.current_address ? (
+                        {job.progress.addr_parts ? (() => {
+                          const idx = job.progress.indices;
+                          const tag = (key: string) => idx?.[key]?.[1] ? ` (${idx[key][0]}/${idx[key][1]})` : "";
+                          return (
+                            <tr className="bg-blue-50 border-l-2 border-l-blue-400">
+                              <td className="px-3 py-2 whitespace-nowrap"><span className="inline-block text-[10px] font-bold text-blue-600 bg-blue-100 rounded px-1.5 py-0.5">추출 중</span></td>
+                              <td className="px-2 py-2 text-center font-semibold text-gray-800">{job.progress.addr_parts.sido || "-"}</td>
+                              <td className="px-2 py-2 text-center font-semibold text-gray-800">{job.progress.addr_parts.si || "-"}<span className="text-[10px] text-blue-500 font-normal">{tag("si")}</span></td>
+                              <td className="px-2 py-2 text-center font-semibold text-gray-800">{job.progress.addr_parts.gu || "-"}<span className="text-[10px] text-blue-500 font-normal">{tag("gu")}</span></td>
+                              <td className="px-2 py-2 text-center font-semibold text-gray-800">{job.progress.addr_parts.dong || "-"}<span className="text-[10px] text-blue-500 font-normal">{tag("dong")}</span></td>
+                              <td className="px-2 py-2 text-center font-semibold text-gray-800">{job.progress.addr_parts.li || "-"}<span className="text-[10px] text-blue-500 font-normal">{tag("li")}</span></td>
+                              <td className="px-2 py-2 text-center font-bold text-blue-700">{job.progress.addr_parts.jibun || "-"}</td>
+                            </tr>
+                          );
+                        })() : job.progress.current_address ? (
                           <tr className="bg-blue-50 border-l-2 border-l-blue-400">
                             <td className="px-3 py-2 whitespace-nowrap"><span className="inline-block text-[10px] font-bold text-blue-600 bg-blue-100 rounded px-1.5 py-0.5">추출 중</span></td>
                             <td colSpan={6} className="px-2 py-2 font-medium text-gray-800">{job.progress.current_address}</td>
