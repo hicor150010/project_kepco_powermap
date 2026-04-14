@@ -94,6 +94,8 @@ export default function CrawlManager() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedJobId, setExpandedJobId] = useState<number | null>(null);
+  const [historyPage, setHistoryPage] = useState(0);
+  const HISTORY_PAGE_SIZE = 10;
 
   // ── 작업 목록 조회 ──
 
@@ -417,6 +419,11 @@ export default function CrawlManager() {
       (j.thread || 1) === selectedThread
   );
 
+  const historyTotalPages = Math.max(1, Math.ceil(historyJobs.length / HISTORY_PAGE_SIZE));
+  const effectivePage = Math.min(historyPage, historyTotalPages - 1);
+  const historyStart = effectivePage * HISTORY_PAGE_SIZE;
+  const pagedHistoryJobs = historyJobs.slice(historyStart, historyStart + HISTORY_PAGE_SIZE);
+
   const isPolling = hasActiveJobs;
 
   return (
@@ -453,47 +460,45 @@ export default function CrawlManager() {
       )}
 
       {/* ── 새 크롤링 ── */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-        <h3 className="text-base font-bold text-gray-900 mb-4">
+      <div>
+        <h3 className="text-base font-bold text-gray-900 mb-3">
           새 수집 시작
         </h3>
 
-        {/* 수집기 + 모드 선택 */}
-        <div className="flex items-center gap-4 mb-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-gray-600">수집기</span>
-            <div className="flex gap-1">
-              {[1, 2, 3].map((t) => {
-                const threadActive = activeJobs.find((j) => (j.thread || 1) === t);
-                return (
-                  <button
-                    key={t}
-                    onClick={() => setSelectedThread(t)}
-                    className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${
-                      selectedThread === t
-                        ? "bg-blue-600 text-white"
-                        : threadActive
-                          ? "bg-gray-100 text-gray-500 border border-gray-200"
-                          : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                    }`}
-                  >
-                    {t}
-                    {threadActive && (
-                      <span className="ml-1 text-[9px] opacity-75">
-                        {threadActive.status === "running" ? "실행중" : "대기"}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+        {/* 수집기 탭 */}
+        <div className="flex items-end gap-1 border-b border-gray-200">
+          {[1, 2, 3].map((t) => {
+            const threadActive = activeJobs.find((j) => (j.thread || 1) === t);
+            const isActive = selectedThread === t;
+            return (
+              <button
+                key={t}
+                onClick={() => { setSelectedThread(t); setHistoryPage(0); }}
+                className={`px-4 py-2 text-sm font-bold rounded-t-md border border-b-0 -mb-px transition-colors ${
+                  isActive
+                    ? "bg-white text-blue-600 border-gray-200"
+                    : "bg-gray-50 text-gray-500 border-transparent hover:bg-gray-100"
+                }`}
+              >
+                수집기 {t}
+                {threadActive && (
+                  <span className={`ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                    threadActive.status === "running" ? "bg-blue-100 text-blue-700" : "bg-yellow-100 text-yellow-700"
+                  }`}>
+                    {threadActive.status === "running" ? "실행중" : "대기"}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
 
-          <div className="h-6 w-px bg-gray-200" />
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-gray-600">모드</span>
-            <div className="flex gap-1">
+        {/* 수집기 설정 카드 */}
+        <div className="bg-white border border-gray-200 border-t-0 rounded-b-xl rounded-tr-xl p-6 shadow-sm space-y-5">
+          {/* 1. 모드 */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-2">모드</label>
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => setSelectedMode("single")}
                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
@@ -514,30 +519,31 @@ export default function CrawlManager() {
               >
                 반복 수집
               </button>
+              {selectedMode === "recurring" && (
+                <div className="flex items-center gap-1 ml-2">
+                  <input
+                    type="number"
+                    value={maxCycles ?? ""}
+                    onChange={(e) => setMaxCycles(e.target.value ? Number(e.target.value) : undefined)}
+                    placeholder="무제한"
+                    min={1}
+                    className="w-20 border border-gray-300 rounded px-2 py-1.5 text-sm text-gray-900 font-medium focus:border-orange-400 focus:outline-none"
+                  />
+                  <span className="text-xs text-gray-500">회 순환</span>
+                </div>
+              )}
             </div>
             {selectedMode === "recurring" && (
-              <div className="flex items-center gap-1 ml-2">
-                <input
-                  type="number"
-                  value={maxCycles ?? ""}
-                  onChange={(e) => setMaxCycles(e.target.value ? Number(e.target.value) : undefined)}
-                  placeholder="무제한"
-                  min={1}
-                  className="w-20 border border-gray-300 rounded px-2 py-1.5 text-sm text-gray-900 font-medium focus:border-orange-400 focus:outline-none"
-                />
-                <span className="text-xs text-gray-500">회 순환</span>
+              <div className="mt-2 text-xs text-orange-700 bg-orange-50 rounded px-3 py-2 border border-orange-200">
+                선택한 지역을 5시간 단위로 자동 재시작하며 무한 반복 수집합니다. 수동으로 중단하지 않으면 계속됩니다.
               </div>
             )}
           </div>
-        </div>
 
-        {selectedMode === "recurring" && (
-          <div className="text-xs text-orange-700 bg-orange-50 rounded px-3 py-2 border border-orange-200 mb-4">
-            선택한 지역을 5시간 단위로 자동 재시작하며 무한 반복 수집합니다. 수동으로 중단하지 않으면 계속됩니다.
-          </div>
-        )}
-
-        <div className="grid grid-cols-5 gap-3">
+          {/* 2. 지역 선택 */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-2">지역 선택</label>
+            <div className="grid grid-cols-5 gap-3">
           {/* 시/도 */}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">시/도</label>
@@ -627,9 +633,10 @@ export default function CrawlManager() {
             </select>
           </div>
         </div>
+          </div>
 
-        {/* 옵션 토글 */}
-        <div className="mt-4">
+          {/* 3. 상세 설정 */}
+          <div>
           <button
             type="button"
             onClick={() => setShowOptions(!showOptions)}
@@ -726,32 +733,34 @@ export default function CrawlManager() {
               </div>
             </div>
           )}
-        </div>
+          </div>
 
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            onClick={handleStart}
-            disabled={!selectedSido || submitting || activeInThread.length > 0}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {submitting ? "시작 중..." : "수집 시작"}
-          </button>
-          {activeInThread.length > 0 ? (
-            <span className="text-sm text-amber-600">
-              수집기 {selectedThread}에 이미 실행 중인 작업이 있습니다. 다른 수집기를 선택하거나 기존 작업을 중단해주세요.
-            </span>
-          ) : selectedSido ? (
-            <span className="text-sm text-gray-600">
-              대상:{" "}
-              {[
-                selectedSido,
-                selectedSi || "(전체)",
-                selectedGu || "(전체)",
-                selectedDong || "(전체)",
-                selectedLi || "(전체)",
-              ].join(" > ")}
-            </span>
-          ) : null}
+          {/* 4. 수집 시작 */}
+          <div className="pt-2 border-t border-gray-100 flex items-center gap-3">
+            <button
+              onClick={handleStart}
+              disabled={!selectedSido || submitting || activeInThread.length > 0}
+              className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {submitting ? "시작 중..." : "수집 시작"}
+            </button>
+            {activeInThread.length > 0 ? (
+              <span className="text-sm text-amber-600">
+                수집기 {selectedThread}에 이미 실행 중인 작업이 있습니다. 다른 수집기를 선택하거나 기존 작업을 중단해주세요.
+              </span>
+            ) : selectedSido ? (
+              <span className="text-sm text-gray-600">
+                대상:{" "}
+                {[
+                  selectedSido,
+                  selectedSi || "(전체)",
+                  selectedGu || "(전체)",
+                  selectedDong || "(전체)",
+                  selectedLi || "(전체)",
+                ].join(" > ")}
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -979,7 +988,7 @@ export default function CrawlManager() {
               <span className="flex-shrink-0 text-right" style={{width: 36}}>작업</span>
             </div>
           <div className="divide-y divide-gray-100">
-            {historyJobs.map((job) => {
+            {pagedHistoryJobs.map((job) => {
               const isExpanded = expandedJobId === job.id;
               const opts = (job.options || {}) as Record<string, any>;
               const cp = (job.checkpoint || {}) as Record<string, any>;
@@ -1245,6 +1254,28 @@ export default function CrawlManager() {
               );
             })}
           </div>
+          {historyJobs.length > HISTORY_PAGE_SIZE && (
+            <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-t border-gray-100 text-xs text-gray-600">
+              <button
+                onClick={() => setHistoryPage(Math.max(0, effectivePage - 1))}
+                disabled={effectivePage === 0}
+                className="px-3 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                ← 이전
+              </button>
+              <span>
+                {effectivePage + 1} / {historyTotalPages}
+                <span className="text-gray-400 ml-2">({historyJobs.length.toLocaleString()}건)</span>
+              </span>
+              <button
+                onClick={() => setHistoryPage(Math.min(historyTotalPages - 1, effectivePage + 1))}
+                disabled={effectivePage >= historyTotalPages - 1}
+                className="px-3 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                다음 →
+              </button>
+            </div>
+          )}
           </div>
         )}
       </div>
