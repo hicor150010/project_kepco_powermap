@@ -22,8 +22,10 @@ import {
 } from "@/lib/types";
 import { colorForMarker } from "@/lib/markerColor";
 
-// 지번 핀 표시 최대 줌 레벨 (카카오맵: 숫자 클수록 멀리, 8 이하에서만 표시)
-const JIBUN_PIN_MAX_LEVEL = 8;
+// 지번 핀 표시 최대 줌 레벨 (카카오맵: 숫자 클수록 멀리, 7 이하에서만 표시)
+const JIBUN_PIN_MAX_LEVEL = 7;
+// 마을/지번 클릭 시 이동 줌 레벨
+const DETAIL_ZOOM_LEVEL = 7;
 
 interface Props {
   isAdmin: boolean;
@@ -328,17 +330,31 @@ export default function MapClient({ isAdmin, email }: Props) {
     [openLocationDetail]
   );
 
+  // 공통 지도 이동 — 마을/지번/핀 클릭 모두 이 함수 사용
+  // 1) 줌을 먼저 맞추고 2) 다음 프레임에 panTo로 부드럽게 이동
+  //    (setLevel 직후 panTo를 호출하면 레이아웃 미완료로 중심이 밀릴 수 있음)
+  const moveMapTo = useCallback(
+    (lat: number, lng: number, level: number = DETAIL_ZOOM_LEVEL) => {
+      if (!mapInstance) return;
+      const pos = new window.kakao.maps.LatLng(lat, lng);
+      const currentLevel = mapInstance.getLevel();
+      if (currentLevel !== level) {
+        mapInstance.setLevel(level);
+        requestAnimationFrame(() => mapInstance.panTo(pos));
+      } else {
+        mapInstance.panTo(pos);
+      }
+    },
+    [mapInstance]
+  );
+
   // 사이드바 TOP 유망 부지 클릭 — 지도 이동 + 상세 카드 열기
   const handleSidebarPick = useCallback(
     async (row: MapSummaryRow) => {
-      if (mapInstance && row.lat != null && row.lng != null) {
-        const pos = new window.kakao.maps.LatLng(row.lat, row.lng);
-        mapInstance.setLevel(7);
-        mapInstance.setCenter(pos);
-      }
+      if (row.lat != null && row.lng != null) moveMapTo(row.lat, row.lng);
       await openLocationDetail(row.geocode_address);
     },
-    [mapInstance, openLocationDetail]
+    [moveMapTo, openLocationDetail]
   );
 
   // 4. 검색 결과 클릭 → 지도 이동 + 마커 강조 + (가려졌으면) 필터 자동 해제
@@ -367,11 +383,7 @@ export default function MapClient({ isAdmin, email }: Props) {
       }
 
       // 지도 이동
-      if (lat != null && lng != null) {
-        const pos = new window.kakao.maps.LatLng(lat, lng);
-        mapInstance.setLevel(7);
-        mapInstance.setCenter(pos);
-      }
+      if (lat != null && lng != null) moveMapTo(lat, lng);
 
       // 변화추적 지번 클릭 → 상세 모달 자동 열기 + 지번 필터
       if (pick.kind === "ji_compare") {
@@ -386,7 +398,7 @@ export default function MapClient({ isAdmin, email }: Props) {
         }
       }
     },
-    [mapInstance, openLocationDetail, gpsActive, gpsAutoFollow, mapFilteredAddrs, clearMapFilter]
+    [mapInstance, openLocationDetail, gpsActive, gpsAutoFollow, mapFilteredAddrs, clearMapFilter, moveMapTo]
   );
 
   // 5. 공유 링크 생성 + 클립보드 복사
@@ -641,7 +653,7 @@ export default function MapClient({ isAdmin, email }: Props) {
       const existing = jibunPinsRef.current.find((p) => p.jibun === row.addr_jibun);
       if (existing) {
         setDetailModalOpen(false);
-        mapInstance.panTo(new window.kakao.maps.LatLng(existing.lat, existing.lng));
+        moveMapTo(existing.lat, existing.lng);
         return;
       }
 
@@ -680,14 +692,14 @@ export default function MapClient({ isAdmin, email }: Props) {
         list.push({ lat: data.lat, lng: data.lng, jibun: row.addr_jibun || "" });
         jibunCache.set(geoAddr, list);
 
-        mapInstance.panTo(new window.kakao.maps.LatLng(data.lat, data.lng));
+        moveMapTo(data.lat, data.lng);
         setCenterMessage(null);
       } catch {
         setCenterMessage(`⚠️ 위치 조회 중 오류가 발생했어요`);
         setTimeout(() => setCenterMessage(null), 2000);
       }
     },
-    [mapInstance, allRows, jibunCache]
+    [mapInstance, allRows, jibunCache, moveMapTo]
   );
 
   return (
