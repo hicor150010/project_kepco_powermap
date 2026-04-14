@@ -9,7 +9,7 @@ import RegionFilter, { applyRegionFilter, EMPTY_REGION, type RegionSelection } f
 import SearchResultList, { type SearchPick } from "./SearchResultList";
 import type { MapSummaryRow, ColumnFilters, KepcoDataRow } from "@/lib/types";
 import type { SearchRiResult } from "@/lib/search/searchKepco";
-import MapLegend from "./MapLegend";
+import UserGuide from "./UserGuide";
 
 type SidebarTab = "search" | "filter" | "compare";
 
@@ -205,15 +205,27 @@ export default function Sidebar({
         className="w-80 max-w-[85vw] bg-white
           flex flex-col h-full"
       >
-        {/* ── 헤더: 타이틀 ── */}
-        <div className="px-3 py-2 border-b border-gray-200">
-          <div className="flex items-center justify-between">
-            <h1 className="text-sm font-bold text-gray-900">배전선로 여유용량 지도</h1>
+        {/* ── 헤더 ── */}
+        <div className="px-3 py-2 border-b border-gray-200 space-y-1.5">
+          {/* 줄 1: 서비스명 */}
+          <h1 className="text-sm font-bold text-gray-900">배전선로 여유용량 지도</h1>
+          {/* 줄 2: 사용 안내 + 새로고침 */}
+          <div className="flex items-center gap-1.5">
+            <UserGuide />
             {onRefresh && (
               <button
-                onClick={onRefresh}
+                onClick={() => {
+                  const ok = window.confirm(
+                    "지도를 최신 데이터로 갱신합니다.\n\n" +
+                    "• 평소엔 자동 갱신되므로 굳이 누를 필요 없음\n" +
+                    "• 방금 수집한 데이터를 즉시 반영할 때만 사용\n" +
+                    "• 10~30초 걸릴 수 있음\n\n" +
+                    "계속할까요?"
+                  );
+                  if (ok) onRefresh();
+                }}
                 disabled={refreshing}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-md border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-700 disabled:opacity-50 text-[11px] font-medium transition-colors"
+                className="flex items-center gap-1 px-2 py-1 rounded-md border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-700 disabled:opacity-50 text-[11px] font-medium transition-colors"
                 title="최신 데이터 새로고침"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
@@ -227,20 +239,15 @@ export default function Sidebar({
               </button>
             )}
           </div>
-          {/* 마커 범례 — 기본 접혀있음 */}
-          <div className="mt-1.5">
-            <MapLegend />
-          </div>
-          {/* 사용자 + 관리 */}
-          <div className="flex items-center gap-2 mt-1.5">
-            <span className="text-[10px] text-gray-400 truncate">{email}</span>
+          {/* 줄 3: 사용자 정보 + 관리자 메뉴 */}
+          <div className="flex items-center gap-1.5 text-[10px]">
+            <span className="text-gray-400 truncate">{email}</span>
             {isAdmin && (
               <>
-                <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-1 py-0.5 rounded flex-shrink-0">관리자</span>
-                <div className="flex gap-1.5 ml-auto flex-shrink-0">
-                  {/* 업로드 버튼은 현재 사용하지 않으므로 숨김 */}
-                  <Link href="/admin/crawl" className="text-[11px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 font-semibold border border-emerald-200">수집</Link>
-                  <Link href="/admin/users" className="text-[11px] px-2 py-0.5 rounded bg-gray-50 text-gray-500 hover:bg-gray-100 font-semibold border border-gray-200">계정</Link>
+                <span className="font-semibold text-blue-600 bg-blue-50 px-1 py-0.5 rounded flex-shrink-0">관리자</span>
+                <div className="flex gap-1 ml-auto flex-shrink-0">
+                  <Link href="/admin/crawl" className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 font-semibold border border-emerald-200">수집</Link>
+                  <Link href="/admin/users" className="px-1.5 py-0.5 rounded bg-gray-50 text-gray-500 hover:bg-gray-100 font-semibold border border-gray-200">계정</Link>
                 </div>
               </>
             )}
