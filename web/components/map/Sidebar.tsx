@@ -245,9 +245,9 @@ export default function Sidebar({
             {isAdmin && (
               <>
                 <span className="font-semibold text-blue-600 bg-blue-50 px-1 py-0.5 rounded flex-shrink-0">관리자</span>
-                <div className="flex gap-1 ml-auto flex-shrink-0">
-                  <Link href="/admin/crawl" className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 font-semibold border border-emerald-200">수집</Link>
-                  <Link href="/admin/users" className="px-1.5 py-0.5 rounded bg-gray-50 text-gray-500 hover:bg-gray-100 font-semibold border border-gray-200">계정</Link>
+                <div className="flex gap-1.5 ml-auto flex-shrink-0">
+                  <Link href="/admin/crawl" className="px-[17px] py-1 text-[11px] rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 active:bg-emerald-200 font-semibold border border-emerald-200 transition-colors">수집</Link>
+                  <Link href="/admin/users" className="px-[17px] py-1 text-[11px] rounded-md bg-gray-50 text-gray-600 hover:bg-gray-100 active:bg-gray-200 font-semibold border border-gray-200 transition-colors">계정</Link>
                 </div>
               </>
             )}
