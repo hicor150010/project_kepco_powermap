@@ -13,7 +13,8 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/admin/upload", label: "엑셀 업로드", icon: "📤" },
+  // 엑셀 업로드는 현재 사용하지 않으므로 숨김 (페이지는 유지, /admin/upload 직접 접근 가능)
+  // { href: "/admin/upload", label: "엑셀 업로드", icon: "📤" },
   { href: "/admin/crawl", label: "데이터 수집", icon: "🔄" },
   { href: "/admin/users", label: "계정 관리", icon: "👥" },
 ];

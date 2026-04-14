@@ -238,7 +238,7 @@ export default function Sidebar({
               <>
                 <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-1 py-0.5 rounded flex-shrink-0">관리자</span>
                 <div className="flex gap-1.5 ml-auto flex-shrink-0">
-                  <Link href="/admin/upload" className="text-[11px] px-2 py-0.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold border border-blue-200">업로드</Link>
+                  {/* 업로드 버튼은 현재 사용하지 않으므로 숨김 */}
                   <Link href="/admin/crawl" className="text-[11px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 font-semibold border border-emerald-200">수집</Link>
                   <Link href="/admin/users" className="text-[11px] px-2 py-0.5 rounded bg-gray-50 text-gray-500 hover:bg-gray-100 font-semibold border border-gray-200">계정</Link>
                 </div>

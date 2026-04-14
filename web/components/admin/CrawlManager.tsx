@@ -635,7 +635,8 @@ export default function CrawlManager() {
         </div>
           </div>
 
-          {/* 3. 상세 설정 */}
+          {/* 3. 상세 설정 (개발 환경 전용 — localhost에서만 표시) */}
+          {process.env.NODE_ENV === "development" && (
           <div>
           <button
             type="button"
@@ -643,7 +644,7 @@ export default function CrawlManager() {
             className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
           >
             <span>{showOptions ? "▼" : "▶"}</span>
-            상세 설정
+            상세 설정 <span className="text-[10px] text-gray-400 ml-1">(개발 전용)</span>
           </button>
 
           {showOptions && (
@@ -734,6 +735,7 @@ export default function CrawlManager() {
             </div>
           )}
           </div>
+          )}
 
           {/* 4. 수집 시작 */}
           <div className="pt-2 border-t border-gray-100 flex items-center gap-3">
