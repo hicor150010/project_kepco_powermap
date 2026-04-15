@@ -13,6 +13,10 @@ import type { SearchPick } from "./SearchResultList";
 import Toast from "./Toast";
 import TopRemainingList from "./TopRemainingList";
 import GpsTracker from "./GpsTracker";
+// ⚠️ 특허 출원 중 워터마크 — 특허 등록 후 제거 예정
+//    환경변수 NEXT_PUBLIC_PATENT_PENDING=false 로 즉시 끌 수 있음
+//    자세한 제거 방법은 PatentWatermark.tsx 상단 주석 참고
+import PatentWatermark from "./PatentWatermark";
 import {
   emptyFilters,
   type ColumnFilters,
@@ -974,6 +978,9 @@ export default function MapClient({ isAdmin, email }: Props) {
           </div>
         )}
       </main>
+
+      {/* ⚠️ 특허 출원 중 워터마크 — 특허 등록 후 제거 (PatentWatermark.tsx 주석 참고) */}
+      <PatentWatermark />
     </div>
   );
 }
