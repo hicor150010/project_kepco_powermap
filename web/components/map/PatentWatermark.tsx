@@ -62,8 +62,8 @@ export default function PatentWatermark() {
             style={{
               // 밝은 배경(지도)과 어두운 배경(스카이뷰) 모두에서 보이도록
               // 흰색 글자 + 검정 외곽선 조합 (paint-order 로 외곽선이 글자 뒤로)
-              color: "rgba(255, 255, 255, 0.28)",
-              WebkitTextStroke: "1px rgba(0, 0, 0, 0.25)",
+              color: "rgba(255, 255, 255, 0.14)",
+              WebkitTextStroke: "1px rgba(0, 0, 0, 0.12)",
               paintOrder: "stroke fill",
               fontSize: "clamp(18px, 2.2vw, 28px)",
               lineHeight: "1",
