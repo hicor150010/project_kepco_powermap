@@ -98,6 +98,35 @@ export async function POST(request: NextRequest) {
 
   const supabase = createAdminClient();
 
+  // 좀비 Job 정리: GitHub Actions 가 비정상 종료되면 status 가 살아있는 채로 남아
+  // 다음 작업을 영구히 차단하므로, 30분 이상 갱신이 없으면 failed 로 전환한다.
+  // (crawler/run_crawl.py 의 cleanup_zombie_jobs 와 동일 기준 — 새 작업이 시작 못 하면
+  //  그쪽 정리 로직이 호출될 일이 없어 catch-22가 되므로 여기서도 한 번 돌린다)
+  const zombieCutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  await supabase
+    .from("crawl_jobs")
+    .update({
+      status: "failed",
+      error_message: "좀비 Job 자동 정리: 30분 이상 갱신 없음",
+      completed_at: new Date().toISOString(),
+    })
+    .eq("thread", thread)
+    .in("status", ["running", "stop_requested"])
+    .or(`last_heartbeat.lt.${zombieCutoff},last_heartbeat.is.null`)
+    .lt("created_at", zombieCutoff);
+
+  // pending 인데 created_at 이 오래된 것도 좀비로 간주 (Actions 트리거 실패)
+  await supabase
+    .from("crawl_jobs")
+    .update({
+      status: "failed",
+      error_message: "좀비 Job 자동 정리: pending 상태로 30분 이상 방치",
+      completed_at: new Date().toISOString(),
+    })
+    .eq("thread", thread)
+    .eq("status", "pending")
+    .lt("created_at", zombieCutoff);
+
   // 같은 스레드 내에서 이미 실행/대기 중인 작업이 있는지 확인
   const { data: existing } = await supabase
     .from("crawl_jobs")
