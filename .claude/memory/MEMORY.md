@@ -1,0 +1,12 @@
+- [KEPCO API -기타지역 규칙](kepco_api_skip_value.md) — addr_li만 빈값, 나머지 그대로 + 0건 시 전체 빈값 재시도
+- [여유용량 판정 수식](kepco_vol_formula.md) — (capa-pwr≤0)OR(capa-g_capa≤0)=없음. 3개 시설 동일.
+- [지오코딩 동+리 fallback](geocode_fallback_rule.md) — "동+리" 없으면 리 빼고 동만으로 재시도
+- [모바일 개발 4대 원칙](feedback_mobile_principles.md) — 웹 영향 없이, 덕지덕지 금지, 크로스브라우저, 컴포넌트 재활용
+- [코드 수정 원칙](feedback_code_quality.md) — 실제 렌더 파일 먼저 특정, 중복 로직 금지, 동작 확인 필수
+- [좌표 테이블 역할](geocode_table_roles.md) — kepco_addr=마을좌표(마커), geocode_cache=지번좌표(핀/태양광)
+- [자동 견적+수익분석](project_solar_proposal.md) — 서니로직 벤치마크. 매핑→패널배치→견적(120만/kW) + 수동입력 + 태양각도 + 수익분석(10년/20년) + 사업가능성
+- [줌 레벨별 마커 최적화](project_zoom_level_optimization.md) — 130만 행 대비, 줌에 따라 시/군→읍/면→리 마커 전환 (미구현 숙제)
+- [지적편집도 + 지도 클릭 팝업](project_cadastral_and_click_popup.md) — 카카오 지적편집도 레이어 + 빈 곳 클릭 시 지번 용량 팝업 (차기 개발)
+- [타겟 시설 오버레이](project_target_buildings_overlay.md) — 유리온실/축사/대형건물(50~200평+) 레이어 + 위치 기준 근처 선로용량 표시 (차기 개발, 의뢰자 요청)
+- [특허 출원 중 워터마크](project_patent_watermark.md) — 지도 화면 사선 워터마크. 특허 등록 완료 시 제거 예정 (NEXT_PUBLIC_PATENT_PENDING=false 로 토글)
+- 서니로직 벤치마크 계정 → `../../docs/SECRETS.local.md` 에 보관 (의뢰자 본인 계정, 자동견적 UX 참고용)
