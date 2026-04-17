@@ -130,27 +130,28 @@ export default function GpsTracker({
       return cleanup;
     }
 
-    // ── 파란 점 오버레이 생성 ──
+    // ── 현재 위치 점 (네이비 + 흰 링, 1.5배 크기) ──
+    //    여유용량 마커(#1d4ed8 파랑)와 명도 차별화 위해 짙은 네이비 사용.
     const dotHtml = `
       <div style="position:relative;width:0;height:0;pointer-events:none;">
         <div style="
-          position:absolute;left:-20px;top:-20px;
-          width:40px;height:40px;border-radius:50%;
-          background:rgba(66,133,244,0.15);
-          border:1.5px solid rgba(66,133,244,0.3);
+          position:absolute;left:-30px;top:-30px;
+          width:60px;height:60px;border-radius:50%;
+          background:rgba(30,58,138,0.15);
+          border:1.5px solid rgba(30,58,138,0.35);
           animation:gpsRipple 3s ease-out infinite;
         "></div>
         <div style="
-          position:absolute;left:-8px;top:-8px;
-          width:16px;height:16px;border-radius:50%;
-          background:#4285f4;
-          border:3px solid white;
-          box-shadow:0 1px 4px rgba(0,0,0,0.3);
+          position:absolute;left:-12px;top:-12px;
+          width:24px;height:24px;border-radius:50%;
+          background:#1e3a8a;
+          border:4px solid white;
+          box-shadow:0 2px 6px rgba(0,0,0,0.4);
         "></div>
         <style>
           @keyframes gpsRipple {
-            0% { transform:scale(0.8); opacity:1; }
-            100% { transform:scale(2.5); opacity:0; }
+            0% { transform:scale(0.7); opacity:1; }
+            100% { transform:scale(2.2); opacity:0; }
           }
         </style>
       </div>`;
@@ -164,13 +165,13 @@ export default function GpsTracker({
     });
     s.overlay.setMap(map);
 
-    // ── 방향 화살표 오버레이 생성 ──
+    // ── 방향 화살표 오버레이 생성 (이동 중에만 표시) ──
     const wrapper = document.createElement("div");
     const arrow = document.createElement("div");
     arrow.style.cssText =
       "position:absolute;left:-12px;top:-30px;width:24px;height:24px;pointer-events:none;transition:transform 0.3s ease;";
     arrow.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-      <path d="M12 2 L8 14 L12 11 L16 14 Z" fill="#4285f4" stroke="white" stroke-width="1"/>
+      <path d="M12 2 L8 14 L12 11 L16 14 Z" fill="#1e3a8a" stroke="white" stroke-width="1"/>
     </svg>`;
     wrapper.appendChild(arrow);
     s.headingEl = arrow;
@@ -271,9 +272,9 @@ export default function GpsTracker({
             center: latlng,
             radius: accuracy,
             strokeWeight: 1,
-            strokeColor: "#4285f4",
+            strokeColor: "#1e3a8a",
             strokeOpacity: 0.3,
-            fillColor: "#4285f4",
+            fillColor: "#1e3a8a",
             fillOpacity: 0.08,
           });
           s.accuracyCircle.setMap(map);
@@ -300,7 +301,7 @@ export default function GpsTracker({
           s.trailLine = new window.kakao.maps.Polyline({
             path: s.trailPath,
             strokeWeight: 4,
-            strokeColor: "#4285f4",
+            strokeColor: "#1e3a8a",
             strokeOpacity: 0.5,
             strokeStyle: "solid",
           });
@@ -364,10 +365,10 @@ export default function GpsTracker({
     <div className="absolute bottom-16 md:bottom-4 left-1/2 -translate-x-1/2 z-20 kepco-slide-up">
       <div className="flex items-center gap-2 bg-white/95 backdrop-blur rounded-full shadow-lg border border-gray-200 px-3 py-1.5 text-[11px] whitespace-nowrap">
         <span className="relative flex h-2 w-2 shrink-0">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-700 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-900" />
         </span>
-        <span className="text-blue-600 font-bold">GPS</span>
+        <span className="text-blue-900 font-bold">GPS</span>
         <span className={`font-bold tabular-nums ${accuracyColor}`}>
           ±{gpsInfo.accuracy.toFixed(0)}m
         </span>
