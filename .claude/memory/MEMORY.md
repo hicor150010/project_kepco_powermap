@@ -5,6 +5,7 @@
 - [코드 수정 원칙](feedback_code_quality.md) — 실제 렌더 파일 먼저 특정, 중복 로직 금지, 동작 확인 필수
 - [좌표 테이블 역할](geocode_table_roles.md) — kepco_addr=마을좌표(마커), geocode_cache=지번좌표(핀/태양광)
 - [1차+2차 개발 견적](project_solar_proposal.md) ⭐ — 1차 견적시스템(630만/2개월) + 2차 부동산정보+건물평수(550만/2개월). 합계 1,180만/4개월. 운영비 현재 0원. 의뢰자 확답 대기 (2026-04-16)
+- [3차 개발 — 태양광설치여부+이격거리](project_phase3_proposal.md) ⭐ — 전국태양광허가 API + 법제처 조례 API + 도로현황 SHP 연계 가능 검증 완료. 400~550만/10~12주. 의뢰자 확답 대기 (2026-04-17)
 - [건축물대장 API 검증](reference_bldg_register_api.md) — endpoint/파라미터/응답필드 실측. 비닐하우스는 대부분 미등록 한계. 키는 SECRETS.local.md
 - [줌 레벨별 마커 최적화](project_zoom_level_optimization.md) — 130만 행 대비, 줌에 따라 시/군→읍/면→리 마커 전환 (미구현 숙제)
 - [지적편집도 + 지도 클릭 팝업](project_cadastral_and_click_popup.md) — 카카오 지적편집도 레이어 + 빈 곳 클릭 시 지번 용량 팝업 (차기 개발)
