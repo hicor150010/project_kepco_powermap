@@ -442,10 +442,13 @@ def run(job: dict, thread: int):
     db_writer.refresh_mv()
 
     # ── 최종 상태 결정 ──
-    #   stopped   = 타임아웃 중단 (시스템), cron/체이닝으로 재개 가능
+    #   stopped   = 타임아웃 / 주소 목록 수신 실패 등 시스템적 중단 → 체크포인트에서 자동 재개
     #   cancelled = 사용자 취소, 재개 안 함
     #   completed = 정상 완료
     if timeout_triggered.is_set():
+        final_status = "stopped"
+    elif crawler._error is not None:
+        # crawl 중 예외 발생 (주소 목록 재시도 3회 실패, TooManyErrors 등) → 재개 대상
         final_status = "stopped"
     elif crawler.is_stopped():
         final_status = "cancelled"
@@ -462,12 +465,15 @@ def run(job: dict, thread: int):
     if crawler.progress.all_errors:
         final_progress["all_errors"] = crawler.progress.all_errors
 
-    update_job(job_id, {
+    update_data = {
         "status": final_status,
         "progress": final_progress,
         "checkpoint": checkpoint,
         "completed_at": "now()",
-    })
+    }
+    if crawler._error is not None:
+        update_data["error_message"] = str(crawler._error)[:1000]
+    update_job(job_id, update_data)
 
     timer.cancel()
 

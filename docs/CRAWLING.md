@@ -1,6 +1,6 @@
 # 크롤링 시스템 아키텍처
 
-> 최종 수정: 2026-04-10
+> 최종 수정: 2026-04-19
 
 ---
 
@@ -116,6 +116,8 @@ KEPCO API → 크롤러 (crawler.py)
 | 트리거 실패 복구 | 3회 재시도 | run_crawl.py auto_continue() |
 | 반복 무한루프 방지 | max_cycles 설정 | run_crawl.py |
 | KEPCO 차단 방지 | 세션 재생성, UA 랜덤, 점진적 백오프 | api_client.py |
+| 주소 목록 수신 실패 복구 | 세션 재생성 + 5/15/30초 점진 대기 재시도 (§10) | crawler.py `_safe_get_addr_list` |
+| 체크포인트 일관성 | 레벨 진입 시 하위 인덱스 리셋 (§10) | crawler.py `_reset_progress_below` |
 | MV 새로고침 부하 방지 | 1시간 간격 제한 (time.time() 기반) | crawl_to_db.py |
 | 변화 감지 | ref 대비 changelog (detect_changes RPC) | 016_changelog.sql |
 | 같은 날 중복 감지 방지 | ON CONFLICT DO NOTHING (첫 감지만) | 016_changelog.sql |
@@ -172,8 +174,83 @@ cron 실행 시 matrix로 스레드 1/2/3 모두 체크.
 
 ---
 
-## 10. 변경 이력
+## 10. 주소 목록 수신 실패 복구 (2026-04-19 추가)
 
+### 배경 — Job #180 사례
+
+대구광역시 전체 크롤링 중 **소보면 평호리 산86까지 정상 처리 (13,842건) → 우보면 리 목록 요청 시 일시적 API 실패** → 크롤러가 예외를 조용히 삼키고 "completed" 로 오판. 군위군 2/9 이후 **전부 누락**됨에도 UI에는 완료로 표시.
+
+체크포인트 분석 결과 두 개의 연쇄 버그 발견:
+1. `crawl()` 의 `except Exception` 이 예외를 삼켜 `_stop_event` 도 set 안 되고 `completed` 판정
+2. 레벨 진입 시 하위 progress (li/jibun) 가 리셋되지 않아 체크포인트 불일치 (dong_name="우보면" + li_name="평호리(소보면 것)")
+
+### 에러 유형 구분
+
+| 유형 | 예시 | 기존 처리 | 비고 |
+|---|---|---|---|
+| **A. 번지 검색 실패** (`search_capacity`) | 소보면 평호리 834-1 조회 실패 | `_failed_addresses` 에 적재 → 리 단위 재시도 → 실패 시 `progress.errors` 카운트 | "미수집 지번"으로 UI 표시. 계속 진행 |
+| **B. 주소 목록 실패** (`get_addr_list`) | 우보면 리 목록 전체 실패 | try/except 없음 → 예외 전파 → 삼켜짐 | **수정 전: 크롤링 조용히 중단** |
+
+### 복구 전략 (2단계)
+
+```
+[1단계: 현장 복구]
+  get_addr_list 실패
+    → 5초 대기 + 세션 재생성 → 재시도 #1
+    → 15초 대기 + 세션 재생성 → 재시도 #2
+    → 30초 대기 + 세션 재생성 → 재시도 #3
+  → 일시 장애 대부분 여기서 흡수
+
+[2단계: 안전 종료 + 자동 재개]
+  3회 모두 실패 → crawler._error 세팅
+    → run_crawl.py: final_status = "stopped"
+    → 체크포인트 저장 (하위 레벨 리셋된 상태)
+    → auto_continue → 새 Job + GitHub Actions 재기동
+    → 새 프로세스/세션으로 "이어서 시작"
+```
+
+### 핵심 구현
+
+#### `crawler/crawler.py`
+- `_safe_get_addr_list(**kwargs)` — get_addr_list 래퍼, 5/15/30초 점진 대기 + 세션 재생성 재시도 (3회)
+- `_reset_progress_below(level)` — 해당 레벨 하위 progress 인덱스/총계/이름 초기화 (do/si/gu/dong/li)
+- 5곳의 `self.client.get_addr_list(...)` 호출 → `self._safe_get_addr_list(...)` 로 교체
+- 5곳의 레벨 루프에서 current/name 설정 직후 `_reset_progress_below(...)` 호출
+- `self._error: Optional[Exception] = None` — crawl 중 삼켜지지 않는 예외 보존
+- `crawl()` 의 `except TooManyErrorsException` / `except Exception` 에서 `self._error = e` 기록 (기존 `_stop_event.set()` 제거)
+
+#### `crawler/run_crawl.py`
+- 판정 로직 변경:
+  ```python
+  if timeout_triggered.is_set():       final_status = "stopped"
+  elif crawler._error is not None:     final_status = "stopped"  # 재개 대상
+  elif crawler.is_stopped():           final_status = "cancelled"
+  else:                                final_status = "completed"
+  ```
+- `crawler._error` 가 있으면 `crawl_jobs.error_message` 에 저장
+
+### 상태 의미 재정의
+
+| 상태 | 의미 | 재개 |
+|---|---|---|
+| `completed` | 정상 완료 | 해당 없음 |
+| `stopped` | **타임아웃 또는 예외로 중단** (확장됨) | ✅ 자동 재개 |
+| `cancelled` | 사용자 명시적 취소 (`stop_requested` → `_stop_event.set()`) | ❌ |
+| `failed` | crawl 외부에서 예외 발생 (DB 쓰기 등) | ❌ |
+
+### 테스트 커버리지
+
+`scripts/test_kepco_resume/`:
+- `test_retry_logic.mjs` — `_safe_get_addr_list` + `_reset_progress_below` 단위 테스트 (42/42 통과)
+- `test_uibomyeon_next.mjs` — 실제 KEPCO API 정상 경로 회귀 테스트
+- `test_repeat.mjs` — 다양한 세션 조건 반복 호출 (Phase 1~3)
+- `test_sobomyeon.mjs` — Job #180 체크포인트 불일치 가설 검증 스크립트
+
+---
+
+## 11. 변경 이력
+
+- 2026-04-19: 주소 목록 수신 실패 복구 추가 — `_safe_get_addr_list` 세션 재생성 재시도 + 체크포인트 일관성 `_reset_progress_below` (Job #180 사례 대응, §10)
 - 2026-04-12: 변화 감지 시스템 전환 — 트리거 → ref + changelog 방식 ([COMPARE.md](./COMPARE.md))
 - 2026-04-12: sync_capa_ref 파라미터화 (전체 스캔 → flush ID만)
 - 2026-04-12: detect_changes ON CONFLICT DO NOTHING (하루 첫 감지만 기록)

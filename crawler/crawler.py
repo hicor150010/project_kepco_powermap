@@ -3,6 +3,7 @@ KEPCO 배전선로 여유용량 - 주소 순환 크롤러
 시/도 → 시 → 구/군 → 동/면 → 리 → 상세번지 계층적 순환
 """
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable, Optional
@@ -121,6 +122,8 @@ class KepcoСrawler:
         self._stop_event = threading.Event()
         # 실패 주소 보관 — 리 단위 끝나면 일괄 재시도
         self._failed_addresses: list[tuple] = []  # (addr_do, si, gu, lidong, li, jibun, display_addr)
+        # crawl 중 삼켜지지 않고 보존할 예외 (run_crawl.py 에서 stopped 판정에 사용)
+        self._error: Optional[Exception] = None
 
     def stop(self):
         """크롤링 중지 요청"""
@@ -136,6 +139,40 @@ class KepcoСrawler:
     def _update_progress(self):
         if self.on_progress:
             self.on_progress(self.progress)
+
+    def _safe_get_addr_list(self, **kwargs):
+        """주소 목록 조회 — 실패 시 세션 재생성 + 점진적 대기 후 재시도 (최대 3회).
+        3회 모두 실패하면 예외 전파 → crawl 의 except 가 _error 에 기록 → stopped.
+        """
+        delays = [5, 15, 30]
+        last_err: Optional[Exception] = None
+        for attempt, wait in enumerate(delays, 1):
+            try:
+                return self.client.get_addr_list(**kwargs)
+            except Exception as e:
+                last_err = e
+                self._log(f"      [주소 목록 실패 {attempt}/3] {e} — {wait}초 후 세션 재생성 재시도")
+                time.sleep(wait)
+                try:
+                    self.client._init_session()
+                except Exception:
+                    pass
+        assert last_err is not None
+        raise last_err
+
+    def _reset_progress_below(self, level: str):
+        """해당 레벨 하위의 progress 인덱스/총계/이름 초기화 (체크포인트 일관성 보장)."""
+        below = {
+            "do": ["si", "gu", "dong", "li", "jibun"],
+            "si": ["gu", "dong", "li", "jibun"],
+            "gu": ["dong", "li", "jibun"],
+            "dong": ["li", "jibun"],
+            "li": ["jibun"],
+        }
+        for lv in below.get(level, []):
+            setattr(self.progress, f"{lv}_current", 0)
+            setattr(self.progress, f"{lv}_total", 0)
+            setattr(self.progress, f"{lv}_name", "")
 
     def _add_result(self, result: CrawlResult):
         self.results.append(result)
@@ -173,6 +210,7 @@ class KepcoСrawler:
         resume_stats: 체크포인트의 stats dict (재개 시 누적 카운트 복원)
         """
         self._stop_event.clear()
+        self._error = None
         self.results.clear()
         self._fixed_gu = addr_gu
         self._fixed_dong = addr_dong
@@ -222,6 +260,7 @@ class KepcoСrawler:
                         self._resume_reached = True
                 self.progress.do_current = do_idx + 1
                 self.progress.do_name = current_do
+                self._reset_progress_below("do")
                 self._update_progress()
 
                 if len(do_list) > 1:
@@ -233,7 +272,7 @@ class KepcoСrawler:
                 if addr_si:
                     si_list = [addr_si]
                 else:
-                    si_list = self.client.get_addr_list(gbn=0, addr_do=current_do)
+                    si_list = self._safe_get_addr_list(gbn=0, addr_do=current_do)
                     self._log(f"시 목록 ({len(si_list)}개): {', '.join(si_list)}")
 
                 self.progress.si_total = len(si_list)
@@ -253,13 +292,15 @@ class KepcoСrawler:
                             self._resume_reached = True
                     self.progress.si_current = si_idx + 1
                     self.progress.si_name = si
+                    self._reset_progress_below("si")
                     self._crawl_si(current_do, si)
 
         except TooManyErrorsException as e:
             self._log(f"[중단] {e}")
-            self._stop_event.set()
+            self._error = e
         except Exception as e:
             self._log(f"[오류] 크롤링 중 예외 발생: {e}")
+            self._error = e
 
         self._log(f"=== 크롤링 완료: 처리 {self.progress.processed}건, "
                    f"결과 {self.progress.found}건, 오류 {self.progress.errors}건 ===")
@@ -276,7 +317,7 @@ class KepcoСrawler:
         if self._fixed_gu:
             gu_list = [self._fixed_gu]
         else:
-            gu_list = self.client.get_addr_list(
+            gu_list = self._safe_get_addr_list(
                 gbn=1, addr_do=addr_do, addr_si=addr_si
             )
             if not gu_list:
@@ -299,6 +340,7 @@ class KepcoСrawler:
                     self._resume_reached = True
             self.progress.gu_current = gu_idx + 1
             self.progress.gu_name = gu
+            self._reset_progress_below("gu")
             self._crawl_gu(addr_do, addr_si, gu)
 
     def _crawl_gu(self, addr_do: str, addr_si: str, addr_gu: str):
@@ -313,7 +355,7 @@ class KepcoСrawler:
         if self._fixed_dong:
             dong_list = [self._fixed_dong]
         else:
-            dong_list = self.client.get_addr_list(
+            dong_list = self._safe_get_addr_list(
                 gbn=2, addr_do=addr_do, addr_si=addr_si, addr_gu=addr_gu
             )
 
@@ -334,6 +376,7 @@ class KepcoСrawler:
                     self._resume_reached = True
             self.progress.dong_current = dong_idx + 1
             self.progress.dong_name = dong
+            self._reset_progress_below("dong")
             self._crawl_dong(addr_do, addr_si, addr_gu, dong)
 
     def _crawl_dong(self, addr_do: str, addr_si: str, addr_gu: str, addr_lidong: str):
@@ -352,7 +395,7 @@ class KepcoСrawler:
         if self._fixed_li:
             li_list = [self._fixed_li]
         else:
-            li_list = self.client.get_addr_list(
+            li_list = self._safe_get_addr_list(
                 gbn=3, addr_do=addr_do, addr_si=addr_si,
                 addr_gu=addr_gu, addr_lidong=addr_lidong,
             )
@@ -376,6 +419,7 @@ class KepcoСrawler:
                     self._resume_reached = True
             self.progress.li_current = li_idx + 1
             self.progress.li_name = li
+            self._reset_progress_below("li")
             self._crawl_li(addr_do, addr_si, addr_gu, addr_lidong, li)
 
     def _crawl_li(self, addr_do: str, addr_si: str, addr_gu: str,
@@ -387,7 +431,7 @@ class KepcoСrawler:
         is_skip_li = (addr_li == SKIP_VALUE)
         li_display = addr_li if not is_skip_li else "(기타)"
 
-        jibun_list = self.client.get_addr_list(
+        jibun_list = self._safe_get_addr_list(
             gbn=4, addr_do=addr_do, addr_si=addr_si,
             addr_gu=addr_gu, addr_lidong=addr_lidong,
             addr_li=addr_li,
