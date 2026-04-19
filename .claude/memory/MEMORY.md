@@ -4,7 +4,7 @@
 - [모바일 개발 4대 원칙](feedback_mobile_principles.md) — 웹 영향 없이, 덕지덕지 금지, 크로스브라우저, 컴포넌트 재활용
 - [코드 수정 원칙](feedback_code_quality.md) — 실제 렌더 파일 먼저 특정, 중복 로직 금지, 동작 확인 필수
 - [좌표 테이블 역할](geocode_table_roles.md) — kepco_addr=마을좌표(마커), geocode_cache=지번좌표(핀/태양광)
-- [1차+2차 개발 견적](project_solar_proposal.md) ⭐ — 1차 견적시스템(630만/2개월) + 2차 부동산정보+건물평수(550만/2개월). 합계 1,180만/4개월. 운영비 현재 0원. 의뢰자 확답 대기 (2026-04-16)
+- [1차+2차 최종 견적](project_solar_proposal.md) ⭐ — 1차(660만/약2~2.5개월, 조례 +30만 포함) + 2차(550만/2개월) = 1,210만/약4~4.5개월. 인프라 별도(1회성 20만 + 월 5만, 변동가능). 의뢰자 답변 대기 (조례 노출 기준 정리도 함께, 2026-04-19)
 - [3차 개발 — 태양광설치여부+이격거리](project_phase3_proposal.md) ⭐ — 전국태양광허가 API + 법제처 조례 API + 도로현황 SHP 연계 가능 검증 완료. 400~550만/10~12주. 의뢰자 확답 대기 (2026-04-17)
 - [건축물대장 API 검증](reference_bldg_register_api.md) — endpoint/파라미터/응답필드 실측. 비닐하우스는 대부분 미등록 한계. 키는 SECRETS.local.md
 - [줌 레벨별 마커 최적화](project_zoom_level_optimization.md) — 130만 행 대비, 줌에 따라 시/군→읍/면→리 마커 전환 (미구현 숙제)
@@ -13,3 +13,4 @@
 - [특허 출원 중 워터마크](project_patent_watermark.md) — 지도 화면 사선 워터마크. 특허 등록 완료 시 제거 예정 (NEXT_PUBLIC_PATENT_PENDING=false 로 토글)
 - 서니로직 벤치마크 계정 → `../../docs/SECRETS.local.md` 에 보관 (의뢰자 본인 계정, 자동견적 UX 참고용)
 - [GitHub 계정 이전 이력](reference_github_migration.md) — 2026-04-19 `hicor1` → `hicor150010` 이전 완료. 구 저장소/PAT 모두 삭제됨
+- [도메인 sublab.kr](project_domain_sublab.md) — 가비아 구매 완료. 추후 Vercel DNS 연결 작업 예정
