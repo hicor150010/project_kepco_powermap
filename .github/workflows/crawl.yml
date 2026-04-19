@@ -15,8 +15,9 @@ on:
         type: string
 
   schedule:
-    # 매 6시간 — 체인 끊김 복구
-    - cron: '0 */6 * * *'
+    # 매 5분 — dispatch 실패 등 어떤 사고든 5분 안에 자동 픽업하는 안전망.
+    # find_next_job 이 작업 없으면 즉시 종료하므로 부담 미미 (public repo 무료).
+    - cron: '*/5 * * * *'
 
 jobs:
   crawl:
