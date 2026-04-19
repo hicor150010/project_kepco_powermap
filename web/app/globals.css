@@ -70,8 +70,9 @@ body.measure-mode * {
 .kepco-card-marker {
   position: relative;
   width: 28px;
-  /* 화살표 8px + 카드 30px = 38px, 카드 하단 중앙이 좌표 = transform translate(-50%, -100%) */
-  transform: translate(-50%, -100%);
+  /* 위치 보정은 카카오 SDK 의 yAnchor:1, xAnchor:0.5 가 담당.
+     CSS transform 으로 추가 보정하면 이중 보정이 되어 카드가 좌표 위로 떠버린다.
+     (화살표 끝 = 좌표 = 펄스/내접원 기준점이 일치해야 한다) */
   font-family: Arial, sans-serif;
   pointer-events: auto;
   cursor: pointer;
