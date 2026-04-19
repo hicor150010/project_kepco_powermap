@@ -784,6 +784,9 @@ export default function MapClient({ isAdmin, email }: Props) {
           measureAddPointRef={measureAddPointRef}
           selectedAddr={selectedAddr}
           mapType={mapType}
+          onRenderingChange={(rendering) =>
+            setCenterMessage(rendering ? "지도 마커 준비 중..." : null)
+          }
           visibleAddrs={mapFilteredAddrs}
         />
 

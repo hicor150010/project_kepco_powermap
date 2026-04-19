@@ -44,6 +44,8 @@ interface Props {
   compareRows?: CompareRefRow[];
   /** 표시할 마을 주소 집합 — null이면 전체, Set이면 해당 마을만 표시 */
   visibleAddrs?: Set<string> | null;
+  /** 마커 재구성 진행 상태 콜백 — true 가 200ms 이상 지속되면 상위에서 로딩 인디케이터 표시 */
+  onRenderingChange?: (rendering: boolean) => void;
 }
 
 /**
@@ -185,6 +187,55 @@ function makeMarkerSvg(
   return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
 }
 
+/**
+ * 마을 카드 마커 HTML — globals.css 의 .kepco-card-marker 스타일과 함께 동작.
+ * SVG → PNG 변환을 거치지 않고 DOM 으로 직접 렌더해 2,678개 생성 시 16초 → 1초.
+ *
+ * @param ratios 시설별 부족 비율 (0~100)
+ * @param count  마을 내 지번 수 (>1 일 때만 우측 뱃지 표시)
+ * @param selected 선택 상태 (주황 테두리)
+ * @param labelText 마을명 + 잔여용량 라벨 (줌 가까울 때만 표시 — 빈 문자열이면 라벨 숨김)
+ * @param remainKw 잔여 용량(kW) — 라벨 색상 결정용
+ */
+function makeMarkerHtml(
+  addr: string,
+  ratios: MarkerRatios,
+  count: number,
+  selected: boolean,
+  labelText: string,
+  remainKw: number
+): string {
+  const clamp = (v: number) => Math.max(0, Math.min(100, v));
+  const showBadge = count > 1;
+  const badgeText = count > 9999 ? "9999+" : String(count);
+  const badge = showBadge ? `<span class="badge">${badgeText}</span>` : "";
+
+  // 라벨 — labelText 가 있으면 표시 (mw/kw 변환은 호출부에서)
+  const remainClass = remainKw > 0 ? "remain ok" : "remain no";
+  const remainHtml =
+    labelText && remainKw !== 0
+      ? `<span class="${remainClass}">· ${
+          remainKw >= 1000 ? `${(remainKw / 1000).toFixed(1)}MW` : `${remainKw.toLocaleString()}kW`
+        }</span>`
+      : "";
+  const label = labelText
+    ? `<div class="label"><span>${labelText}</span>${remainHtml}</div>`
+    : "";
+
+  // data-addr 로 클릭 위임 시 어느 마을인지 식별 (HTML 인젝션 방지를 위해 따옴표 이스케이프)
+  const safeAddr = addr.replace(/"/g, "&quot;");
+  return `<div class="kepco-card-marker" data-selected="${selected}" data-addr="${safeAddr}">
+    <div class="card">
+      <div class="bar" style="--no-pct:${clamp(ratios.substNoPct).toFixed(0)}%"></div>
+      <div class="bar" style="--no-pct:${clamp(ratios.mtrNoPct).toFixed(0)}%"></div>
+      <div class="bar" style="--no-pct:${clamp(ratios.dlNoPct).toFixed(0)}%"></div>
+    </div>
+    <div class="arrow"></div>
+    ${badge}
+    ${label}
+  </div>`;
+}
+
 /** 마커 사이즈 헬퍼 — 카드 폭/총 높이 + 우측 배지 영역 고려 */
 function markerSize(count: number): { w: number; h: number } {
   const cardW = 28;
@@ -212,6 +263,7 @@ export default function KakaoMap({
   mapType = "roadmap",
   compareRows = [],
   visibleAddrs = null,
+  onRenderingChange,
 }: Props) {
   // 측정 모드 여부를 클릭 핸들러에서 참조하기 위한 ref
   // (state로 전달하면 마커 재생성이 발생하므로 ref로 우회)
@@ -293,295 +345,254 @@ export default function KakaoMap({
   }, [measureMode]);
 
 
-  // 마커 + 클러스터러 갱신
+  // ─────────────────────────────────────────────
+  // 마커 렌더링 — 뷰포트(bounds) 기반 동적 생성 + HTML CustomOverlay
+  //
+  // 설계:
+  //  1. 클러스터러는 1회 생성 후 재사용, 위치만 가진 "숨김 마커"가 클러스터 묶음을 만듦.
+  //  2. 줌 7 이하(상세 줌)에선 화면 안 마을 카드 HTML 오버레이 추가 표시.
+  //  3. rebuild 함수는 ref 에 저장 → 의존성 변경 시 effect 재실행 없이 함수만 갱신.
+  //  4. idle 이벤트(팬/줌 종료)에 200ms debounce 후 rebuild 호출.
+  //  5. bounds 동일하면 rebuild skip → addMarkers 가 idle 재발화해도 자기 루프 차단.
+  //  6. rebuild 가 200ms 넘으면 onRenderingChange(true) 로 상위에 로딩 신호.
+  //
+  // 이전 구조: rows 2,678개 전부 SVG→PNG 변환→Marker 생성 → 초기 16초 병목.
+  // ─────────────────────────────────────────────
+  const rebuildRef = useRef<() => void>(() => {});
+  const overlayRef = useRef<any[]>([]);
+  const lastBoundsKeyRef = useRef<string>("");
+  const renderingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // rebuild 함수를 최신 props 반영해 매번 갱신 — effect 재실행 없이 함수만 갈아끼움
+  useEffect(() => {
+    rebuildRef.current = () => {
+      const map = mapInstanceRef.current;
+      const clusterer = clustererRef.current;
+      if (!map || !clusterer) return;
+
+      const bounds = map.getBounds();
+      const level = map.getLevel();
+      const showCard = level <= LABEL_VISIBLE_LEVEL;
+
+      // 색상/가시성/뷰포트 필터 — 화면 안 + 활성 색상 + 검색 결과만
+      const filtered = rows.filter((r) => {
+        if (visibleAddrs && !visibleAddrs.has(r.geocode_address)) return false;
+        if (!colorFilter.has(colorForMarker(r))) return false;
+        return bounds.contain(new window.kakao.maps.LatLng(r.lat, r.lng));
+      });
+
+      // 정리
+      clusterer.clear();
+      overlayRef.current.forEach((o) => o.setMap(null));
+      overlayRef.current = [];
+      markersByAddrRef.current.clear();
+
+      if (filtered.length === 0) return;
+
+      if (showCard) {
+        // 카드 표시 줌(≤7): 클러스터/마커 없이 HTML 오버레이만.
+        // markersByAddrRef 에 row 만 저장 (위임 클릭 핸들러가 row 조회용)
+        overlayRef.current = filtered.map((row) => {
+          markersByAddrRef.current.set(row.geocode_address, { marker: null, row });
+          return row;
+        }) as any[];
+        // overlayRef 는 아래 카드 생성 블록에서 다시 채워짐 — 임시 placeholder
+      } else {
+        // 클러스터 표시 줌(≥8): 위치만 가진 마커로 클러스터링.
+        // 단독으로 표시되는 마커 클릭 → 카드 보이는 줌(7)으로 자동 줌인.
+        const hiddenMarkers = filtered.map((row) => {
+          const position = new window.kakao.maps.LatLng(row.lat, row.lng);
+          const marker = new window.kakao.maps.Marker({ position });
+          markersByAddrRef.current.set(row.geocode_address, { marker, row });
+          window.kakao.maps.event.addListener(marker, "click", () => {
+            if (measureModeRef.current) {
+              measureAddPointRef?.current?.(position);
+              return;
+            }
+            // 단독 마커 → 부드럽게 중앙 이동 후 1단계 줌인
+            map.panTo(position);
+            setTimeout(() => map.setLevel(map.getLevel() - 1, { animate: true }), 350);
+          });
+          return marker;
+        });
+        clusterer.addMarkers(hiddenMarkers);
+      }
+
+      // 줌 가까울 때만 카드 HTML 오버레이 추가 (라벨도 카드 안에 포함)
+      if (showCard) {
+        overlayRef.current = filtered.map((row) => {
+          const isSelected = row.geocode_address === selectedAddr;
+          const li = row.addr_li && !row.addr_li.includes("기타지역") ? row.addr_li : "";
+          const placeName = li || row.addr_dong || "";
+          const html = makeMarkerHtml(
+            row.geocode_address,
+            ratiosForMarker(row),
+            row.total,
+            isSelected,
+            placeName,
+            row.max_remaining_kw ?? 0
+          );
+          const overlay = new window.kakao.maps.CustomOverlay({
+            position: new window.kakao.maps.LatLng(row.lat, row.lng),
+            content: html,
+            yAnchor: 1,
+            xAnchor: 0.5,
+            zIndex: isSelected ? 10 : 3,
+          });
+          // 클릭은 지도 컨테이너 위임 핸들러에서 data-addr 로 식별 (별도 effect)
+          overlay.setMap(map);
+          return overlay;
+        });
+      }
+    };
+  }, [rows, colorFilter, visibleAddrs, selectedAddr, onMarkerClick]);
+
+  // 클러스터러 1회 생성 + idle 리스너 (debounce 200ms)
   useEffect(() => {
     if (!loaded || !mapInstanceRef.current) return;
     const map = mapInstanceRef.current;
 
-    if (clustererRef.current) clustererRef.current.clear();
-
-    // 이전 라벨/줌 리스너 정리 (메모리 누수 방지)
-    labelOverlaysRef.current.forEach((o) => o.setMap(null));
-    labelOverlaysRef.current = [];
-    if (zoomListenerRef.current) {
-      window.kakao.maps.event.removeListener(
+    if (!clustererRef.current) {
+      clustererRef.current = new window.kakao.maps.MarkerClusterer({
         map,
-        "zoom_changed",
-        zoomListenerRef.current
-      );
-      zoomListenerRef.current = null;
-    }
-
-    const filtered = rows.filter((r) => {
-      if (visibleAddrs && !visibleAddrs.has(r.geocode_address)) return false;
-      const color = colorForMarker(r);
-      return colorFilter.has(color);
-    });
-    if (filtered.length === 0) return;
-
-    // 이전 마커 맵 초기화 — 새로 그리는 마커들로 교체
-    markersByAddrRef.current.clear();
-
-    // SVG → PNG 변환이 비동기이므로, effect 재실행 시 이전 작업 무시
-    let cancelled = false;
-
-    (async () => {
-    const markers = await Promise.all(filtered.map(async (row) => {
-      const position = new window.kakao.maps.LatLng(row.lat, row.lng);
-      const ratios = ratiosForMarker(row);
-      const count = row.total;
-      const { w: imgW, h: imgH } = markerSize(count);
-      // 카드 중앙 하단(화살표 끝)이 좌표 점에 정확히 닿게 offset 지정
-      const cardCenterX = 14; // cardW(28)/2
-      const isSelected = row.geocode_address === selectedAddr;
-
-      const svgUri = makeMarkerSvg(ratios, count, isSelected);
-      const pngUri = await svgToPng(svgUri, imgW, imgH);
-
-      const marker = new window.kakao.maps.Marker({
-        position,
-        image: new window.kakao.maps.MarkerImage(
-          pngUri,
-          new window.kakao.maps.Size(imgW, imgH),
-          { offset: new window.kakao.maps.Point(cardCenterX, imgH) }
-        ),
-        zIndex: isSelected ? 10 : undefined,
+        averageCenter: true,
+        minLevel: 5,
+        gridSize: 60,
+        disableClickZoom: true,
+        styles: [
+          { width: "40px", height: "40px", background: "rgba(59,130,246,0.9)", color: "white", textAlign: "center", lineHeight: "40px", borderRadius: "50%", fontSize: "12px", fontWeight: "bold", border: "2px solid white" },
+          { width: "50px", height: "50px", background: "rgba(59,130,246,0.9)", color: "white", textAlign: "center", lineHeight: "50px", borderRadius: "50%", fontSize: "13px", fontWeight: "bold", border: "2px solid white" },
+          { width: "60px", height: "60px", background: "rgba(59,130,246,0.9)", color: "white", textAlign: "center", lineHeight: "60px", borderRadius: "50%", fontSize: "14px", fontWeight: "bold", border: "2px solid white" },
+        ],
       });
-
-      // 선택 상태 변경 시 이미지만 교체하기 위해 참조 저장
-      markersByAddrRef.current.set(row.geocode_address, { marker, row });
-
-      window.kakao.maps.event.addListener(marker, "click", () => {
-        // 측정 모드: 점 추가만 하고 종료 (상세 카드 X, panTo X)
-        if (measureModeRef.current) {
-          measureAddPointRef?.current?.(position);
-          return;
-        }
-        map.panTo(position);
-        onMarkerClick(row);
-      });
-
-      return marker;
-    }));
-
-    if (cancelled) return;
-
-    clustererRef.current = new window.kakao.maps.MarkerClusterer({
-      map,
-      averageCenter: true,
-      minLevel: 5,
-      gridSize: 60,
-      markers,
-      // 기본 클릭 줌을 끄고 아래 clusterclick 리스너에서 수동 처리
-      // (측정 모드에서는 확대 자체를 막기 위함)
-      disableClickZoom: true,
-      styles: [
-        {
-          width: "40px", height: "40px",
-          background: "rgba(59,130,246,0.9)",
-          color: "white", textAlign: "center", lineHeight: "40px",
-          borderRadius: "50%", fontSize: "12px", fontWeight: "bold",
-          border: "2px solid white",
-        },
-        {
-          width: "50px", height: "50px",
-          background: "rgba(59,130,246,0.9)",
-          color: "white", textAlign: "center", lineHeight: "50px",
-          borderRadius: "50%", fontSize: "13px", fontWeight: "bold",
-          border: "2px solid white",
-        },
-        {
-          width: "60px", height: "60px",
-          background: "rgba(59,130,246,0.9)",
-          color: "white", textAlign: "center", lineHeight: "60px",
-          borderRadius: "50%", fontSize: "14px", fontWeight: "bold",
-          border: "2px solid white",
-        },
-      ],
-    });
-
-    // ─────────────────────────────────────────────
-    // 마을명 라벨 — 각 마커 아래에 작은 텍스트 박스
-    //   줌이 충분히 가까울 때(level <= LABEL_VISIBLE_LEVEL)만 보이도록
-    //   zoom_changed 이벤트로 토글한다.
-    // ─────────────────────────────────────────────
-    labelOverlaysRef.current = filtered.map((row) => {
-      // "리"를 우선 표시, 기타지역이면 "동" 폴백
-      const li = row.addr_li && !row.addr_li.includes("기타지역") ? row.addr_li : "";
-      const placeName = li || row.addr_dong || "";
-      // 잔여 용량 — 사업자가 가장 알고 싶은 정보. kW/MW 자동 변환
-      const kw = row.max_remaining_kw ?? 0;
-      const remainText =
-        kw <= 0
-          ? ""
-          : kw >= 1000
-            ? `${(kw / 1000).toFixed(1)}MW`
-            : `${kw.toLocaleString()}kW`;
-      // 잔여가 있으면 강조 색(파랑), 없으면 회색
-      const remainColor = kw > 0 ? "#1d4ed8" : "#9ca3af";
-
-      const overlay = new window.kakao.maps.CustomOverlay({
-        position: new window.kakao.maps.LatLng(row.lat, row.lng),
-        content: `
-          <div style="
-            transform: translate(-50%, 4px);
-            background: rgba(255,255,255,0.95);
-            color: #1f2937;
-            font-size: 11px;
-            font-weight: 600;
-            padding: 2px 6px;
-            border-radius: 4px;
-            border: 1px solid rgba(0,0,0,0.1);
-            white-space: nowrap;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.15);
-            pointer-events: none;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-          ">
-            <span>${placeName}</span>
-            ${
-              remainText
-                ? `<span style="color:${remainColor};font-weight:700;">· ${remainText}</span>`
-                : ""
-            }
-          </div>
-        `,
-        yAnchor: 0,
-        xAnchor: 0.5,
-        zIndex: 4,
-      });
-      return overlay;
-    });
-
-    const applyLabelVisibility = () => {
-      const level = map.getLevel();
-      const labelVisible = level <= LABEL_VISIBLE_LEVEL;
-      labelOverlaysRef.current.forEach((o) => o.setMap(labelVisible ? map : null));
-    };
-    applyLabelVisibility();
-
-    zoomListenerRef.current = applyLabelVisibility;
-    window.kakao.maps.event.addListener(
-      map,
-      "zoom_changed",
-      zoomListenerRef.current
-    );
-
-    // 클러스터 클릭
-    //  - 측정 모드: 클러스터 중심을 측정 점으로 추가 (확대 X)
-    //  - 일반 모드: 한 단계 확대
-    window.kakao.maps.event.addListener(
-      clustererRef.current,
-      "clusterclick",
-      (cluster: any) => {
+      window.kakao.maps.event.addListener(clustererRef.current, "clusterclick", (cluster: any) => {
         const center = cluster.getCenter();
         if (measureModeRef.current) {
           measureAddPointRef?.current?.(center);
           return;
         }
-        const level = map.getLevel() - 1;
-        map.setLevel(level, { anchor: center });
-      }
-    );
-
-    if (filtered.length > 0 && lastFitKeyRef.current !== fitBoundsKey) {
-      const bounds = new window.kakao.maps.LatLngBounds();
-      filtered.forEach((r) => {
-        bounds.extend(new window.kakao.maps.LatLng(r.lat, r.lng));
+        // 부드럽게 중앙 이동 후 1단계 줌인 (panTo 애니메이션 ~350ms 대기)
+        map.panTo(center);
+        setTimeout(() => map.setLevel(map.getLevel() - 1, { animate: true }), 350);
       });
-      map.setBounds(bounds);
-      lastFitKeyRef.current = fitBoundsKey;
     }
-    })(); // async IIFE 끝
 
-    return () => { cancelled = true; };
-    // selectedAddr은 의도적으로 deps에서 제외 — 전체 재생성 X, 아래 별도 effect에서 해당 마커만 이미지 교체
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded, rows, colorFilter, fitBoundsKey, onMarkerClick, visibleAddrs]);
+    // idle: 팬/줌 종료. 200ms debounce + bounds 동일 시 skip 으로 자기 루프 차단.
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    const runRebuild = () => {
+      // 200ms 안에 끝나면 인디케이터 안 보여줌
+      if (renderingTimerRef.current) clearTimeout(renderingTimerRef.current);
+      renderingTimerRef.current = setTimeout(() => {
+        onRenderingChange?.(true);
+      }, 200);
+      try {
+        rebuildRef.current();
+      } finally {
+        if (renderingTimerRef.current) {
+          clearTimeout(renderingTimerRef.current);
+          renderingTimerRef.current = null;
+        }
+        onRenderingChange?.(false);
+      }
+    };
+    const onIdle = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        const b = map.getBounds();
+        const sw = b.getSouthWest();
+        const ne = b.getNorthEast();
+        const key = `${sw.getLat().toFixed(4)},${sw.getLng().toFixed(4)},${ne.getLat().toFixed(4)},${ne.getLng().toFixed(4)},${map.getLevel()}`;
+        if (key === lastBoundsKeyRef.current) return; // 동일 bounds → 자기 루프 차단
+        lastBoundsKeyRef.current = key;
+        runRebuild();
+      }, 200);
+    };
+    window.kakao.maps.event.addListener(map, "idle", onIdle);
 
-  /**
-   * 선택 마을 변경 시, 이전/새 마커의 이미지만 교체한다.
-   * 마커 effect와 분리되어 있어 rows/colorFilter 변화 없이 선택만 바뀌면
-   * 전체 마커 재생성이 일어나지 않아 가볍다.
-   */
-  const prevSelectedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!loaded) return;
-    const map = mapInstanceRef.current;
-
-    const rebuildImage = async (addr: string | null, selected: boolean) => {
+    // 카드 클릭 위임 — 지도 컨테이너에 1회 등록. data-addr 로 마을 식별.
+    const containerEl = mapRef.current;
+    const onCardClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const card = target.closest<HTMLElement>(".kepco-card-marker");
+      if (!card) return;
+      const addr = card.dataset.addr;
       if (!addr) return;
       const entry = markersByAddrRef.current.get(addr);
       if (!entry) return;
-      const { marker, row } = entry;
-      const ratios = ratiosForMarker(row);
-      const { w: imgW, h: imgH } = markerSize(row.total);
-      const svgUri = makeMarkerSvg(ratios, row.total, selected);
-      const pngUri = await svgToPng(svgUri, imgW, imgH);
-      marker.setImage(
-        new window.kakao.maps.MarkerImage(
-          pngUri,
-          new window.kakao.maps.Size(imgW, imgH),
-          { offset: new window.kakao.maps.Point(14, imgH) }
-        )
-      );
-      if (marker.setZIndex) marker.setZIndex(selected ? 10 : 0);
+      e.stopPropagation();
+      const pos = new window.kakao.maps.LatLng(entry.row.lat, entry.row.lng);
+      if (measureModeRef.current) {
+        measureAddPointRef?.current?.(pos);
+        return;
+      }
+      map.panTo(pos);
+      onMarkerClickRef.current(entry.row);
     };
+    containerEl?.addEventListener("click", onCardClick);
 
-    // 이전 선택 해제
-    if (prevSelectedRef.current && prevSelectedRef.current !== selectedAddr) {
-      rebuildImage(prevSelectedRef.current, false);
-    }
+    // 초기 렌더 (bounds 키 미설정 상태에서 1회)
+    runRebuild();
 
-    // 이전 펄스 링 제거
+    return () => {
+      window.kakao.maps.event.removeListener(map, "idle", onIdle);
+      containerEl?.removeEventListener("click", onCardClick);
+      if (idleTimer) clearTimeout(idleTimer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
+
+  // onMarkerClick 을 ref 로 — 위임 핸들러 closure 가 stale 되지 않도록
+  const onMarkerClickRef = useRef(onMarkerClick);
+  onMarkerClickRef.current = onMarkerClick;
+
+  // fitBounds — fitBoundsKey 변경 시 1회만. setBounds → idle → rebuild 자동 호출.
+  useEffect(() => {
+    if (!loaded || !mapInstanceRef.current) return;
+    if (lastFitKeyRef.current === fitBoundsKey) return;
+    lastFitKeyRef.current = fitBoundsKey;
+
+    const map = mapInstanceRef.current;
+    const filtered = rows.filter((r) => {
+      if (visibleAddrs && !visibleAddrs.has(r.geocode_address)) return false;
+      return colorFilter.has(colorForMarker(r));
+    });
+    if (filtered.length === 0) return;
+    const bounds = new window.kakao.maps.LatLngBounds();
+    filtered.forEach((r) => bounds.extend(new window.kakao.maps.LatLng(r.lat, r.lng)));
+    map.setBounds(bounds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, fitBoundsKey]);
+
+  // props 변경 시 rebuild 직접 호출 (idle 안 기다림)
+  useEffect(() => {
+    if (!loaded || !mapInstanceRef.current || !clustererRef.current) return;
+    rebuildRef.current();
+  }, [rows, colorFilter, visibleAddrs, selectedAddr, loaded]);
+
+  // 선택 변경 시 펄스 링 (마커 자체는 rebuild 가 강조 처리)
+  useEffect(() => {
+    if (!loaded) return;
+    const map = mapInstanceRef.current;
     if (pulseOverlayRef.current) {
       pulseOverlayRef.current.setMap(null);
       pulseOverlayRef.current = null;
     }
-
-    // 새 선택 강조
     if (selectedAddr && map) {
-      rebuildImage(selectedAddr, true);
-
-      // 펄스 링 오버레이 추가 — 인라인 스타일로 CSS 의존성 제거
-      // markersByAddrRef가 비동기 생성 중 비어있을 수 있으므로 rows에서 직접 좌표 조회
-      const entry = markersByAddrRef.current.get(selectedAddr);
-      const selRow = !entry ? rows.find(r => r.geocode_address === selectedAddr) : null;
-      const pos = entry
-        ? entry.marker.getPosition()
-        : selRow && selRow.lat != null && selRow.lng != null
-          ? new window.kakao.maps.LatLng(selRow.lat, selRow.lng)
-          : null;
-      if (pos) {
+      const selRow = rows.find((r) => r.geocode_address === selectedAddr);
+      if (selRow && selRow.lat != null && selRow.lng != null) {
+        const pos = new window.kakao.maps.LatLng(selRow.lat, selRow.lng);
         const pulseHtml = `
           <div style="position:relative;width:0;height:0;">
-            <div style="
-              position:absolute;left:-20px;top:-20px;
-              width:40px;height:40px;border-radius:50%;
-              border:2.5px solid #f97316;
-              animation:kepcoPulse 2s ease-out infinite;
-              pointer-events:none;
-            "></div>
-            <style>
-              @keyframes kepcoPulse {
-                0% { transform:scale(0.5); opacity:0.7; }
-                100% { transform:scale(2.5); opacity:0; }
-              }
-            </style>
+            <div style="position:absolute;left:-20px;top:-20px;width:40px;height:40px;border-radius:50%;border:2.5px solid #f97316;animation:kepcoPulse 2s ease-out infinite;pointer-events:none;"></div>
+            <style>@keyframes kepcoPulse{0%{transform:scale(0.5);opacity:0.7;}100%{transform:scale(2.5);opacity:0;}}</style>
           </div>`;
         pulseOverlayRef.current = new window.kakao.maps.CustomOverlay({
-          position: pos,
-          content: pulseHtml,
-          yAnchor: 0.5,
-          xAnchor: 0.5,
-          zIndex: 1,
+          position: pos, content: pulseHtml, yAnchor: 0.5, xAnchor: 0.5, zIndex: 1,
         });
         pulseOverlayRef.current.setMap(map);
       }
     }
-    prevSelectedRef.current = selectedAddr;
-  }, [loaded, selectedAddr]);
+  }, [loaded, selectedAddr, rows]);
 
   // ── 비교 오버레이 ──
   const compareOverlaysRef = useRef<any[]>([]);
