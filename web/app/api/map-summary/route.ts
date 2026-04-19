@@ -20,22 +20,29 @@ export async function GET() {
   }
 
   // service_role로 조회 (RLS 우회 — Materialized View는 RLS 적용 어려움)
+  // PostgREST / Supabase JS 는 기본 1000행 제한이 있어 silently 잘림 → 페이지네이션으로 전량 수집.
   const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from("kepco_map_summary")
-    .select(
-      "geocode_address, lat, lng, total, subst_no_cap, mtr_no_cap, dl_no_cap, addr_do, addr_si, addr_gu, addr_dong, addr_li, subst_names, dl_names, subst_remaining_kw, mtr_remaining_kw, dl_remaining_kw, max_remaining_kw"
-    );
+  const PAGE = 1000;
+  const rows: MapSummaryRow[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("kepco_map_summary")
+      .select(
+        "geocode_address, lat, lng, total, subst_no_cap, mtr_no_cap, dl_no_cap, addr_do, addr_si, addr_gu, addr_dong, addr_li, subst_names, dl_names, subst_remaining_kw, mtr_remaining_kw, dl_remaining_kw, max_remaining_kw"
+      )
+      .range(from, from + PAGE - 1);
 
-  if (error) {
-    console.error("[map-summary] 조회 실패", error);
-    return NextResponse.json(
-      { ok: false, error: error.message },
-      { status: 500 }
-    );
+    if (error) {
+      console.error("[map-summary] 조회 실패", error);
+      return NextResponse.json(
+        { ok: false, error: error.message },
+        { status: 500 }
+      );
+    }
+    const chunk = (data ?? []) as MapSummaryRow[];
+    rows.push(...chunk);
+    if (chunk.length < PAGE) break; // 마지막 페이지
   }
-
-  const rows = (data ?? []) as MapSummaryRow[];
 
   const response: MapSummaryResponse = {
     rows,
