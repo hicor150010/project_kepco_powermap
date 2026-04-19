@@ -115,10 +115,12 @@ export default function MapClient({ isAdmin, email }: Props) {
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      // 1단계: MV 갱신
+      // 1단계: MV 갱신 — 함수 측 60초 cooldown / advisory lock 으로
+      // 연타·동시 클릭은 skipped:true 로 즉시 반환된다.
       setRefreshPhase("데이터 집계 중...");
       const mvRes = await fetch("/api/refresh-mv", { method: "POST" });
       if (!mvRes.ok) throw new Error("MV 갱신 실패");
+      const mvJson = (await mvRes.json()) as { skipped?: boolean };
 
       // 2단계: 데이터 로드
       setRefreshPhase("지도 데이터 불러오는 중...");
@@ -131,7 +133,11 @@ export default function MapClient({ isAdmin, email }: Props) {
       detailCache.clear();
       setSelectedAddr(null);
       setSelectedRows(null);
-      setSimpleToast("최신 데이터로 갱신되었습니다.");
+      setSimpleToast(
+        mvJson.skipped
+          ? "최근에 갱신된 데이터를 불러왔습니다."
+          : "최신 데이터로 갱신되었습니다."
+      );
     } catch {
       setSimpleToast("새로고침에 실패했습니다.");
     } finally {
