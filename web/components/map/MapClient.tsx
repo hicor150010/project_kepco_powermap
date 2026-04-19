@@ -13,6 +13,7 @@ import type { SearchPick } from "./SearchResultList";
 import Toast from "./Toast";
 import TopRemainingList from "./TopRemainingList";
 import GpsTracker from "./GpsTracker";
+import RoadviewPanel from "./RoadviewPanel";
 // ⚠️ 특허 출원 중 워터마크 — 특허 등록 후 제거 예정
 //    환경변수 NEXT_PUBLIC_PATENT_PENDING=false 로 즉시 끌 수 있음
 //    자세한 제거 방법은 PatentWatermark.tsx 상단 주석 참고
@@ -95,14 +96,47 @@ export default function MapClient({ isAdmin, email }: Props) {
   const [gpsActive, setGpsActive] = useState(false);
   const [gpsAutoFollow, setGpsAutoFollow] = useState(true);
 
-  // 사이드바 토글 시 카카오맵 relayout (컨테이너 크기 변경 반영)
+  // 로드뷰 — active=ON 이면 지도에 파란선 표시, position 이 있으면 패널 열림.
+  // pan: 시야 방향(도, 0=북, 90=동) — 지도 위 부채꼴 방향용.
+  const [roadviewActive, setRoadviewActive] = useState(false);
+  const [roadviewPosition, setRoadviewPosition] = useState<{
+    lat: number;
+    lng: number;
+    pan?: number;
+  } | null>(null);
+  const handleToggleRoadview = useCallback(() => {
+    setRoadviewActive((prev) => {
+      const next = !prev;
+      if (next) {
+        // 다른 도구와 충돌 방지 — 카카오맵 본체와 동일 정책
+        setMeasureActive(false);
+        setTopListOpen(false);
+        setSimpleToast(
+          "로드뷰 — 파란선 위 지점을 클릭하면 그 위치의 거리뷰가 열립니다"
+        );
+      } else {
+        setRoadviewPosition(null);
+      }
+      return next;
+    });
+  }, []);
+  const handleRoadviewClick = useCallback((lat: number, lng: number) => {
+    setRoadviewPosition({ lat, lng });
+  }, []);
+  const handleRoadviewClose = useCallback(() => {
+    setRoadviewPosition(null);
+    setRoadviewActive(false);
+  }, []);
+
+  // 사이드바 토글 / 로드뷰 분할 시 카카오맵 relayout (컨테이너 크기 변경 반영)
+  const desktopRoadviewSplit = !!roadviewPosition && !isMobile;
   useEffect(() => {
     if (!mapInstance) return;
     const timer = setTimeout(() => {
       mapInstance.relayout();
     }, 350);
     return () => clearTimeout(timer);
-  }, [sidebarOpen, mapInstance]);
+  }, [sidebarOpen, mapInstance, desktopRoadviewSplit]);
 
   // 지번 핀 마커 — 같은 마을 내 클릭한 지번들 누적 표시
   const [jibunPinCount, setJibunPinCount] = useState(0);
@@ -347,8 +381,10 @@ export default function MapClient({ isAdmin, email }: Props) {
     (lat: number, lng: number, level: number = DETAIL_ZOOM_LEVEL) => {
       if (!mapInstance) return;
       const pos = new window.kakao.maps.LatLng(lat, lng);
+      // 이미 충분히 확대된 상태(현재 레벨 ≤ 목표)면 줌 그대로 두고 이동만.
+      // 카카오: 숫자 작을수록 확대 — 사용자가 더 가까이 본 걸 강제로 멀어지게 하지 않음.
       const currentLevel = mapInstance.getLevel();
-      if (currentLevel !== level) {
+      if (currentLevel > level) {
         mapInstance.setLevel(level);
         requestAnimationFrame(() => mapInstance.panTo(pos));
       } else {
@@ -741,7 +777,12 @@ export default function MapClient({ isAdmin, email }: Props) {
         panelResetKey={panelResetKey}
       />
 
-      <main className="flex-1 relative min-w-0">
+      <main className="flex-1 flex min-w-0">
+        <div
+          className={`relative min-w-0 ${
+            desktopRoadviewSplit ? "w-1/2" : "w-full"
+          }`}
+        >
         {loading && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70">
             <div className="bg-white rounded-lg shadow-lg px-6 py-4 border border-gray-200">
@@ -794,6 +835,9 @@ export default function MapClient({ isAdmin, email }: Props) {
             setCenterMessage(rendering ? "지도 마커 준비 중..." : null)
           }
           visibleAddrs={mapFilteredAddrs}
+          roadviewActive={roadviewActive}
+          roadviewPosition={roadviewPosition}
+          onRoadviewClick={handleRoadviewClick}
         />
 
         {/* 지도 상태 바 — 항상 표시 (모바일: 하단, 데스크톱: 상단) */}
@@ -867,6 +911,8 @@ export default function MapClient({ isAdmin, email }: Props) {
           zoomLevel={zoomLevel}
           mapType={mapType}
           onMapTypeChange={setMapType}
+          roadviewActive={roadviewActive}
+          onToggleRoadview={handleToggleRoadview}
           onZoomIn={() => mapInstance?.setLevel(mapInstance.getLevel() - 1)}
           onZoomOut={() => mapInstance?.setLevel(mapInstance.getLevel() + 1)}
           onShare={handleShare}
@@ -990,7 +1036,31 @@ export default function MapClient({ isAdmin, email }: Props) {
             </div>
           </div>
         )}
+        </div>
+
+        {/* 로드뷰 패널 — 데스크톱 분할 (우측 절반) */}
+        {desktopRoadviewSplit && roadviewPosition && (
+          <div className="w-1/2 relative border-l border-gray-300">
+            <RoadviewPanel
+              position={roadviewPosition}
+              onClose={handleRoadviewClose}
+              onPositionChange={(lat, lng, pan) =>
+                setRoadviewPosition({ lat, lng, pan })
+              }
+            />
+          </div>
+        )}
       </main>
+
+      {/* 로드뷰 패널 — 모바일 전체화면 모달 */}
+      {isMobile && roadviewPosition && (
+        <RoadviewPanel
+          position={roadviewPosition}
+          onClose={handleRoadviewClose}
+          onPositionChange={(lat, lng) => setRoadviewPosition({ lat, lng })}
+          isMobile
+        />
+      )}
 
       {/* ⚠️ 특허 출원 중 워터마크 — 특허 등록 후 제거 (PatentWatermark.tsx 주석 참고) */}
       <PatentWatermark />

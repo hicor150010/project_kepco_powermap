@@ -37,6 +37,12 @@ body.measure-mode * {
   cursor: crosshair !important;
 }
 
+/* 로드뷰 모드 — 파란선 위 클릭 가능을 알리는 손가락 커서 */
+body.roadview-mode,
+body.roadview-mode * {
+  cursor: pointer !important;
+}
+
 /* 사이드바 토글 버튼 — 은은한 펄스 (닫혀 있을 때) */
 .animate-pulse-subtle {
   animation: pulseSubtle 2.5s ease-in-out infinite;

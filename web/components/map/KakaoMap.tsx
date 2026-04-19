@@ -46,6 +46,18 @@ interface Props {
   visibleAddrs?: Set<string> | null;
   /** 마커 재구성 진행 상태 콜백 — true 가 200ms 이상 지속되면 상위에서 로딩 인디케이터 표시 */
   onRenderingChange?: (rendering: boolean) => void;
+  /**
+   * 로드뷰 모드 — true 면 지도 위에 파란선 오버레이(RoadviewOverlay) 표시 +
+   * 지도 클릭 시 onRoadviewClick(latlng) 호출
+   */
+  roadviewActive?: boolean;
+  /**
+   * 로드뷰 패널이 보고있는 좌표 + 시야 방향 — 지도 위 위치 마커 동기화용.
+   * pan: 도 단위 (0=북, 90=동, 180=남, 270=서). 없으면 부채꼴 없이 점만 표시.
+   */
+  roadviewPosition?: { lat: number; lng: number; pan?: number } | null;
+  /** 로드뷰 모드에서 지도/파란선 클릭 시 호출 */
+  onRoadviewClick?: (lat: number, lng: number) => void;
 }
 
 /**
@@ -264,11 +276,20 @@ export default function KakaoMap({
   compareRows = [],
   visibleAddrs = null,
   onRenderingChange,
+  roadviewActive = false,
+  roadviewPosition = null,
+  onRoadviewClick,
 }: Props) {
   // 측정 모드 여부를 클릭 핸들러에서 참조하기 위한 ref
   // (state로 전달하면 마커 재생성이 발생하므로 ref로 우회)
   const measureModeRef = useRef(measureMode);
   measureModeRef.current = measureMode;
+  // 로드뷰 클릭 콜백 — 클로저 stale 방지
+  const onRoadviewClickRef = useRef(onRoadviewClick);
+  onRoadviewClickRef.current = onRoadviewClick;
+  // 로드뷰 모드 ref — 이벤트 핸들러에서 참조 (effect 재생성 없이)
+  const roadviewActiveRef = useRef(roadviewActive);
+  roadviewActiveRef.current = roadviewActive;
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const clustererRef = useRef<any>(null);
@@ -680,6 +701,114 @@ export default function KakaoMap({
       compareOverlaysRef.current.push(overlay);
     });
   }, [loaded, compareRows]);
+
+  // ─────────────────────────────────────────────
+  // 로드뷰 모드 — 파란선 오버레이 + 지도 클릭 핸들러
+  // ─────────────────────────────────────────────
+  const roadviewOverlayRef = useRef<any>(null);
+  const roadviewClickListenerRef = useRef<any>(null);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!loaded || !map) return;
+
+    if (roadviewActive) {
+      if (!roadviewOverlayRef.current) {
+        roadviewOverlayRef.current = new window.kakao.maps.RoadviewOverlay();
+      }
+      roadviewOverlayRef.current.setMap(map);
+      // 로드뷰 모드 진입 시 적정 줌으로 자동 조정 (너무 멀면 파란선 보이지 않음)
+      if (map.getLevel() > 5) map.setLevel(4);
+
+      // 지도 클릭 → 로드뷰 위치 변경
+      const onClick = (mouseEvent: any) => {
+        if (!roadviewActiveRef.current) return;
+        if (measureModeRef.current) return; // 측정 모드 중복 방지
+        const latlng = mouseEvent.latLng;
+        onRoadviewClickRef.current?.(latlng.getLat(), latlng.getLng());
+      };
+      window.kakao.maps.event.addListener(map, "click", onClick);
+      roadviewClickListenerRef.current = onClick;
+      // 모드 시작 시 커서를 손가락 모양으로 — 클릭 가능 표시
+      document.body.classList.add("roadview-mode");
+    } else {
+      if (roadviewOverlayRef.current) {
+        roadviewOverlayRef.current.setMap(null);
+      }
+      if (roadviewClickListenerRef.current) {
+        window.kakao.maps.event.removeListener(
+          map,
+          "click",
+          roadviewClickListenerRef.current,
+        );
+        roadviewClickListenerRef.current = null;
+      }
+      document.body.classList.remove("roadview-mode");
+    }
+
+    return () => {
+      if (roadviewClickListenerRef.current) {
+        window.kakao.maps.event.removeListener(
+          map,
+          "click",
+          roadviewClickListenerRef.current,
+        );
+        roadviewClickListenerRef.current = null;
+      }
+      document.body.classList.remove("roadview-mode");
+    };
+  }, [loaded, roadviewActive]);
+
+  // 로드뷰 위치 마커 — 현재 로드뷰가 보고있는 지점 표시
+  const roadviewPositionMarkerRef = useRef<any>(null);
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!loaded || !map) return;
+
+    if (!roadviewActive || !roadviewPosition) {
+      if (roadviewPositionMarkerRef.current) {
+        roadviewPositionMarkerRef.current.setMap(null);
+      }
+      return;
+    }
+
+    // 시야 부채꼴 — pan 이 있을 때만 그림 (60도 시야각, 위쪽이 북쪽)
+    const pan = roadviewPosition.pan;
+    const showCone = typeof pan === "number";
+    const conePath = showCone
+      ? `<path d="M 0 0 L -16 -28 A 32 32 0 0 1 16 -28 Z"
+              fill="rgba(59,130,246,0.45)"
+              stroke="rgba(59,130,246,0.85)" stroke-width="1.2"
+              stroke-linejoin="round"/>`
+      : "";
+    const html = `
+      <div style="position:relative;width:0;height:0;pointer-events:none;">
+        <svg width="60" height="60" viewBox="-30 -30 60 60"
+             style="position:absolute;left:-30px;top:-30px;overflow:visible;
+                    transform:rotate(${showCone ? pan : 0}deg);transform-origin:center;
+                    transition:transform 80ms linear;">
+          ${conePath}
+          <circle cx="0" cy="0" r="9" fill="#3b82f6" stroke="white" stroke-width="3"/>
+        </svg>
+      </div>`;
+    const pos = new window.kakao.maps.LatLng(
+      roadviewPosition.lat,
+      roadviewPosition.lng,
+    );
+    if (!roadviewPositionMarkerRef.current) {
+      roadviewPositionMarkerRef.current = new window.kakao.maps.CustomOverlay({
+        position: pos,
+        content: html,
+        yAnchor: 0.5,
+        xAnchor: 0.5,
+        zIndex: 200,
+      });
+    } else {
+      roadviewPositionMarkerRef.current.setPosition(pos);
+      roadviewPositionMarkerRef.current.setContent(html);
+    }
+    roadviewPositionMarkerRef.current.setMap(map);
+  }, [loaded, roadviewActive, roadviewPosition]);
 
   return <div ref={mapRef} className="w-full h-full" />;
 }

@@ -25,6 +25,9 @@ interface Props {
   onGpsRecenter: () => void;
   mapType: MapType;
   onMapTypeChange: (type: MapType) => void;
+  /** 로드뷰 모드 활성 여부 — true면 지도 위 파란선 + 클릭 시 로드뷰 패널 */
+  roadviewActive: boolean;
+  onToggleRoadview: () => void;
   /** 줌 레벨 (1~14, 숫자 작을수록 확대) */
   zoomLevel?: number;
   /** 줌 인/아웃 콜백 */
@@ -46,37 +49,53 @@ export default function MapToolbar({
   zoomLevel,
   mapType,
   onMapTypeChange,
+  roadviewActive,
+  onToggleRoadview,
   onZoomIn,
   onZoomOut,
   onShare,
 }: Props) {
   return (
     <div className="absolute top-3 right-3 z-10 flex flex-col items-end gap-2">
-      {/* ── 1. 지도/스카이뷰 탭 ── */}
-      <div className="flex rounded overflow-hidden shadow border border-gray-300 text-xs font-medium leading-none">
+      {/* ── 1. 지도/스카이뷰 탭 + 로드뷰 토글 ── */}
+      <div className="flex items-center gap-1.5">
+        <div className="flex rounded overflow-hidden shadow border border-gray-300 text-xs font-medium leading-none">
+          <button
+            type="button"
+            onClick={() => onMapTypeChange("roadmap")}
+            className={`px-3 py-[7px] transition-colors ${
+              mapType === "roadmap"
+                ? "bg-white text-gray-900 font-bold"
+                : "bg-gray-100 text-gray-500 hover:bg-gray-50"
+            }`}
+          >
+            지도
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              onMapTypeChange(mapType === "roadmap" ? "hybrid" : "roadmap")
+            }
+            className={`px-3 py-[7px] border-l border-gray-300 transition-colors ${
+              mapType !== "roadmap"
+                ? "bg-white text-gray-900 font-bold"
+                : "bg-gray-100 text-gray-500 hover:bg-gray-50"
+            }`}
+          >
+            스카이뷰
+          </button>
+        </div>
         <button
           type="button"
-          onClick={() => onMapTypeChange("roadmap")}
-          className={`px-3 py-[7px] transition-colors ${
-            mapType === "roadmap"
-              ? "bg-white text-gray-900 font-bold"
-              : "bg-gray-100 text-gray-500 hover:bg-gray-50"
+          onClick={onToggleRoadview}
+          title={roadviewActive ? "로드뷰 닫기" : "로드뷰"}
+          className={`px-2.5 py-[7px] rounded shadow border text-xs font-bold leading-none transition-colors ${
+            roadviewActive
+              ? "bg-blue-500 text-white border-blue-600 hover:bg-blue-600"
+              : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100"
           }`}
         >
-          지도
-        </button>
-        <button
-          type="button"
-          onClick={() =>
-            onMapTypeChange(mapType === "roadmap" ? "hybrid" : "roadmap")
-          }
-          className={`px-3 py-[7px] border-l border-gray-300 transition-colors ${
-            mapType !== "roadmap"
-              ? "bg-white text-gray-900 font-bold"
-              : "bg-gray-100 text-gray-500 hover:bg-gray-50"
-          }`}
-        >
-          스카이뷰
+          로드뷰
         </button>
       </div>
 
