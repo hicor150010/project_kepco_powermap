@@ -87,30 +87,48 @@ export default function SearchResultList({ mode, ri, ji, onPick, onJibunPin, sel
     }
     return (
       <ul className="divide-y divide-gray-100">
-        {ri.map((r, i) => (
-          <li key={`${r.addr_li ?? ""}-${i}`}>
-            <button
-              type="button"
-              onClick={() => onPick({ kind: "ri", row: r })}
-              className={`w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 transition-colors ${
-                selectedAddr && r.geocode_address === selectedAddr
-                  ? "bg-blue-50 border-l-2 border-blue-500"
-                  : "hover:bg-blue-50 active:bg-blue-100"
-              }`}
-            >
-              <div className="min-w-0">
-                <div className="text-xs font-medium text-gray-900 truncate">
-                  <AddrSpan text={joinAddress(r)} />
+        {ri.map((r, i) => {
+          const noCoord = r.lat == null || r.lng == null;
+          return (
+            <li key={`${r.addr_li ?? ""}-${i}`}>
+              <button
+                type="button"
+                onClick={() => onPick({ kind: "ri", row: r })}
+                title={
+                  noCoord
+                    ? "KEPCO 원본 주소 이슈로 지도 위치는 확인되지 않습니다. 용량 정보는 정상 표시됩니다."
+                    : undefined
+                }
+                className={`w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 transition-colors ${
+                  selectedAddr && r.geocode_address === selectedAddr
+                    ? "bg-blue-50 border-l-2 border-blue-500"
+                    : "hover:bg-blue-50 active:bg-blue-100"
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-gray-900 truncate flex items-center gap-1.5">
+                    {noCoord && (
+                      <span
+                        className="flex-shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[9px] font-semibold border border-amber-200"
+                        aria-label="지도 표시 불가"
+                      >
+                        ⚠ 지도 표시 불가
+                      </span>
+                    )}
+                    <span className="truncate"><AddrSpan text={joinAddress(r)} /></span>
+                  </div>
+                  <div className="text-[10px] text-gray-500 mt-0.5">
+                    총 <span className="font-semibold text-blue-600">{r.cnt.toLocaleString()}건</span>
+                    {noCoord && (
+                      <span className="text-amber-600 ml-1">· 주소 체계 문제로 지도에 점을 찍을 수 없어요</span>
+                    )}
+                  </div>
                 </div>
-                <div className="text-[10px] text-gray-500 mt-0.5">
-                  총 <span className="font-semibold text-blue-600">{r.cnt.toLocaleString()}건</span>
-                  {r.lat == null && <span className="text-orange-400 ml-1">(좌표 미확인)</span>}
-                </div>
-              </div>
-              <div className="text-blue-500 text-xs flex-shrink-0">→</div>
-            </button>
-          </li>
-        ))}
+                <div className="text-blue-500 text-xs flex-shrink-0">→</div>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     );
   }

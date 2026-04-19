@@ -163,7 +163,7 @@ export default function MapClient({ isAdmin, email }: Props) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetch("/api/map-summary")
+    fetch("/api/map-summary", { cache: "no-store" })
       .then(async (res) => {
         if (!res.ok) {
           // 사용자 친화적 메시지 — 기술 용어(HTTP 코드) 대신 행동 안내
@@ -386,8 +386,12 @@ export default function MapClient({ isAdmin, email }: Props) {
         clearMapFilter();
       }
 
-      // 지도 이동
-      if (lat != null && lng != null) moveMapTo(lat, lng);
+      // 지도 이동 — 좌표가 없는 주소(KEPCO 원본 주소 이슈)는 이동 생략 + 사용자 안내
+      if (lat != null && lng != null) {
+        moveMapTo(lat, lng);
+      } else if (pick.kind === "ri") {
+        setSimpleToast("이 주소는 지도 위치를 찾을 수 없어요. 용량 정보는 아래에서 확인할 수 있습니다.");
+      }
 
       // 변화추적 지번 클릭 → 상세 모달 자동 열기 + 지번 필터
       if (pick.kind === "ji_compare") {

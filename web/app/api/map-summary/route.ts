@@ -43,9 +43,11 @@ export async function GET() {
     generatedAt: new Date().toISOString(),
   };
 
+  // CDN/브라우저 캐시 금지 — 수집/지오코딩 직후 즉시 반영되어야 하고,
+  // cached 응답으로 인해 "마커 0" 증상이 발생한 사례 있음 (docs/개발계획.md §4-1 참고)
   return NextResponse.json(response, {
     headers: {
-      "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=60",
+      "Cache-Control": "no-store",
     },
   });
 }
