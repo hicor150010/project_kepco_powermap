@@ -10,21 +10,21 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: {
-    default: "PowerMap — 배전선로 여유용량 지도",
-    template: "%s | PowerMap",
+    default: "SUNLAP · Power Grid Map",
+    template: "%s | SUNLAP",
   },
   description: "한국전력 배전선로 여유용량을 지도에서 한눈에 확인하세요.",
-  applicationName: "PowerMap",
+  applicationName: "SUNLAP",
   openGraph: {
-    title: "PowerMap — 배전선로 여유용량 지도",
+    title: "SUNLAP · Power Grid Map",
     description: "한국전력 배전선로 여유용량을 지도에서 한눈에 확인하세요.",
     type: "website",
     locale: "ko_KR",
-    siteName: "PowerMap",
+    siteName: "SUNLAP",
   },
   twitter: {
     card: "summary",
-    title: "PowerMap — 배전선로 여유용량 지도",
+    title: "SUNLAP · Power Grid Map",
     description: "한국전력 배전선로 여유용량을 지도에서 한눈에 확인하세요.",
   },
 };

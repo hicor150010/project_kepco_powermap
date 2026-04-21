@@ -15,7 +15,7 @@ export default function LoginPage() {
               <path d="M55 5 L30 50 L42 50 L38 95 L72 42 L58 42 Z" fill="white" opacity="0.95" />
             </svg>
           </div>
-          <h1 className="text-xl font-bold text-gray-900">PowerMap</h1>
+          <h1 className="text-xl font-bold text-gray-900">SUNLAP</h1>
           <p className="text-xs text-gray-500 mt-1">배전선로 여유용량 지도</p>
         </div>
         <Suspense fallback={<div className="h-48" />}>
@@ -25,7 +25,7 @@ export default function LoginPage() {
           계정은 관리자에게 발급받으세요. 회원가입은 제공되지 않습니다.
         </p>
         <p className="text-[10px] text-gray-300 text-center mt-8">
-          &copy; {new Date().getFullYear()} PowerMap. All rights reserved.
+          &copy; {new Date().getFullYear()} SUNLAP. All rights reserved.
         </p>
       </div>
     </div>

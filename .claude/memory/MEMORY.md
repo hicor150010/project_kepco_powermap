@@ -3,6 +3,7 @@
 - [지오코딩 동+리 fallback](geocode_fallback_rule.md) — "동+리" 없으면 리 빼고 동만으로 재시도
 - [모바일 개발 4대 원칙](feedback_mobile_principles.md) — 웹 영향 없이, 덕지덕지 금지, 크로스브라우저, 컴포넌트 재활용
 - [코드 수정 원칙](feedback_code_quality.md) — 실제 렌더 파일 먼저 특정, 중복 로직 금지, 동작 확인 필수
+- [푸시 원칙](feedback_push_after_perf_test.md) — 커밋은 가능, 푸시는 성능 테스트 통과 후에만. 기본값: 지시 없으면 푸시 묻기
 - [좌표 테이블 역할](geocode_table_roles.md) — kepco_addr=마을좌표(마커), geocode_cache=지번좌표(핀/태양광)
 - [SUNLAB 견적 — 진행 중](project_solar_proposal.md) ⭐ — 2026-04-21 수락. 로드뷰·수집기+2개 완료. 1차 1단계(지적편집도) 착수. 가격표 docs/견적_1차2차.md
 - [3차 개발 — 태양광설치여부+이격거리](project_phase3_proposal.md) ⭐ — 전국태양광허가 API + 법제처 조례 API + 도로현황 SHP 연계 가능 검증 완료. 400~550만/10~12주. 의뢰자 확답 대기 (2026-04-17)
@@ -13,4 +14,4 @@
 - [특허 출원 중 워터마크](project_patent_watermark.md) — 지도 화면 사선 워터마크. 특허 등록 완료 시 제거 예정 (NEXT_PUBLIC_PATENT_PENDING=false 로 토글)
 - 서니로직 벤치마크 계정 → `../../docs/SECRETS.local.md` 에 보관 (의뢰자 본인 계정, 자동견적 UX 참고용)
 - [GitHub 계정 이전 이력](reference_github_migration.md) — 2026-04-19 `hicor1` → `hicor150010` 이전 완료. 구 저장소/PAT 모두 삭제됨
-- [도메인 sublab.kr](project_domain_sublab.md) — 가비아 구매 완료. 추후 Vercel DNS 연결 작업 예정
+- [도메인 sunlap.kr](project_domain_sunlap.md) — 가비아 구매. Vercel 등록 완료, 가비아 DNS 입력 대기 (2026-04-21)

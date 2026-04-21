@@ -18,7 +18,7 @@ export default function NotFound() {
           지도로 돌아가기
         </Link>
       </div>
-      <p className="mt-12 text-xs text-gray-400">PowerMap</p>
+      <p className="mt-12 text-xs text-gray-400">SUNLAP</p>
     </div>
   );
 }

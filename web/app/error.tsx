@@ -31,7 +31,7 @@ export default function ErrorPage({
           </a>
         </div>
       </div>
-      <p className="mt-12 text-xs text-gray-400">PowerMap</p>
+      <p className="mt-12 text-xs text-gray-400">SUNLAP</p>
     </div>
   );
 }
