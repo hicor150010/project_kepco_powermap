@@ -14,6 +14,8 @@ import Toast from "./Toast";
 import TopRemainingList from "./TopRemainingList";
 import GpsTracker from "./GpsTracker";
 import RoadviewPanel from "./RoadviewPanel";
+import ParcelInfoCard from "./ParcelInfoCard";
+import type { ParcelInfo } from "@/lib/vworld/parcel";
 // ⚠️ 특허 출원 중 워터마크 — 특허 등록 후 제거 예정
 //    환경변수 NEXT_PUBLIC_PATENT_PENDING=false 로 즉시 끌 수 있음
 //    자세한 제거 방법은 PatentWatermark.tsx 상단 주석 참고
@@ -126,6 +128,76 @@ export default function MapClient({ isAdmin, email }: Props) {
   const handleRoadviewClose = useCallback(() => {
     setRoadviewPosition(null);
     setRoadviewActive(false);
+  }, []);
+
+  // 지적편집도 오버레이 ON/OFF — 카카오 USE_DISTRICT.
+  // 줌 레벨 5 이하에서만 시각적으로 보이므로 너무 멀면 확대 안내 토스트.
+  const [cadastralActive, setCadastralActive] = useState(false);
+  const handleToggleCadastral = useCallback(() => {
+    setCadastralActive((prev) => {
+      const next = !prev;
+      if (next) {
+        const level = mapInstance?.getLevel?.();
+        if (level != null && level > 5) {
+          setSimpleToast("지적편집도는 지도를 더 확대해야 잘 보입니다");
+        } else {
+          setSimpleToast("지적편집도 — 필지 경계가 지도에 표시됩니다");
+        }
+      } else {
+        // 지적편집도 끄면 선택된 필지도 같이 정리
+        setSelectedParcel(null);
+        setParcelCapa([]);
+        setParcelMatchMode(null);
+      }
+      return next;
+    });
+  }, [mapInstance]);
+
+  // 필지 클릭 → VWorld + KEPCO 조회 → 카드 + 하이라이트
+  const [selectedParcel, setSelectedParcel] = useState<ParcelInfo | null>(null);
+  const [parcelCapa, setParcelCapa] = useState<KepcoDataRow[]>([]);
+  const [parcelMatchMode, setParcelMatchMode] = useState<
+    "exact" | "li_fallback" | null
+  >(null);
+  const [parcelLoading, setParcelLoading] = useState(false);
+  const parcelReqSeqRef = useRef(0);
+
+  const handleParcelClick = useCallback(async (lat: number, lng: number) => {
+    // 이전 요청 무효화용 seq
+    const seq = ++parcelReqSeqRef.current;
+    setParcelLoading(true);
+    setSelectedParcel(null); // 카드는 즉시 로딩 상태로 전환
+    try {
+      const res = await fetch(
+        `/api/parcel?lat=${lat}&lng=${lng}`,
+      );
+      if (seq !== parcelReqSeqRef.current) return; // 더 최신 클릭이 있음
+      const data = await res.json();
+      if (!data.ok) {
+        setSimpleToast(data.error || "필지 조회 실패");
+        return;
+      }
+      setSelectedParcel(data.parcel ?? null);
+      setParcelCapa(data.capa ?? []);
+      setParcelMatchMode(data.matchMode ?? null);
+      if (!data.parcel) {
+        setSimpleToast("이 위치에 필지가 없습니다 (바다/산 등)");
+      }
+    } catch {
+      if (seq === parcelReqSeqRef.current) {
+        setSimpleToast("필지 조회 중 오류가 발생했습니다.");
+      }
+    } finally {
+      if (seq === parcelReqSeqRef.current) setParcelLoading(false);
+    }
+  }, []);
+
+  const handleParcelClose = useCallback(() => {
+    parcelReqSeqRef.current++; // 진행 중 요청 무효화
+    setSelectedParcel(null);
+    setParcelCapa([]);
+    setParcelMatchMode(null);
+    setParcelLoading(false);
   }, []);
 
   // 사이드바 토글 / 로드뷰 분할 시 카카오맵 relayout (컨테이너 크기 변경 반영)
@@ -838,6 +910,9 @@ export default function MapClient({ isAdmin, email }: Props) {
           roadviewActive={roadviewActive}
           roadviewPosition={roadviewPosition}
           onRoadviewClick={handleRoadviewClick}
+          cadastralActive={cadastralActive}
+          onParcelClick={handleParcelClick}
+          highlightedParcel={selectedParcel?.polygon ?? null}
         />
 
         {/* 지도 상태 바 — 항상 표시 (모바일: 하단, 데스크톱: 상단) */}
@@ -913,6 +988,8 @@ export default function MapClient({ isAdmin, email }: Props) {
           onMapTypeChange={setMapType}
           roadviewActive={roadviewActive}
           onToggleRoadview={handleToggleRoadview}
+          cadastralActive={cadastralActive}
+          onToggleCadastral={handleToggleCadastral}
           onZoomIn={() => mapInstance?.setLevel(mapInstance.getLevel() - 1)}
           onZoomOut={() => mapInstance?.setLevel(mapInstance.getLevel() + 1)}
           onShare={handleShare}
@@ -977,7 +1054,18 @@ export default function MapClient({ isAdmin, email }: Props) {
         )}
 
         {/* 마커 클릭 시 카드 */}
-        {selectedAddr && (
+        {/* 필지 정보 카드 (지적편집도 모드에서 지도 클릭 시) */}
+        {(parcelLoading || selectedParcel) && (
+          <ParcelInfoCard
+            parcel={selectedParcel}
+            capa={parcelCapa}
+            matchMode={parcelMatchMode}
+            loading={parcelLoading}
+            onClose={handleParcelClose}
+          />
+        )}
+
+        {selectedAddr && !selectedParcel && !parcelLoading && (
           <LocationSummaryCard
             key={selectedAddr}
             rows={selectedRows}

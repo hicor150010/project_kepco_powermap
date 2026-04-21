@@ -58,6 +58,22 @@ interface Props {
   roadviewPosition?: { lat: number; lng: number; pan?: number } | null;
   /** 로드뷰 모드에서 지도/파란선 클릭 시 호출 */
   onRoadviewClick?: (lat: number, lng: number) => void;
+  /**
+   * 지적편집도 오버레이 ON/OFF (카카오 `MapTypeId.USE_DISTRICT`).
+   * 전국 필지 경계를 배경으로 표시. 줌 레벨 5 이하에서만 시각적으로 잘 보임.
+   */
+  cadastralActive?: boolean;
+  /**
+   * 지적편집도 ON 상태에서 지도 클릭 시 호출.
+   * 충돌 방지: 측정/로드뷰 모드 활성 시 자동 비활성.
+   */
+  onParcelClick?: (lat: number, lng: number) => void;
+  /**
+   * 지도에 하이라이트할 필지 폴리곤 좌표.
+   * [[[lng,lat], [lng,lat], ...], ...] 형태 (MultiPolygon 지원).
+   * null 이면 폴리곤 제거.
+   */
+  highlightedParcel?: number[][][] | null;
 }
 
 /**
@@ -279,7 +295,15 @@ export default function KakaoMap({
   roadviewActive = false,
   roadviewPosition = null,
   onRoadviewClick,
+  cadastralActive = false,
+  onParcelClick,
+  highlightedParcel = null,
 }: Props) {
+  // 지적편집도/필지 콜백 — 클로저 stale 방지
+  const onParcelClickRef = useRef(onParcelClick);
+  onParcelClickRef.current = onParcelClick;
+  const cadastralActiveRef = useRef(cadastralActive);
+  cadastralActiveRef.current = cadastralActive;
   // 측정 모드 여부를 클릭 핸들러에서 참조하기 위한 ref
   // (state로 전달하면 마커 재생성이 발생하므로 ref로 우회)
   const measureModeRef = useRef(measureMode);
@@ -809,6 +833,77 @@ export default function KakaoMap({
     }
     roadviewPositionMarkerRef.current.setMap(map);
   }, [loaded, roadviewActive, roadviewPosition]);
+
+  // ─────────────────────────────────────────────
+  // 지적편집도 오버레이 (카카오 MapTypeId.USE_DISTRICT)
+  // 전국 필지 경계를 배경 이미지 타일로 표시. 필지 개별 선택은 별도(VWorld) 필요.
+  // ─────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!loaded || !map) return;
+    const USE_DISTRICT = window.kakao.maps.MapTypeId.USE_DISTRICT;
+    if (cadastralActive) {
+      map.addOverlayMapTypeId(USE_DISTRICT);
+    } else {
+      map.removeOverlayMapTypeId(USE_DISTRICT);
+    }
+    return () => {
+      map.removeOverlayMapTypeId(USE_DISTRICT);
+    };
+  }, [loaded, cadastralActive]);
+
+  // ─────────────────────────────────────────────
+  // 지적편집도 활성 시 지도 클릭 → 필지 조회 (onParcelClick)
+  // 로드뷰/측정 모드 활성 시 자동 비활성 (기존 핸들러 우선).
+  // ─────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!loaded || !map) return;
+    const onClick = (mouseEvent: any) => {
+      if (!cadastralActiveRef.current) return;
+      if (measureModeRef.current) return;
+      if (roadviewActiveRef.current) return; // 로드뷰 핸들러 우선
+      const latlng = mouseEvent.latLng;
+      onParcelClickRef.current?.(latlng.getLat(), latlng.getLng());
+    };
+    window.kakao.maps.event.addListener(map, "click", onClick);
+    return () => {
+      window.kakao.maps.event.removeListener(map, "click", onClick);
+    };
+  }, [loaded]);
+
+  // ─────────────────────────────────────────────
+  // 선택된 필지 하이라이트 — 주황 테두리 + 반투명 채움
+  // ─────────────────────────────────────────────
+  const highlightPolygonsRef = useRef<any[]>([]);
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!loaded || !map) return;
+
+    // 기존 폴리곤 제거
+    highlightPolygonsRef.current.forEach((p) => p.setMap(null));
+    highlightPolygonsRef.current = [];
+
+    if (!highlightedParcel || highlightedParcel.length === 0) return;
+
+    // 각 ring 을 카카오 Polygon 으로 렌더
+    highlightedParcel.forEach((ring) => {
+      const path = ring.map(
+        ([lng, lat]) => new window.kakao.maps.LatLng(lat, lng),
+      );
+      const polygon = new window.kakao.maps.Polygon({
+        path,
+        strokeWeight: 3,
+        strokeColor: "#f97316", // orange-500
+        strokeOpacity: 0.95,
+        strokeStyle: "solid",
+        fillColor: "#f97316",
+        fillOpacity: 0.22,
+      });
+      polygon.setMap(map);
+      highlightPolygonsRef.current.push(polygon);
+    });
+  }, [loaded, highlightedParcel]);
 
   return <div ref={mapRef} className="w-full h-full" />;
 }

@@ -28,6 +28,9 @@ interface Props {
   /** 로드뷰 모드 활성 여부 — true면 지도 위 파란선 + 클릭 시 로드뷰 패널 */
   roadviewActive: boolean;
   onToggleRoadview: () => void;
+  /** 지적편집도 오버레이 ON/OFF — 필지 경계를 배경으로 표시 */
+  cadastralActive: boolean;
+  onToggleCadastral: () => void;
   /** 줌 레벨 (1~14, 숫자 작을수록 확대) */
   zoomLevel?: number;
   /** 줌 인/아웃 콜백 */
@@ -51,6 +54,8 @@ export default function MapToolbar({
   onMapTypeChange,
   roadviewActive,
   onToggleRoadview,
+  cadastralActive,
+  onToggleCadastral,
   onZoomIn,
   onZoomOut,
   onShare,
@@ -96,6 +101,18 @@ export default function MapToolbar({
           }`}
         >
           로드뷰
+        </button>
+        <button
+          type="button"
+          onClick={onToggleCadastral}
+          title={cadastralActive ? "지적편집도 끄기" : "지적편집도 — 필지 경계 표시"}
+          className={`px-2.5 py-[7px] rounded shadow border text-xs font-bold leading-none transition-colors ${
+            cadastralActive
+              ? "bg-amber-500 text-white border-amber-600 hover:bg-amber-600"
+              : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100"
+          }`}
+        >
+          지적도
         </button>
       </div>
 
