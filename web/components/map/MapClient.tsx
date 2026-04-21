@@ -14,8 +14,8 @@ import Toast from "./Toast";
 import TopRemainingList from "./TopRemainingList";
 import GpsTracker from "./GpsTracker";
 import RoadviewPanel from "./RoadviewPanel";
-import ParcelInfoCard from "./ParcelInfoCard";
-import type { ParcelInfo } from "@/lib/vworld/parcel";
+import ParcelInfoPanel from "./ParcelInfoPanel";
+import type { JibunInfo, ParcelGeometry } from "@/lib/vworld/parcel";
 // ⚠️ 특허 출원 중 워터마크 — 특허 등록 후 제거 예정
 //    환경변수 NEXT_PUBLIC_PATENT_PENDING=false 로 즉시 끌 수 있음
 //    자세한 제거 방법은 PatentWatermark.tsx 상단 주석 참고
@@ -145,7 +145,8 @@ export default function MapClient({ isAdmin, email }: Props) {
         }
       } else {
         // 지적편집도 끄면 선택된 필지도 같이 정리
-        setSelectedParcel(null);
+        setSelectedJibun(null);
+        setSelectedGeometry(null);
         setParcelCapa([]);
         setParcelMatchMode(null);
       }
@@ -153,8 +154,11 @@ export default function MapClient({ isAdmin, email }: Props) {
     });
   }, [mapInstance]);
 
-  // 필지 클릭 → VWorld + KEPCO 조회 → 카드 + 하이라이트
-  const [selectedParcel, setSelectedParcel] = useState<ParcelInfo | null>(null);
+  // 필지 클릭 → VWorld + KEPCO 조회 → 패널 + 하이라이트
+  const [selectedJibun, setSelectedJibun] = useState<JibunInfo | null>(null);
+  const [selectedGeometry, setSelectedGeometry] = useState<ParcelGeometry | null>(
+    null,
+  );
   const [parcelCapa, setParcelCapa] = useState<KepcoDataRow[]>([]);
   const [parcelMatchMode, setParcelMatchMode] = useState<
     "exact" | "li_fallback" | null
@@ -163,24 +167,23 @@ export default function MapClient({ isAdmin, email }: Props) {
   const parcelReqSeqRef = useRef(0);
 
   const handleParcelClick = useCallback(async (lat: number, lng: number) => {
-    // 이전 요청 무효화용 seq
     const seq = ++parcelReqSeqRef.current;
     setParcelLoading(true);
-    setSelectedParcel(null); // 카드는 즉시 로딩 상태로 전환
+    setSelectedJibun(null);
+    setSelectedGeometry(null);
     try {
-      const res = await fetch(
-        `/api/parcel?lat=${lat}&lng=${lng}`,
-      );
-      if (seq !== parcelReqSeqRef.current) return; // 더 최신 클릭이 있음
+      const res = await fetch(`/api/parcel?lat=${lat}&lng=${lng}`);
+      if (seq !== parcelReqSeqRef.current) return;
       const data = await res.json();
       if (!data.ok) {
         setSimpleToast(data.error || "필지 조회 실패");
         return;
       }
-      setSelectedParcel(data.parcel ?? null);
+      setSelectedJibun(data.jibun ?? null);
+      setSelectedGeometry(data.geometry ?? null);
       setParcelCapa(data.capa ?? []);
       setParcelMatchMode(data.matchMode ?? null);
-      if (!data.parcel) {
+      if (!data.jibun) {
         setSimpleToast("이 위치에 필지가 없습니다 (바다/산 등)");
       }
     } catch {
@@ -193,8 +196,9 @@ export default function MapClient({ isAdmin, email }: Props) {
   }, []);
 
   const handleParcelClose = useCallback(() => {
-    parcelReqSeqRef.current++; // 진행 중 요청 무효화
-    setSelectedParcel(null);
+    parcelReqSeqRef.current++;
+    setSelectedJibun(null);
+    setSelectedGeometry(null);
     setParcelCapa([]);
     setParcelMatchMode(null);
     setParcelLoading(false);
@@ -912,7 +916,7 @@ export default function MapClient({ isAdmin, email }: Props) {
           onRoadviewClick={handleRoadviewClick}
           cadastralActive={cadastralActive}
           onParcelClick={handleParcelClick}
-          highlightedParcel={selectedParcel?.polygon ?? null}
+          highlightedParcel={selectedGeometry?.polygon ?? null}
         />
 
         {/* 지도 상태 바 — 항상 표시 (모바일: 하단, 데스크톱: 상단) */}
@@ -1054,10 +1058,11 @@ export default function MapClient({ isAdmin, email }: Props) {
         )}
 
         {/* 마커 클릭 시 카드 */}
-        {/* 필지 정보 카드 (지적편집도 모드에서 지도 클릭 시) */}
-        {(parcelLoading || selectedParcel) && (
-          <ParcelInfoCard
-            parcel={selectedParcel}
+        {/* 필지 정보 패널 (지적편집도 모드에서 지도 클릭 시) */}
+        {(parcelLoading || selectedJibun) && (
+          <ParcelInfoPanel
+            jibun={selectedJibun}
+            geometry={selectedGeometry}
             capa={parcelCapa}
             matchMode={parcelMatchMode}
             loading={parcelLoading}
@@ -1065,7 +1070,7 @@ export default function MapClient({ isAdmin, email }: Props) {
           />
         )}
 
-        {selectedAddr && !selectedParcel && !parcelLoading && (
+        {selectedAddr && !selectedJibun && !parcelLoading && (
           <LocationSummaryCard
             key={selectedAddr}
             rows={selectedRows}
