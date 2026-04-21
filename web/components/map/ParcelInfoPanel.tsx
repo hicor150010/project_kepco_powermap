@@ -26,7 +26,8 @@ interface Props {
   jibun: JibunInfo | null;
   geometry: ParcelGeometry | null;
   capa: KepcoDataRow[];
-  matchMode: "exact" | "li_fallback" | null;
+  matchMode: "exact" | "nearest_jibun" | null;
+  nearestJibun: string | null;
   loading: boolean;
   onClose: () => void;
 }
@@ -45,6 +46,7 @@ export default function ParcelInfoPanel({
   geometry,
   capa,
   matchMode,
+  nearestJibun,
   loading,
   onClose,
 }: Props) {
@@ -113,7 +115,12 @@ export default function ParcelInfoPanel({
             <ParcelTab jibun={jibun} geometry={geometry} />
           )}
           {tab === "electric" && (
-            <ElectricTab capa={capa} matchMode={matchMode} />
+            <ElectricTab
+              capa={capa}
+              matchMode={matchMode}
+              nearestJibun={nearestJibun}
+              clickedJibun={jibun.jibun}
+            />
           )}
           {tab === "price" && <PriceTab geometry={geometry} />}
           {tab === "location" && <LocationTab />}
@@ -172,23 +179,28 @@ function ParcelTab({
 function ElectricTab({
   capa,
   matchMode,
+  nearestJibun,
+  clickedJibun,
 }: {
   capa: KepcoDataRow[];
-  matchMode: "exact" | "li_fallback" | null;
+  matchMode: "exact" | "nearest_jibun" | null;
+  nearestJibun: string | null;
+  clickedJibun: string;
 }) {
   if (capa.length === 0) {
     return (
       <div className="text-sm text-gray-500 py-6 text-center">
-        이 지역 여유선로 데이터가 없습니다.
+        이 지번/주변에 여유선로 데이터가 없습니다.
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
-      {matchMode === "li_fallback" && (
+      {matchMode === "nearest_jibun" && nearestJibun && (
         <div className="px-2 py-1.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-700 leading-snug">
-          이 지번 정확 매칭 데이터가 없어 <b>같은 리(里) 대표값</b>으로 표시합니다.
+          <b>{clickedJibun}</b> 데이터가 없어 같은 리에서 가장 가까운{" "}
+          <b>{nearestJibun}</b> 정보를 보여드립니다.
         </div>
       )}
       {capa.map((row, i) => (

@@ -149,6 +149,7 @@ export default function MapClient({ isAdmin, email }: Props) {
         setSelectedGeometry(null);
         setParcelCapa([]);
         setParcelMatchMode(null);
+        setParcelNearestJibun(null);
       }
       return next;
     });
@@ -161,8 +162,11 @@ export default function MapClient({ isAdmin, email }: Props) {
   );
   const [parcelCapa, setParcelCapa] = useState<KepcoDataRow[]>([]);
   const [parcelMatchMode, setParcelMatchMode] = useState<
-    "exact" | "li_fallback" | null
+    "exact" | "nearest_jibun" | null
   >(null);
+  const [parcelNearestJibun, setParcelNearestJibun] = useState<string | null>(
+    null,
+  );
   const [parcelLoading, setParcelLoading] = useState(false);
   const parcelReqSeqRef = useRef(0);
 
@@ -183,6 +187,7 @@ export default function MapClient({ isAdmin, email }: Props) {
       setSelectedGeometry(data.geometry ?? null);
       setParcelCapa(data.capa ?? []);
       setParcelMatchMode(data.matchMode ?? null);
+      setParcelNearestJibun(data.nearestJibun ?? null);
       if (!data.jibun) {
         setSimpleToast("이 위치에 필지가 없습니다 (바다/산 등)");
       }
@@ -201,6 +206,7 @@ export default function MapClient({ isAdmin, email }: Props) {
     setSelectedGeometry(null);
     setParcelCapa([]);
     setParcelMatchMode(null);
+    setParcelNearestJibun(null);
     setParcelLoading(false);
   }, []);
 
@@ -1065,6 +1071,7 @@ export default function MapClient({ isAdmin, email }: Props) {
             geometry={selectedGeometry}
             capa={parcelCapa}
             matchMode={parcelMatchMode}
+            nearestJibun={parcelNearestJibun}
             loading={parcelLoading}
             onClose={handleParcelClose}
           />

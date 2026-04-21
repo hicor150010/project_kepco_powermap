@@ -18,7 +18,8 @@ import type { JibunInfo } from "@/lib/vworld/parcel";
 import type { KepcoDataRow } from "@/lib/types";
 
 interface CapaRow extends KepcoDataRow {
-  match_mode?: "exact" | "li_fallback";
+  match_mode?: "exact" | "nearest_jibun";
+  nearest_jibun?: string | null;
 }
 
 export async function GET(request: NextRequest) {
@@ -69,6 +70,7 @@ export async function GET(request: NextRequest) {
       geometry: result.geometry,
       capa: capa.rows,
       matchMode: capa.matchMode,
+      nearestJibun: capa.nearestJibun,
       warning: capa.warning,
     },
     {
@@ -86,7 +88,8 @@ export async function GET(request: NextRequest) {
  */
 async function fetchKepcoCapa(jibun: JibunInfo): Promise<{
   rows: CapaRow[];
-  matchMode: "exact" | "li_fallback" | null;
+  matchMode: "exact" | "nearest_jibun" | null;
+  nearestJibun: string | null;
   warning?: string;
 }> {
   const supabase = createAdminClient();
@@ -103,9 +106,14 @@ async function fetchKepcoCapa(jibun: JibunInfo): Promise<{
     return {
       rows: [],
       matchMode: null,
+      nearestJibun: null,
       warning: "KEPCO 여유용량 조회에 실패했습니다.",
     };
   }
   const rows = (data ?? []) as CapaRow[];
-  return { rows, matchMode: rows[0]?.match_mode ?? null };
+  return {
+    rows,
+    matchMode: rows[0]?.match_mode ?? null,
+    nearestJibun: rows[0]?.nearest_jibun ?? null,
+  };
 }
