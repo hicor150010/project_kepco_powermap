@@ -89,9 +89,9 @@ export async function POST(request: NextRequest) {
   }
 
   const thread = body.thread || 1;
-  if (![1, 2, 3].includes(thread)) {
+  if (![1, 2, 3, 4, 5].includes(thread)) {
     return NextResponse.json(
-      { ok: false, error: "스레드 번호는 1, 2, 3 중 하나여야 합니다." },
+      { ok: false, error: "스레드 번호는 1~5 중 하나여야 합니다." },
       { status: 400 }
     );
   }

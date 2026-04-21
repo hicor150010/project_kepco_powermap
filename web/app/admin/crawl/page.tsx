@@ -26,9 +26,9 @@ export default function CrawlPage() {
               </ul>
             </div>
             <div>
-              <div className="font-semibold text-gray-900 mb-1.5">2. 수집기 3개 — 동시에 여러 지역 수집</div>
+              <div className="font-semibold text-gray-900 mb-1.5">2. 수집기 5개 — 동시에 여러 지역 수집</div>
               <ul className="list-disc pl-5 space-y-1 text-gray-600 leading-relaxed">
-                <li><b>수집기 1, 2, 3</b>을 각각 사용해 서로 다른 지역을 <b>동시에 수집</b> 가능</li>
+                <li><b>수집기 1~5</b>를 각각 사용해 서로 다른 지역을 <b>동시에 수집</b> 가능</li>
                 <li>각 수집기는 독립적으로 실행되므로 한 곳이 진행 중이어도 다른 수집기로 다른 지역 시작 가능</li>
                 <li>단, 같은 수집기는 한 번에 하나의 작업만 실행 가능</li>
               </ul>

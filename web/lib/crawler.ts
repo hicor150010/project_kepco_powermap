@@ -1,7 +1,7 @@
 // 수집기 공통 — 타입/상수/유틸
 // 새 수집기 추가 시 THREADS 배열만 수정하면 UI 자동 대응.
 
-export const THREADS = [1, 2, 3] as const;
+export const THREADS = [1, 2, 3, 4, 5] as const;
 export type Thread = (typeof THREADS)[number];
 
 export const HISTORY_PAGE_SIZE = 10;

@@ -91,7 +91,7 @@ KEPCO API → 크롤러 (crawler.py)
 | id | BIGSERIAL | PK |
 | sido, si, gu, dong, li | TEXT | 수집 대상 지역 |
 | status | TEXT | pending/running/completed/failed/stopped/stop_requested |
-| thread | INT | 스레드 번호 (1, 2, 3) |
+| thread | INT | 스레드 번호 (1~5) |
 | mode | TEXT | single / recurring |
 | cycle_count | INT | 현재 순환 횟수 |
 | max_cycles | INT | 최대 순환 (null=무제한) |

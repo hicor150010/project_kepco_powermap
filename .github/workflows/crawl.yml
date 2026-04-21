@@ -9,7 +9,7 @@ on:
         required: true
         type: string
       thread:
-        description: '스레드 번호 (1/2/3)'
+        description: '스레드 번호 (1/2/3/4/5)'
         required: false
         default: '1'
         type: string
@@ -21,6 +21,7 @@ on:
 
 jobs:
   crawl:
+    name: "수집기 ${{ matrix.thread }}"
     runs-on: ubuntu-latest
     timeout-minutes: 350
 
@@ -31,8 +32,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # dispatch: 지정 스레드만 / cron: 3개 모두
-        thread: ${{ github.event_name == 'schedule' && fromJSON('[1, 2, 3]') || fromJSON(format('[{0}]', inputs.thread || '1')) }}
+        # dispatch: 지정 스레드만 / cron: 5개 모두
+        thread: ${{ github.event_name == 'schedule' && fromJSON('[1, 2, 3, 4, 5]') || fromJSON(format('[{0}]', inputs.thread || '1')) }}
 
     steps:
       - name: Checkout
