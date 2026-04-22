@@ -23,3 +23,4 @@
 - [GitHub 계정 이전 이력](reference_github_migration.md) — 2026-04-19 `hicor1` → `hicor150010` 이전 완료. 구 저장소/PAT 모두 삭제됨
 - [도메인 sunlap.kr](project_domain_sunlap.md) — 가비아 구매. Vercel 등록 완료, 가비아 DNS 입력 대기 (2026-04-21)
 - [1차 리팩토링 체크리스트](project_refactor_checklist.md) 🔧 — 비교 기능 엑셀 업로드 개편 + 리 테두리 오버레이. 비용 청구 X, 카톡 노출 X
+- [전기용량 데이터 신선도 표시](project_data_freshness.md) ⏰ — 용량 정보에 "언제 수집됐는지" 타임스탬프 배지 추가 (한전온 실값 불일치 대응)

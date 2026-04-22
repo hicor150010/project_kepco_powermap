@@ -26,3 +26,7 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+.spyproject/
+
+# 크롤러/배치 실행 로그 (로컬 산출물)
+crawler/*.log
