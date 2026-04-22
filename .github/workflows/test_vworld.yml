@@ -1,0 +1,27 @@
+name: VWorld Single-Call Test
+
+# 진단용. 로컬 결과와 동일한지 비교해 IP/환경 차단 여부 판정.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run VWorld test
+        env:
+          VWORLD_KEY: ${{ secrets.VWORLD_KEY }}
+          PYTHONIOENCODING: utf-8
+        run: cd crawler && python test_vworld_single.py
