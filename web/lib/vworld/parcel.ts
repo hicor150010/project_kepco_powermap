@@ -22,6 +22,7 @@ import type { Feature, MultiPolygon, Polygon, Position } from "geojson";
 
 const VWORLD_KEY = process.env.VWORLD_KEY || "";
 const WFS_URL = "https://api.vworld.kr/req/wfs";
+const SEARCH_URL = "https://api.vworld.kr/req/search";
 const LAYER = "lp_pa_cbnd_bubun";
 
 /** BBOX 반경 (도 단위). 5m ≈ 0.00005° @ 한국 위도 */
@@ -311,6 +312,98 @@ function extractPolygonCoords(geom: Polygon | MultiPolygon): Position[][] {
     return [geom.coordinates[0]];
   }
   return geom.coordinates.map((poly) => poly[0]);
+}
+
+// ───────────────────────────────────────────
+// 주소 → 필지 정보 (VWorld 검색 API + WFS)
+// ───────────────────────────────────────────
+
+/** VWorld 검색 API 응답 (address/parcel) */
+interface VWorldSearchResponse {
+  response?: {
+    status?: string;
+    result?: {
+      items?: Array<{
+        id: string; // PNU 19자리
+        address?: { parcel?: string };
+        point?: { x: string; y: string };
+      }>;
+    };
+  };
+}
+
+/**
+ * 주소로 필지 정보 조회.
+ *
+ * 흐름:
+ *   1. VWorld 검색 API (주소 → PNU + 좌표)
+ *   2. 그 좌표로 getParcelByPoint 재활용 (폴리곤/속성 확보)
+ *
+ * 지번 단위 좌표가 kepco_data 에 저장되어 있지 않아 카카오 지오코딩 대신 사용.
+ * VWorld 는 주소→좌표→필지 한 체인으로 처리 가능해 효율적.
+ */
+export async function getParcelByAddress(
+  address: string,
+): Promise<ParcelResult | null> {
+  if (!VWORLD_KEY) {
+    console.error("[VWorld Parcel] VWORLD_KEY 미설정");
+    return null;
+  }
+  const cleaned = (address || "").trim();
+  if (!cleaned) return null;
+
+  const params = new URLSearchParams({
+    service: "search",
+    request: "search",
+    version: "2.0",
+    crs: "EPSG:4326",
+    size: "5",
+    page: "1",
+    query: cleaned,
+    type: "address",
+    category: "parcel",
+    format: "json",
+    errorformat: "json",
+    key: VWORLD_KEY,
+  });
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(`${SEARCH_URL}?${params.toString()}`, {
+      signal: controller.signal,
+      headers: { Referer: "https://sublab.kr" },
+    });
+    clearTimeout(timer);
+    if (!res.ok) {
+      console.error(`[VWorld Search] HTTP ${res.status} (${cleaned})`);
+      return null;
+    }
+    const data = (await res.json()) as VWorldSearchResponse;
+    if (data.response?.status !== "OK") return null;
+    const items = data.response.result?.items ?? [];
+    if (items.length === 0) return null;
+
+    // 입력 주소와 parcel 문자열이 완전 일치하는 항목 우선, 없으면 첫 항목
+    const exact =
+      items.find((it) => (it.address?.parcel ?? "") === cleaned) ?? items[0];
+    const pt = exact.point;
+    if (!pt) return null;
+    const lat = parseFloat(pt.y);
+    const lng = parseFloat(pt.x);
+    if (!isFinite(lat) || !isFinite(lng)) return null;
+
+    return await getParcelByPoint(lat, lng);
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      console.error(`[VWorld Search] 타임아웃 ${TIMEOUT_MS}ms (${cleaned})`);
+    } else {
+      console.error(`[VWorld Search] 호출 실패 (${cleaned}):`, err);
+    }
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // GeoJSON Point 타입 (의존성 최소화 위해 local)

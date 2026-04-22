@@ -777,61 +777,99 @@ export default function MapClient({ isAdmin, email }: Props) {
     }
   }, []);
 
+  // 지번 클릭 — VWorld 검색 API 한 번으로 좌표+필지 확보, 지적도 자동 ON, 패널 자동 열기
+  // (2026-04-22) 기존 카카오 지오코딩 제거. 서버가 VWorld + KEPCO 병렬로 처리 + KV 캐시.
   const handleJibunPin = useCallback(
     async (row: KepcoDataRow) => {
       if (!mapInstance) return;
 
-      // 이미 같은 지번이 표시되어 있으면 해당 위치로 이동만
-      const existing = jibunPinsRef.current.find((p) => p.jibun === row.addr_jibun);
+      const jibunKey = row.addr_jibun || "";
+      // 이미 같은 지번 핀이 있으면 이동만 (패널은 건드리지 않음)
+      const existing = jibunPinsRef.current.find((p) => p.jibun === jibunKey);
       if (existing) {
         setDetailModalOpen(false);
         moveMapTo(existing.lat, existing.lng);
         return;
       }
 
-      const fullAddr = [
+      // "기타지역" 는 법정 주소에 없는 임시 토큰 — VWorld 검색에 방해되니 제외
+      const parts = [
         row.addr_do, row.addr_si, row.addr_gu, row.addr_dong, row.addr_li, row.addr_jibun,
       ]
         .filter(Boolean)
-        .filter((p) => !p!.includes("기타지역"))
-        .join(" ");
+        .filter((p) => !p!.includes("기타지역")) as string[];
+      const fullAddr = parts.join(" ");
+      const villageAddr = parts.slice(0, -1).join(" "); // 지번 제외한 마을 주소 (KV 인덱스)
 
       setDetailModalOpen(false);
-      setCenterMessage(`📍 ${row.addr_jibun} 위치를 찾는 중...`);
+      setCenterMessage(`📍 ${jibunKey} 조회 중...`);
+
+      // 시퀀스 가드 — 중복 클릭 시 늦게 오는 응답 무시
+      const seq = ++parcelReqSeqRef.current;
+      setParcelLoading(true);
+      setSelectedJibun(null);
+      setSelectedGeometry(null);
 
       try {
-        const res = await fetch(`/api/geocode?address=${encodeURIComponent(fullAddr)}`);
+        const url =
+          `/api/parcel-by-address?address=${encodeURIComponent(fullAddr)}` +
+          (villageAddr ? `&village=${encodeURIComponent(villageAddr)}` : "");
+        const res = await fetch(url);
+        if (seq !== parcelReqSeqRef.current) return;
         const data = await res.json();
 
-        if (data.lat == null || data.lng == null) {
-          setCenterMessage(`⚠️ ${row.addr_jibun} 위치를 찾을 수 없어요`);
+        if (!data.ok || !data.jibun || !data.geometry) {
+          setCenterMessage(`⚠️ ${jibunKey} 필지 정보를 찾을 수 없어요`);
           setTimeout(() => setCenterMessage(null), 2000);
           return;
         }
 
-        const village = allRows.find((r) => r.geocode_address === row.geocode_address);
-        const pin = createPinOverlay(
-          mapInstance, data.lat, data.lng, row.addr_jibun || "",
-          village?.lat, village?.lng,
-        );
-        jibunPinsRef.current.push(pin);
-        setJibunPinCount(jibunPinsRef.current.length);
-        updateBoundCircle(mapInstance, row.geocode_address);
+        // 패널 채우기
+        setSelectedJibun(data.jibun);
+        setSelectedGeometry(data.geometry);
+        setParcelCapa(data.capa ?? []);
+        setParcelMatchMode(data.matchMode ?? null);
+        setParcelNearestJibun(data.nearestJibun ?? null);
 
-        // 세션 캐시에 저장
-        const geoAddr = row.geocode_address;
-        const list = jibunCache.get(geoAddr) ?? [];
-        list.push({ lat: data.lat, lng: data.lng, jibun: row.addr_jibun || "" });
-        jibunCache.set(geoAddr, list);
+        // 핀 + 경계선 (VWorld 폴리곤 첫 좌표 근사)
+        const firstCoord = data.geometry?.polygon?.[0]?.[0];
+        const lng = firstCoord?.[0];
+        const lat = firstCoord?.[1];
+        if (lat != null && lng != null) {
+          const village = allRows.find((r) => r.geocode_address === row.geocode_address);
+          const pin = createPinOverlay(
+            mapInstance, lat, lng, jibunKey,
+            village?.lat, village?.lng,
+          );
+          jibunPinsRef.current.push(pin);
+          setJibunPinCount(jibunPinsRef.current.length);
+          updateBoundCircle(mapInstance, row.geocode_address);
 
-        moveMapTo(data.lat, data.lng);
+          // 세션 캐시 (같은 지번 재클릭 시 API 재호출 방지)
+          const geoAddr = row.geocode_address;
+          const list = jibunCache.get(geoAddr) ?? [];
+          list.push({ lat, lng, jibun: jibunKey });
+          jibunCache.set(geoAddr, list);
+
+          // 지적도 자동 ON + 줌 확대
+          if (!cadastralActive) setCadastralActive(true);
+          const lv = mapInstance.getLevel?.();
+          if (lv != null && lv > 5) {
+            mapInstance.setLevel(3);
+          }
+          moveMapTo(lat, lng);
+        }
         setCenterMessage(null);
       } catch {
-        setCenterMessage(`⚠️ 위치 조회 중 오류가 발생했어요`);
-        setTimeout(() => setCenterMessage(null), 2000);
+        if (seq === parcelReqSeqRef.current) {
+          setCenterMessage(`⚠️ 필지 조회 중 오류가 발생했어요`);
+          setTimeout(() => setCenterMessage(null), 2000);
+        }
+      } finally {
+        if (seq === parcelReqSeqRef.current) setParcelLoading(false);
       }
     },
-    [mapInstance, allRows, jibunCache, moveMapTo]
+    [mapInstance, allRows, jibunCache, moveMapTo, cadastralActive]
   );
 
   return (

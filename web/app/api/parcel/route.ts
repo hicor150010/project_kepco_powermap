@@ -12,15 +12,8 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { getParcelByPoint } from "@/lib/vworld/parcel";
-import type { JibunInfo } from "@/lib/vworld/parcel";
-import type { KepcoDataRow } from "@/lib/types";
-
-interface CapaRow extends KepcoDataRow {
-  match_mode?: "exact" | "nearest_jibun";
-  nearest_jibun?: string | null;
-}
+import { fetchKepcoCapa } from "@/lib/kepco/capaByJibun";
 
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
@@ -48,7 +41,6 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // 1. VWorld 필지 정보 조회 — { jibun, geometry }
   const result = await getParcelByPoint(lat, lng);
   if (!result) {
     return NextResponse.json({
@@ -60,7 +52,6 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // 2. KEPCO 여유용량 조회 — 지번을 키로
   const capa = await fetchKepcoCapa(result.jibun);
 
   return NextResponse.json(
@@ -79,41 +70,4 @@ export async function GET(request: NextRequest) {
       },
     },
   );
-}
-
-/**
- * 지번 → KEPCO 여유용량.
- * JibunInfo 하나만 있으면 좌표 진입/지번 직접 진입 구분 없이 동일 동작.
- * 미래 검색 메뉴에서 지번 직접 입력 시에도 재활용 가능.
- */
-async function fetchKepcoCapa(jibun: JibunInfo): Promise<{
-  rows: CapaRow[];
-  matchMode: "exact" | "nearest_jibun" | null;
-  nearestJibun: string | null;
-  warning?: string;
-}> {
-  const supabase = createAdminClient();
-  const { data, error } = await supabase.rpc("get_capa_by_jibun", {
-    p_ctp_nm: jibun.ctp_nm,
-    p_sig_nm: jibun.sig_nm,
-    p_emd_nm: jibun.emd_nm,
-    p_li_nm: jibun.li_nm,
-    p_jibun: jibun.jibun,
-  });
-
-  if (error) {
-    console.error("[/api/parcel] get_capa_by_jibun 실패", error);
-    return {
-      rows: [],
-      matchMode: null,
-      nearestJibun: null,
-      warning: "KEPCO 여유용량 조회에 실패했습니다.",
-    };
-  }
-  const rows = (data ?? []) as CapaRow[];
-  return {
-    rows,
-    matchMode: rows[0]?.match_mode ?? null,
-    nearestJibun: rows[0]?.nearest_jibun ?? null,
-  };
 }

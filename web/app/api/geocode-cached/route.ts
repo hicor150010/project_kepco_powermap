@@ -1,37 +1,21 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-
 /**
  * GET /api/geocode-cached?village=경상북도+고령군+개진면+양전리
  *
- * 해당 마을의 지번 중 geocode_cache에 좌표가 저장된 것만 반환.
- * 지오코딩 호출 없이 DB 조회만 수행.
+ * 해당 마을에서 이전에 클릭해 KV 에 캐시된 지번 좌표 목록을 반환.
+ * (2026-04-22 정책 변경: geocode_cache DB 읽기 중단, KV 만 참조)
  *
- * 쿼리: address LIKE '{village} %' (마을 주소 + 공백 + 지번)
+ * 지번 단위 좌표는 DB 에 저장하지 않고 Vercel KV 에 TTL 3일 캐시.
+ * 이 엔드포인트는 마을 진입 시 핀 복원용.
  */
+import { NextRequest, NextResponse } from "next/server";
+import { getCachedVillagePins } from "@/lib/cache/parcelKv";
+
 export async function GET(request: NextRequest) {
   const village = request.nextUrl.searchParams.get("village");
   if (!village) {
     return NextResponse.json({ pins: [] });
   }
 
-  const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from("geocode_cache")
-    .select("address, lat, lng")
-    .like("address", `${village} %`);
-
-  if (error || !data) {
-    return NextResponse.json({ pins: [] });
-  }
-
-  // address에서 마을 주소를 빼면 지번만 남음
-  const prefix = village + " ";
-  const pins = data.map((row) => ({
-    jibun: row.address.slice(prefix.length),
-    lat: row.lat,
-    lng: row.lng,
-  }));
-
+  const pins = await getCachedVillagePins(village);
   return NextResponse.json({ pins });
 }
