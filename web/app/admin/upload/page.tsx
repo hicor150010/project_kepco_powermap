@@ -1,26 +1,25 @@
-import UploadDropzone from "@/components/admin/UploadDropzone";
-
-export const metadata = { title: "엑셀 업로드 — 관리자" };
+export const metadata = { title: "엑셀 업로드 — 관리자 (중단)" };
 
 export default function UploadPage() {
   return (
     <main className="max-w-3xl mx-auto px-6 py-8">
       <div className="mb-6">
-        <h2 className="text-xl font-bold text-gray-900">엑셀 업로드</h2>
+        <h2 className="text-xl font-bold text-gray-900">엑셀 업로드 (중단)</h2>
         <p className="text-xs text-gray-500 mt-1">
-          KEPCO 표준 양식의 엑셀 파일을 업로드하면 즉시 모든 사용자에게 반영됩니다.
+          2026-04-22 부터 엑셀 업로드 기능이 비활성화되었습니다. 데이터 수집은
+          크롤러(자동 수집)로만 이루어집니다.
         </p>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-        <UploadDropzone />
-
-        <div className="mt-6 pt-6 border-t border-gray-100 text-[11px] text-gray-500 space-y-1">
-          <p>📌 KEPCO 표준 양식만 지원합니다. 다른 양식은 거부됩니다.</p>
-          <p>📌 한 번에 여러 파일을 올릴 수 있고, 지역별로 나눠서도 올릴 수 있습니다.</p>
-          <p>📌 같은 시설(주소+변전소+변압기+선로)은 최신 값으로 자동 갱신됩니다.</p>
-          <p>📌 처리 결과는 업로드 후 화면에 표시됩니다.</p>
-        </div>
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm space-y-3 text-sm text-gray-700">
+        <p>
+          <b>대체 경로:</b> 관리자 &rarr; 데이터 수집 메뉴에서 전국/지역별 크롤링을
+          수행합니다.
+        </p>
+        <p>
+          <b>엑셀이 꼭 필요한 경우:</b> 관리자에게 직접 요청하세요. 코드는 보존
+          되어 있어 필요 시 재활성화 가능합니다.
+        </p>
       </div>
     </main>
   );
