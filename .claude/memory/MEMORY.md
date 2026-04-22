@@ -15,6 +15,7 @@
 - [건축물대장 API 검증](reference_bldg_register_api.md) — endpoint/파라미터/응답필드 실측. 비닐하우스는 대부분 미등록 한계. 키는 SECRETS.local.md
 - [줌 레벨별 마커 최적화](project_zoom_level_optimization.md) — 130만 행 대비, 줌에 따라 시/군→읍/면→리 마커 전환 (미구현 숙제)
 - [DB row_hash 리팩토링 — 추후](project_db_row_hash_refactor.md) — kepco_capa_ukey 61MB → MD5 해시로 40MB 절감. 1차 2단계 완료 후 권장
+- [캐시 전략 체계화 — 차기](project_cache_strategy.md) — HTTP Cache/KV/Next Data Cache 레이어 정리. "마커 0" 사고 복기가 선결
 - [지적편집도 + 지도 클릭 팝업](project_cadastral_and_click_popup.md) — 카카오 지적편집도 레이어 + 빈 곳 클릭 시 지번 용량 팝업 (차기 개발)
 - [타겟 시설 오버레이](project_target_buildings_overlay.md) — 유리온실/축사/대형건물(50~200평+) 레이어 + 위치 기준 근처 선로용량 표시 (차기 개발, 의뢰자 요청)
 - [특허 출원 중 워터마크](project_patent_watermark.md) — 지도 화면 사선 워터마크. 특허 등록 완료 시 제거 예정 (NEXT_PUBLIC_PATENT_PENDING=false 로 토글)
