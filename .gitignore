@@ -28,5 +28,7 @@ Thumbs.db
 .idea/
 .spyproject/
 
-# 크롤러/배치 실행 로그 (로컬 산출물)
+# 크롤러/배치 실행 산출물 (로컬 실행시 생성되는 로그/에러/요약)
 crawler/*.log
+crawler/fill_coords_*.jsonl
+crawler/fill_coords_*.json

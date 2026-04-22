@@ -1,0 +1,67 @@
+name: KEPCO Coords Fill (One-shot)
+
+# 1회성 백필 워크플로.
+# 목적: kepco_addr.lat IS NULL 인 행에 VWorld 지오코딩 + PNU/bjd_code 채우기.
+# 특징:
+#   - workflow_dispatch 만 (자동 스케줄 없음)
+#   - timeout 350분 (GitHub Actions 6h 한계 직전)
+#   - 중단/타임아웃 시 재실행만 하면 `WHERE lat IS NULL` 필터로 자동 재개
+#   - Artifact: run 로그 + errors JSONL + summary JSON
+#
+# 실행:
+#   Actions → "KEPCO Coords Fill (One-shot)" → Run workflow
+#
+# 완료 후:
+#   1. Artifact 다운로드 (실패 JSONL 은 주소 클리닝 모듈 설계 입력)
+#   2. 모든 처리 끝나면 이 파일 삭제 (1회성)
+
+on:
+  workflow_dispatch:
+    inputs:
+      fill_limit:
+        description: "처리 상한 (0 = 전체)"
+        required: false
+        default: "0"
+      vworld_delay:
+        description: "VWorld 호출 간 딜레이 (초)"
+        required: false
+        default: "0.3"
+
+jobs:
+  fill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350   # 5h 50m
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run fill_kepco_coords
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          VWORLD_KEY: ${{ secrets.VWORLD_KEY }}
+          FILL_LIMIT: ${{ inputs.fill_limit }}
+          VWORLD_DELAY: ${{ inputs.vworld_delay }}
+          PYTHONIOENCODING: utf-8
+        run: cd crawler && python fill_kepco_coords.py
+
+      - name: Upload artifacts
+        if: always()   # job 실패/타임아웃 시에도 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: fill_coords_${{ github.run_id }}
+          path: |
+            crawler/fill_coords_run_*.log
+            crawler/fill_coords_errors_*.jsonl
+            crawler/fill_coords_summary_*.json
+          retention-days: 30
+          if-no-files-found: warn
