@@ -256,11 +256,47 @@ export async function PATCH(request: NextRequest) {
   }
 
   const supabase = createAdminClient();
+
+  // 현재 상태 확인 — 상태에 따라 다른 전환을 수행한다.
+  //   running          : 크롤러가 감지하도록 stop_requested 로 변경
+  //   pending          : GitHub Actions 에 트리거된 적 없음 → 즉시 cancelled
+  //   stop_requested   : 크롤러가 응답 못 하는 좀비 → 즉시 cancelled
+  //   그 외 (completed/failed/cancelled) : 이미 종료된 Job, 변경 불필요
+  const { data: job, error: readErr } = await supabase
+    .from("crawl_jobs")
+    .select("status")
+    .eq("id", body.id)
+    .single();
+
+  if (readErr || !job) {
+    return NextResponse.json(
+      { ok: false, error: readErr?.message ?? "작업을 찾을 수 없습니다." },
+      { status: 404 }
+    );
+  }
+
+  let newStatus: string | null = null;
+  if (job.status === "running") newStatus = "stop_requested";
+  else if (job.status === "pending" || job.status === "stop_requested")
+    newStatus = "cancelled";
+
+  if (!newStatus) {
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      message: `Job 은 이미 종료 상태(${job.status})입니다.`,
+    });
+  }
+
   const { error } = await supabase
     .from("crawl_jobs")
-    .update({ status: "stop_requested" })
-    .eq("id", body.id)
-    .eq("status", "running");
+    .update({
+      status: newStatus,
+      ...(newStatus === "cancelled"
+        ? { completed_at: new Date().toISOString() }
+        : {}),
+    })
+    .eq("id", body.id);
 
   if (error) {
     return NextResponse.json(
@@ -269,7 +305,7 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, status: newStatus });
 }
 
 // ─────────────────────────────────────────────

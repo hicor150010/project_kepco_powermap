@@ -8,6 +8,7 @@
 - [푸시 원칙](feedback_push_after_perf_test.md) — 커밋은 가능, 푸시는 성능 테스트 통과 후에만. 기본값: 지시 없으면 푸시 묻기
 - [docs 자율 수정](feedback_docs_autonomy.md) — docs/ 문서 수정은 승인 없이 바로. SECRETS.local.md 만 예외
 - [크롤 좀비 job](feedback_crawl_zombie_jobs.md) — recurring cancel 경쟁조건. last_heartbeat 5분+ 끊겼으면 좀비. PATCH로 일괄 cancelled 처리
+- [Surrogate 파손 방어](feedback_surrogate_corruption.md) 🛡 — Python/JSON lone surrogate 오염 → update_job 단일 점에서 sanitize. 취소 API 는 pending/stop_requested 도 cancelled 처리
 - 좌표 저장 정책 (2026-04-22~): `kepco_addr.lat/lng` = 리 단위 단일 저장소. 지번 좌표는 VWorld on-demand + Vercel KV (TTL 3일). `geocode_cache` 폐기
 - [SUNLAP 결제 일정](project_payment_schedule.md) 💰 — 선금 200만 수령(2026-04-21). 잔금 1,210만은 완료 후. 서버비 월 5만 매월 21일
 - [SUNLAP 견적 — 진행 중](project_solar_proposal.md) ⭐ — 2026-04-21 수락. 로드뷰·수집기+2개 완료. 1차 1단계(지적편집도) 착수. 가격표 docs/견적_1차2차.md

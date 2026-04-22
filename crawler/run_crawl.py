@@ -109,13 +109,30 @@ def find_next_job(thread: int) -> dict | None:
     return rows[0] if rows else None
 
 
+def _sanitize_json(obj):
+    """lone surrogate 제거 — DB 저장 전 단일 방어선.
+
+    Python 은 `"\\udceb"` 같은 lone surrogate 를 str 로 허용하지만,
+    이 상태로 requests.patch(json=...) 에 전달되면 PostgREST/JSONB 까지
+    그대로 저장되어 이후 재시도·복사 루프에서 증식한다.
+    UTF-8 round-trip 으로 정화하여 surrogate 는 '?' 치환, 정상 문자는 보존.
+    """
+    if isinstance(obj, str):
+        return obj.encode("utf-8", "replace").decode("utf-8", "replace")
+    if isinstance(obj, dict):
+        return {k: _sanitize_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_json(x) for x in obj]
+    return obj
+
+
 def update_job(job_id: int, data: dict):
-    """crawl_jobs 업데이트 (PATCH)"""
+    """crawl_jobs 업데이트 (PATCH). 저장 전 _sanitize_json 으로 surrogate 제거."""
     try:
         requests.patch(
             f"{SUPABASE_URL}/rest/v1/crawl_jobs",
             params={"id": f"eq.{job_id}"},
-            json=data,
+            json=_sanitize_json(data),
             headers={**_headers(), "Prefer": "return=minimal"},
             timeout=30,
         )
@@ -266,7 +283,7 @@ def auto_continue(job: dict, checkpoint: dict | None, thread: int):
         }
         resp = requests.post(
             f"{SUPABASE_URL}/rest/v1/crawl_jobs",
-            json=new_job,
+            json=_sanitize_json(new_job),
             headers={
                 "apikey": SUPABASE_KEY,
                 "Authorization": f"Bearer {SUPABASE_KEY}",
