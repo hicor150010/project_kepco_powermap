@@ -170,6 +170,16 @@ export default function MapClient({ isAdmin, email }: Props) {
   const [parcelLoading, setParcelLoading] = useState(false);
   const parcelReqSeqRef = useRef(0);
 
+  // 지번별 API 응답 캐시 — 같은 지번 재클릭 시 API 재호출 없이 패널 즉시 갱신
+  interface CachedParcelData {
+    jibun: JibunInfo;
+    geometry: ParcelGeometry;
+    capa: KepcoDataRow[];
+    matchMode: "exact" | "nearest_jibun" | null;
+    nearestJibun: string | null;
+  }
+  const parcelDataCacheRef = useRef(new Map<string, CachedParcelData>());
+
   const handleParcelClick = useCallback(async (lat: number, lng: number) => {
     const seq = ++parcelReqSeqRef.current;
     setParcelLoading(true);
@@ -784,10 +794,18 @@ export default function MapClient({ isAdmin, email }: Props) {
       if (!mapInstance) return;
 
       const jibunKey = row.addr_jibun || "";
-      // 이미 같은 지번 핀이 있으면 이동만 (패널은 건드리지 않음)
+      // 이미 같은 지번 핀이 있으면: 캐시된 데이터로 패널 갱신 + 지도 이동 (API 재호출 X)
       const existing = jibunPinsRef.current.find((p) => p.jibun === jibunKey);
       if (existing) {
         setDetailModalOpen(false);
+        const cached = parcelDataCacheRef.current.get(jibunKey);
+        if (cached) {
+          setSelectedJibun(cached.jibun);
+          setSelectedGeometry(cached.geometry);
+          setParcelCapa(cached.capa);
+          setParcelMatchMode(cached.matchMode);
+          setParcelNearestJibun(cached.nearestJibun);
+        }
         moveMapTo(existing.lat, existing.lng);
         return;
       }
@@ -811,10 +829,18 @@ export default function MapClient({ isAdmin, email }: Props) {
       setSelectedGeometry(null);
 
       try {
-        const url =
-          `/api/parcel-by-address?address=${encodeURIComponent(fullAddr)}` +
-          (villageAddr ? `&village=${encodeURIComponent(villageAddr)}` : "");
-        const res = await fetch(url);
+        // 주소 구성 파라미터를 함께 보냄 → 서버가 VWorld 와 KEPCO 를 병렬 실행
+        const qs = new URLSearchParams({
+          address: fullAddr,
+          ...(villageAddr ? { village: villageAddr } : {}),
+          addr_do: row.addr_do ?? "",
+          addr_si: row.addr_si ?? "",
+          addr_gu: row.addr_gu ?? "",
+          addr_dong: row.addr_dong ?? "",
+          addr_li: row.addr_li ?? "",
+          addr_jibun: row.addr_jibun ?? "",
+        });
+        const res = await fetch(`/api/parcel-by-address?${qs.toString()}`);
         if (seq !== parcelReqSeqRef.current) return;
         const data = await res.json();
 
@@ -831,10 +857,17 @@ export default function MapClient({ isAdmin, email }: Props) {
         setParcelMatchMode(data.matchMode ?? null);
         setParcelNearestJibun(data.nearestJibun ?? null);
 
-        // 핀 + 경계선 (VWorld 폴리곤 첫 좌표 근사)
-        const firstCoord = data.geometry?.polygon?.[0]?.[0];
-        const lng = firstCoord?.[0];
-        const lat = firstCoord?.[1];
+        // 재클릭 대비 응답 캐시
+        parcelDataCacheRef.current.set(jibunKey, {
+          jibun: data.jibun,
+          geometry: data.geometry,
+          capa: data.capa ?? [],
+          matchMode: data.matchMode ?? null,
+          nearestJibun: data.nearestJibun ?? null,
+        });
+
+        // 핀 위치 — Turf.js centroid 로 계산된 중심점 (서버 제공)
+        const { lat, lng } = data.geometry?.center ?? {};
         if (lat != null && lng != null) {
           const village = allRows.find((r) => r.geocode_address === row.geocode_address);
           const pin = createPinOverlay(
@@ -851,8 +884,8 @@ export default function MapClient({ isAdmin, email }: Props) {
           list.push({ lat, lng, jibun: jibunKey });
           jibunCache.set(geoAddr, list);
 
-          // 지적도 자동 ON + 줌 확대
-          if (!cadastralActive) setCadastralActive(true);
+          // 줌 확대 (지적도 자동 전환은 하지 않음 — 필지 폴리곤은 KakaoMap 이
+          // highlightedParcel prop 으로 직접 테두리만 그려줌. 현재 맵 옵션 유지)
           const lv = mapInstance.getLevel?.();
           if (lv != null && lv > 5) {
             mapInstance.setLevel(3);
@@ -869,7 +902,7 @@ export default function MapClient({ isAdmin, email }: Props) {
         if (seq === parcelReqSeqRef.current) setParcelLoading(false);
       }
     },
-    [mapInstance, allRows, jibunCache, moveMapTo, cadastralActive]
+    [mapInstance, allRows, jibunCache, moveMapTo]
   );
 
   return (

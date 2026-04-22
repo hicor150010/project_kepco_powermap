@@ -18,6 +18,7 @@
 
 import area from "@turf/area";
 import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
+import centroid from "@turf/centroid";
 import type { Feature, MultiPolygon, Polygon, Position } from "geojson";
 
 const VWORLD_KEY = process.env.VWORLD_KEY || "";
@@ -71,6 +72,8 @@ export interface ParcelGeometry {
   jiga: number | null;
   /** 필지 폴리곤 좌표 (MultiPolygon 지원, [[[lng,lat],...],...]) */
   polygon: Position[][];
+  /** 폴리곤 중심 좌표 (핀 위치용, Turf.js centroid) */
+  center: { lat: number; lng: number };
 }
 
 /** 통합 응답 (좌표 진입 시 한 번에 다 받음) */
@@ -283,6 +286,10 @@ export function splitParcelFeature(feature: WfsFeature): ParcelResult {
     area(feature as unknown as Feature<Polygon | MultiPolygon>),
   );
   const polygon = extractPolygonCoords(feature.geometry);
+  const centerFeature = centroid(
+    feature as unknown as Feature<Polygon | MultiPolygon>,
+  );
+  const [cLng, cLat] = centerFeature.geometry.coordinates;
 
   const jibun: JibunInfo = {
     pnu: p.pnu,
@@ -299,6 +306,7 @@ export function splitParcelFeature(feature: WfsFeature): ParcelResult {
     area_m2,
     jiga,
     polygon,
+    center: { lat: cLat, lng: cLng },
   };
   return { jibun, geometry };
 }
@@ -315,7 +323,73 @@ function extractPolygonCoords(geom: Polygon | MultiPolygon): Position[][] {
 }
 
 // ───────────────────────────────────────────
-// 주소 → 필지 정보 (VWorld 검색 API + WFS)
+// PNU → 필지 정보 (WFS fes:Filter, 1:1 정확 매칭)
+// ───────────────────────────────────────────
+
+/**
+ * PNU 19자리로 WFS 직접 조회.
+ * BBOX+point-in-polygon 대신 fes:Filter PropertyIsEqualTo 사용.
+ * 실측 39ms, 1:1 매칭이라 오판 위험 없음.
+ */
+export async function getParcelByPnu(
+  pnu: string,
+): Promise<ParcelResult | null> {
+  if (!VWORLD_KEY) {
+    console.error("[VWorld Parcel] VWORLD_KEY 미설정");
+    return null;
+  }
+  const cleaned = (pnu || "").trim();
+  if (!cleaned) return null;
+
+  const filter =
+    `<fes:Filter xmlns:fes="http://www.opengis.net/fes/2.0">` +
+    `<fes:PropertyIsEqualTo>` +
+    `<fes:ValueReference>pnu</fes:ValueReference>` +
+    `<fes:Literal>${cleaned}</fes:Literal>` +
+    `</fes:PropertyIsEqualTo>` +
+    `</fes:Filter>`;
+
+  const params = new URLSearchParams({
+    key: VWORLD_KEY,
+    service: "WFS",
+    version: "2.0.0",
+    request: "GetFeature",
+    typename: LAYER,
+    output: "application/json",
+    srsName: "EPSG:4326",
+    FILTER: filter,
+  });
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(`${WFS_URL}?${params.toString()}`, {
+      signal: controller.signal,
+      headers: { Referer: "https://sublab.kr" },
+    });
+    clearTimeout(timer);
+    if (!res.ok) {
+      console.error(`[VWorld Parcel PNU] HTTP ${res.status} (${cleaned})`);
+      return null;
+    }
+    const data = (await res.json()) as WfsResponse;
+    const match = data.features?.[0];
+    if (!match) return null;
+    return splitParcelFeature(match);
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      console.error(`[VWorld Parcel PNU] 타임아웃 ${TIMEOUT_MS}ms (${cleaned})`);
+    } else {
+      console.error(`[VWorld Parcel PNU] 호출 실패 (${cleaned}):`, err);
+    }
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ───────────────────────────────────────────
+// 주소 → 필지 정보 (VWorld 검색 API + WFS PNU)
 // ───────────────────────────────────────────
 
 /** VWorld 검색 API 응답 (address/parcel) */
@@ -337,10 +411,11 @@ interface VWorldSearchResponse {
  *
  * 흐름:
  *   1. VWorld 검색 API (주소 → PNU + 좌표)
- *   2. 그 좌표로 getParcelByPoint 재활용 (폴리곤/속성 확보)
+ *   2. 그 PNU 로 getParcelByPnu (WFS fes:Filter, 1:1 정확 매칭)
  *
- * 지번 단위 좌표가 kepco_data 에 저장되어 있지 않아 카카오 지오코딩 대신 사용.
- * VWorld 는 주소→좌표→필지 한 체인으로 처리 가능해 효율적.
+ * 2026-04-22: 기존 getParcelByPoint(BBOX) → getParcelByPnu(FILTER) 전환.
+ *   - 속도: ~500ms → ~40ms
+ *   - 정확도: BBOX 는 여러 필지 반환 후 point-in-polygon 선별, PNU 는 직접 매칭
  */
 export async function getParcelByAddress(
   address: string,
@@ -387,13 +462,10 @@ export async function getParcelByAddress(
     // 입력 주소와 parcel 문자열이 완전 일치하는 항목 우선, 없으면 첫 항목
     const exact =
       items.find((it) => (it.address?.parcel ?? "") === cleaned) ?? items[0];
-    const pt = exact.point;
-    if (!pt) return null;
-    const lat = parseFloat(pt.y);
-    const lng = parseFloat(pt.x);
-    if (!isFinite(lat) || !isFinite(lng)) return null;
+    if (!exact.id) return null;
 
-    return await getParcelByPoint(lat, lng);
+    // PNU 로 WFS 직접 조회 (fes:Filter, 1:1 매칭)
+    return await getParcelByPnu(exact.id);
   } catch (err) {
     if ((err as Error).name === "AbortError") {
       console.error(`[VWorld Search] 타임아웃 ${TIMEOUT_MS}ms (${cleaned})`);

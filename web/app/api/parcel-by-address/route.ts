@@ -1,26 +1,26 @@
 /**
  * GET /api/parcel-by-address?address=...&village=...
+ *   &addr_do=...&addr_si=...&addr_gu=...&addr_dong=...&addr_li=...&addr_jibun=...
  *
- * 검색결과에서 지번 클릭 시 호출 — 주소로 VWorld 필지 조회 + KEPCO 여유용량.
+ * 지번 클릭 시 호출 — VWorld 필지정보 + KEPCO 여유용량 **병렬** 반환.
  *
- * address 는 "시도 시군구 읍면동 (리) 지번" 전체 주소 (VWorld 검색 API 용).
- * village 는 "시도 시군구 읍면동 (리)" (KV 마을 인덱스 키용, 선택).
+ * 파라미터:
+ *   address   전체 주소 문자열 (VWorld 검색 API 입력)
+ *   village   마을 주소 (KV 인덱스 키)
+ *   addr_*    KEPCO RPC 입력 (VWorld 응답 기다리지 않고 바로 RPC 호출)
  *
- * 캐시 정책:
- *   - VWorld 결과(ParcelResult) 만 KV 에 TTL 3일
- *   - KEPCO 결과는 매번 조회 (크롤링으로 변동 가능)
- *   - DB geocode_cache 저장 안 함 (마을 단위만 유지)
+ * 캐시:
+ *   VWorld 결과만 KV TTL 3일. KEPCO 는 매번 조회.
  *
- * 인증: 로그인 사용자만.
+ * 병렬화 (2026-04-22):
+ *   기존 — VWorld → KEPCO (직렬, ~1.1s)
+ *   수정 — Promise.all([VWorld, KEPCO]) (병렬, 가장 느린 것 시간만)
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getParcelByAddress } from "@/lib/vworld/parcel";
 import { fetchKepcoCapa } from "@/lib/kepco/capaByJibun";
-import {
-  getCachedParcel,
-  setCachedParcel,
-} from "@/lib/cache/parcelKv";
+import { getCachedParcel, setCachedParcel } from "@/lib/cache/parcelKv";
 
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
@@ -31,8 +31,9 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const address = request.nextUrl.searchParams.get("address");
-  const village = request.nextUrl.searchParams.get("village");
+  const sp = request.nextUrl.searchParams;
+  const address = sp.get("address");
+  const village = sp.get("village");
   if (!address) {
     return NextResponse.json(
       { ok: false, error: "address 파라미터가 필요합니다." },
@@ -40,14 +41,51 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // 1) VWorld 필지정보 — KV 캐시 우선
-  let parcel = await getCachedParcel(address);
-  const fromCache = !!parcel;
-  if (!parcel) {
-    parcel = await getParcelByAddress(address);
-    if (parcel) {
-      await setCachedParcel(address, village, parcel);
-    }
+  // 클라이언트가 KepcoDataRow 에서 가진 주소/지번 — KEPCO RPC 바로 실행 가능
+  const addr = {
+    ctp_nm: sp.get("addr_do") || "",
+    sig_nm: sp.get("addr_gu") || "",
+    emd_nm: sp.get("addr_dong") || "",
+    li_nm: sp.get("addr_li") || "",
+    jibun: sp.get("addr_jibun") || "",
+  };
+  const hasAddr =
+    !!addr.ctp_nm && !!addr.sig_nm && !!addr.emd_nm && !!addr.jibun;
+
+  // VWorld: KV 우선, 미스 시 API
+  const vworldPromise = (async () => {
+    const cached = await getCachedParcel(address);
+    if (cached) return { parcel: cached, fromCache: true };
+    const fresh = await getParcelByAddress(address);
+    if (fresh) await setCachedParcel(address, village, fresh);
+    return { parcel: fresh, fromCache: false };
+  })();
+
+  // KEPCO: 주소 정보가 있으면 VWorld 기다리지 않고 바로 RPC
+  const kepcoPromise = hasAddr
+    ? fetchKepcoCapa({
+        pnu: "",
+        jibun: addr.jibun,
+        isSan: addr.jibun.startsWith("산"),
+        ctp_nm: addr.ctp_nm,
+        sig_nm: addr.sig_nm,
+        emd_nm: addr.emd_nm,
+        li_nm: addr.li_nm,
+        addr: "",
+      })
+    : null;
+
+  const [vworldResult, preKepco] = await Promise.all([
+    vworldPromise,
+    kepcoPromise,
+  ]);
+  const { parcel, fromCache } = vworldResult;
+
+  // VWorld 가 필지정보를 줬으나 주소 파라미터가 없어 사전 KEPCO 못 돌린 경우
+  // → VWorld jibun 으로 뒤늦게 KEPCO 호출 (하위 호환)
+  let capa = preKepco;
+  if (!capa && parcel) {
+    capa = await fetchKepcoCapa(parcel.jibun);
   }
 
   if (!parcel) {
@@ -55,24 +93,22 @@ export async function GET(request: NextRequest) {
       ok: true,
       jibun: null,
       geometry: null,
-      capa: [],
-      matchMode: null,
+      capa: capa?.rows ?? [],
+      matchMode: capa?.matchMode ?? null,
+      nearestJibun: capa?.nearestJibun ?? null,
       cached: fromCache,
     });
   }
-
-  // 2) KEPCO 여유용량 — 캐시 안 함
-  const capa = await fetchKepcoCapa(parcel.jibun);
 
   return NextResponse.json(
     {
       ok: true,
       jibun: parcel.jibun,
       geometry: parcel.geometry,
-      capa: capa.rows,
-      matchMode: capa.matchMode,
-      nearestJibun: capa.nearestJibun,
-      warning: capa.warning,
+      capa: capa?.rows ?? [],
+      matchMode: capa?.matchMode ?? null,
+      nearestJibun: capa?.nearestJibun ?? null,
+      warning: capa?.warning,
       cached: fromCache,
     },
     { headers: { "Cache-Control": "private, max-age=60" } },
