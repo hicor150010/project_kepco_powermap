@@ -1,15 +1,18 @@
 """
-KEPCO 크롤링 결과 → Supabase DB UPSERT + 실시간 지오코딩
+KEPCO 크롤링 결과 → Supabase DB UPSERT
 PostgREST REST API 직접 호출 (supabase-py 불필요)
 
 정규화 구조:
-  kepco_addr  — 리 단위 주소 마스터 (geocode_address UNIQUE)
+  kepco_addr  — 리 단위 주소 마스터 (geocode_address UNIQUE). 좌표는 별도 워커가 채움.
   kepco_capa  — 지번×시설 용량 데이터 (addr_id FK)
+
+좌표 정책 (2026-04-22 변경):
+  - 크롤러는 주소만 저장. lat/lng 는 NULL 로 INSERT.
+  - 기존 행은 ignore-duplicates 로 기존 좌표 보존.
+  - 좌표 채우기는 별도 배치 워커 (crawler/fill_kepco_coords.py, VWorld + PNU) 담당.
 """
 import logging
-import os
 import time
-import urllib.parse
 
 import requests
 from crawler import CrawlResult
@@ -18,9 +21,6 @@ logger = logging.getLogger(__name__)
 
 # PostgREST 배치 한도
 BATCH_SIZE = 1000
-
-# 카카오 REST API 키 (지오코딩용)
-KAKAO_REST_KEY = os.environ.get("KAKAO_REST_KEY", "")
 
 
 def _parse_int(value: str):
@@ -107,33 +107,8 @@ def _to_capa_row(result: CrawlResult, addr_id: int) -> dict:
     }
 
 
-# ══════════════════════════════════════════════
-# 지오코딩 (카카오 메인)
-# ══════════════════════════════════════════════
-
-def _geocode_kakao(address: str) -> tuple[float, float] | None:
-    """카카오 지오코딩 — REST API 키 인증, 해외 IP에서도 동작"""
-    if not KAKAO_REST_KEY:
-        return None
-    try:
-        resp = requests.get(
-            "https://dapi.kakao.com/v2/local/search/address.json",
-            params={"query": address},
-            headers={"Authorization": f"KakaoAK {KAKAO_REST_KEY}"},
-            timeout=15,
-        )
-        if resp.status_code != 200:
-            return None
-        docs = resp.json().get("documents", [])
-        if not docs:
-            return None
-        return (float(docs[0]["y"]), float(docs[0]["x"]))
-    except Exception:
-        return None
-
-
 class CrawlDbWriter:
-    """크롤링 결과를 Supabase kepco_addr + kepco_capa에 2단계 UPSERT + 실시간 지오코딩"""
+    """크롤링 결과를 Supabase kepco_addr + kepco_capa 에 2단계 UPSERT."""
 
     def __init__(
         self,
@@ -145,9 +120,8 @@ class CrawlDbWriter:
         self._key = supabase_key
         self._flush_size = flush_size
         self._buffer: list[CrawlResult] = []
+        # geocoded 키는 run_crawl.py 가 참조 — 항상 0 유지 (좌표 채우기는 별도 워커)
         self._stats = {"upserted": 0, "errors": 0, "geocoded": 0}
-        # 이미 지오코딩한 주소 캐시 (세션 내 중복 방지)
-        self._geocode_done: set[str] = set()
         # addr_id 캐시 (geocode_address → id)
         self._addr_id_cache: dict[str, int] = {}
         # MV 갱신 주기 (1시간)
@@ -262,129 +236,11 @@ class CrawlDbWriter:
                 self._stats["errors"] += len(chunk)
                 logger.error(f"kepco_capa 네트워크 오류: {e}")
 
-        # ── 3단계: 지오코딩 (이미 좌표 있는 주소는 건너뜀) ──
-        candidates = set()
-        for ga in addr_rows_map:
-            if ga and ga not in self._geocode_done:
-                candidates.add(ga)
-
-        # kepco_addr에서 이미 좌표가 있는 주소를 제외
-        if candidates:
-            already_geocoded = self._get_geocoded_addresses(candidates)
-            self._geocode_done.update(already_geocoded)
-            new_addresses = candidates - already_geocoded
-        else:
-            new_addresses = set()
-
-        if new_addresses:
-            self._geocode_addresses(new_addresses)
-
-        # ── 4단계: MV 새로고침 (1시간 간격) ──
+        # ── 3단계: MV 새로고침 (1시간 간격) ──
+        # 좌표 채우기는 별도 워커(fill_kepco_coords.py) 담당 — 여기서는 안 함.
         if time.time() - self._last_mv_refresh > self._mv_interval:
             self.refresh_mv()
             self._last_mv_refresh = time.time()
-
-    def _geocode_addresses(self, addresses: set[str]):
-        """주소 목록을 지오코딩하여 geocode_cache + kepco_addr 업데이트"""
-        for address in addresses:
-            # 1) geocode_cache 확인
-            coords = self._lookup_cache(address)
-
-            # 2) 캐시 miss → 카카오 API
-            if not coords:
-                coords = _geocode_kakao(address)
-                if coords:
-                    self._save_cache(address, coords[0], coords[1])
-
-            # 3) 여전히 없으면 fallback — 마지막 토큰(리) 제거 후 재시도
-            if not coords:
-                parts = address.split()
-                if len(parts) >= 3:
-                    fallback_addr = " ".join(parts[:-1])
-                    coords = _geocode_kakao(fallback_addr)
-                    if coords:
-                        self._save_cache(address, coords[0], coords[1])
-                        logger.info(f"지오코딩 fallback 성공: {address} → {fallback_addr}")
-
-            # 4) 좌표 있으면 kepco_addr 업데이트
-            if coords:
-                self._update_coords(address, coords[0], coords[1])
-                self._stats["geocoded"] += 1
-
-            self._geocode_done.add(address)
-
-    def _get_geocoded_addresses(self, addresses: set[str]) -> set[str]:
-        """kepco_addr에서 이미 좌표(lat)가 있는 주소 목록을 반환"""
-        result: set[str] = set()
-        addr_list = list(addresses)
-        for i in range(0, len(addr_list), 200):
-            chunk = addr_list[i:i + 200]
-            # PostgREST IN 필터: 공백 포함 값은 큰따옴표로 감싸야 함
-            in_values = ",".join(f'"{a}"' for a in chunk)
-            try:
-                resp = requests.get(
-                    f"{self._url}/rest/v1/kepco_addr",
-                    params={
-                        "geocode_address": f"in.({in_values})",
-                        "lat": "not.is.null",
-                        "select": "geocode_address",
-                    },
-                    headers=self._headers(),
-                    timeout=15,
-                )
-                if resp.status_code == 200:
-                    for row in resp.json():
-                        result.add(row["geocode_address"])
-            except Exception:
-                pass
-        return result
-
-    def _lookup_cache(self, address: str) -> tuple[float, float] | None:
-        """geocode_cache에서 좌표 조회"""
-        try:
-            resp = requests.get(
-                f"{self._url}/rest/v1/geocode_cache",
-                params={
-                    "address": f"eq.{address}",
-                    "select": "lat,lng",
-                },
-                headers=self._headers(),
-                timeout=10,
-            )
-            rows = resp.json()
-            if rows:
-                return (rows[0]["lat"], rows[0]["lng"])
-        except Exception:
-            pass
-        return None
-
-    def _save_cache(self, address: str, lat: float, lng: float):
-        """geocode_cache에 저장"""
-        try:
-            requests.post(
-                f"{self._url}/rest/v1/geocode_cache",
-                json={"address": address, "lat": lat, "lng": lng, "source": "kakao"},
-                headers=self._headers("resolution=merge-duplicates,return=minimal"),
-                timeout=10,
-            )
-        except Exception:
-            pass
-
-    def _update_coords(self, geocode_address: str, lat: float, lng: float):
-        """kepco_addr에서 해당 geocode_address의 좌표 업데이트"""
-        try:
-            requests.patch(
-                f"{self._url}/rest/v1/kepco_addr",
-                params={
-                    "geocode_address": f"eq.{geocode_address}",
-                    "lat": "is.null",
-                },
-                json={"lat": lat, "lng": lng},
-                headers=self._headers("return=minimal"),
-                timeout=15,
-            )
-        except Exception:
-            pass
 
     def refresh_mv(self):
         """Materialized View 새로고침 (refresh_kepco_summary RPC)"""

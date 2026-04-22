@@ -16,7 +16,7 @@ type: project
 |---|---|
 | HTTP Cache-Control | `/api/parcel` `private, max-age=300` 만. `/api/map-summary` 는 `no-store` (과거 "마커 0" 사고 때문) |
 | Vercel KV | `/api/parcel-by-address` 만 (지번 필지정보 TTL 3일) |
-| DB 캐시 | `geocode_cache` (마을 좌표만. 지번은 021 로 제거 완료) |
+| DB 캐시 | ~~`geocode_cache`~~ → 2026-04-22 폐기. 좌표는 `kepco_addr.lat/lng` 단일 저장 |
 | MV | `kepco_map_summary` — 크롤링/업로드 후 `/api/refresh-mv` 로 갱신 |
 
 # 차기 작업 범위

@@ -17,9 +17,10 @@
 ## 2. 핵심 데이터 흐름
 
 ### 업로드 (관리자만)
+> **2026-04-22 폐기**: 엑셀 업로드 기능 자체 비활성화. 아래는 초기 설계 기록.
 ```
 엑셀 선택 → 양식 검증 → 파싱 + 행 검증 → 파일 내 중복 제거
-→ geocode_cache 조회 → 미스만 지오코딩 → DB UPSERT → MV REFRESH
+→ 지오코딩 → DB UPSERT → MV REFRESH
 ```
 
 ### 조회 (모든 인증 사용자)
@@ -62,8 +63,8 @@
 | 데이터 저장소 | Supabase (단일 진실 소스) |
 | 인증 | Supabase Auth, 회원가입 X |
 | 권한 | admin / viewer 2단계 |
-| 지오코딩 | 카카오 메인 + VWorld fallback |
-| 캐시 | geocode_cache 영구 |
+| 지오코딩 | ~~카카오 메인 + VWorld fallback~~ → **VWorld 단독 + PNU 동시 획득** (2026-04-22 변경) |
+| 캐시 | ~~geocode_cache~~ → `kepco_addr` 단일 저장 + 지번은 Vercel KV (2026-04-22 변경) |
 | 데이터 정책 | upsert (마지막 우선) |
 | Upsert 키 | row_hash (9개 조합의 MD5) |
 | 2단계 로딩 | Light(map_summary) + Heavy(location) |

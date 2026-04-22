@@ -57,8 +57,9 @@ KEPCO API → 크롤러 (crawler.py)
 
 1. kepco_addr UPSERT (캐시 miss인 주소만, 응답으로 addr_id 캐시)
 2. kepco_capa UPSERT (addr_id 붙여서, return=minimal)
-3. 새 주소 지오코딩 (카카오 API → geocode_cache → kepco_addr.lat/lng)
-4. Materialized View 새로고침 (1시간 간격, 웹 새로고침 버튼으로도 수동 가능)
+3. Materialized View 새로고침 (1시간 간격, 웹 새로고침 버튼으로도 수동 가능)
+
+> **좌표 채우기**: 2026-04-22 부터 크롤러는 주소만 저장. lat/lng 는 별도 배치 워커 (`crawler/fill_kepco_coords.py`, VWorld + PNU) 담당.
 
 > **2026-04-22**: 기존 5·6단계(ref 스냅샷 동기화 + 변화 감지)는 비교 기능 리팩토링으로 제거됨.
 > 폐기된 설계 기록은 [COMPARE.md](./COMPARE.md) 참조.

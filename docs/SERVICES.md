@@ -182,7 +182,7 @@ VWORLD_KEY  # 인증키 (서버 전용)
 - `kepco_capa` — 용량 데이터 (addr_id FK, 시설명, kW 수치)
 - `kepco_map_summary` — 지도 마커용 MV (리 단위 집계)
 - ~~`kepco_capa_ref`~~, ~~`kepco_capa_changelog`~~ — **2026-04-22 폐기** (ref/changelog 기반 비교 시스템 제거, 테이블/RPC 수동 DROP 대기. [COMPARE.md](./COMPARE.md))
-- `geocode_cache` — 주소→좌표 영구 캐시
+- ~~`geocode_cache`~~ — **2026-04-22 폐기** (좌표는 `kepco_addr.lat/lng` 단일 저장, 지번은 KV on-demand. 수동 DROP 대기: `db/migrations/026_drop_geocode_cache.sql`)
 - `crawl_jobs` — 크롤링 작업 관리
 - `user_roles` — 사용자 권한
 

@@ -1,10 +1,9 @@
 /**
  * 지번 단위 필지정보 KV 캐시.
  *
- * 정책 (2026-04-22 결정):
- *   - 지번 단위 좌표는 DB(geocode_cache) 에 저장하지 않음
- *   - 대신 Vercel KV 에 TTL 3일로 캐싱
- *   - 마을(리) 단위 좌표만 geocode_cache 유지
+ * 정책:
+ *   - 지번 단위 좌표는 DB 에 저장하지 않음 (Vercel KV TTL 3일 전용).
+ *   - 리 단위 좌표는 kepco_addr.lat/lng 에 저장.
  *
  * 키 설계:
  *   parcel:{전체주소}   — 단건 (ParcelResult JSON)
