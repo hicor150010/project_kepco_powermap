@@ -18,7 +18,6 @@
 import { useMemo } from "react";
 import type { KepcoDataRow } from "@/lib/types";
 import { hasCapacity } from "@/lib/types";
-import type { CompareRefRow } from "@/app/api/compare/route";
 import { summarizeLocation, type FacilityCounts } from "@/lib/summarize";
 import AddrLine from "./AddrLine";
 
@@ -27,7 +26,6 @@ interface Props {
   loading: boolean;
   onShowDetail: () => void;
   onClose: () => void;
-  compareRows?: CompareRefRow[];
 }
 
 export default function LocationSummaryCard({
@@ -35,7 +33,6 @@ export default function LocationSummaryCard({
   loading,
   onShowDetail,
   onClose,
-  compareRows = [],
 }: Props) {
   if (loading) return null;
 
@@ -102,10 +99,6 @@ export default function LocationSummaryCard({
         <FacilityRatio title="변전소" counts={summary.substCounts} />
         <FacilityRatio title="주변압기" counts={summary.mtrCounts} />
         <FacilityRatio title="배전선로" counts={summary.dlCounts} />
-
-        {compareRows.length > 0 && (
-          <CompareSection rows={compareRows} />
-        )}
       </div>
 
       {/* 모바일 — 간략 비율 바 */}
@@ -219,8 +212,6 @@ function FacilityRatio({
   );
 }
 
-// ── 변경 비교 섹션 — KEPCO 수식 기반 ──
-
 /** 모바일용 미니 비율 바 */
 function MiniBar({ label, counts }: { label: string; counts: FacilityCounts }) {
   const { okPct, noPct, okCount, noCount } = counts;
@@ -240,51 +231,3 @@ function MiniBar({ label, counts }: { label: string; counts: FacilityCounts }) {
   );
 }
 
-function CompareSection({ rows }: { rows: CompareRefRow[] }) {
-  return (
-    <div className="border-t border-orange-200 pt-3 mt-1">
-      <div className="flex items-center gap-1.5 mb-2.5">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="text-orange-500">
-          <path d="M8 1v14M3 4l2-2 2 2M11 12l2 2 2-2M3 5v6M13 5v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-        <span className="text-xs font-bold text-orange-700">
-          기준 대비 변경 ({rows.length}건)
-        </span>
-      </div>
-
-      <div className="space-y-2 max-h-[200px] overflow-y-auto">
-        {rows.map((r, i) => (
-          <CompareDetailRow key={i} row={r} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CompareDetailRow({ row }: { row: CompareRefRow }) {
-  return (
-    <div className="bg-orange-50/60 rounded-lg px-3 py-2 border border-orange-100">
-      <div className="space-y-1">
-        {row.prev_subst_ok !== row.curr_subst_ok && <CapDelta label="변전소" prevOk={row.prev_subst_ok} curOk={row.curr_subst_ok} />}
-        {row.prev_mtr_ok !== row.curr_mtr_ok && <CapDelta label="주변압기" prevOk={row.prev_mtr_ok} curOk={row.curr_mtr_ok} />}
-        {row.prev_dl_ok !== row.curr_dl_ok && <CapDelta label="배전선로" prevOk={row.prev_dl_ok} curOk={row.curr_dl_ok} />}
-      </div>
-    </div>
-  );
-}
-
-function CapDelta({ label, prevOk, curOk }: { label: string; prevOk: boolean; curOk: boolean }) {
-  const improved = !prevOk && curOk;
-  return (
-    <div className="flex items-center gap-1.5 text-[10px]">
-      <span className="text-gray-500 w-12 flex-shrink-0 font-semibold">{label}</span>
-      <span className={`px-1 py-0.5 rounded ${prevOk ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-        {prevOk ? "여유" : "없음"}
-      </span>
-      <span className={`font-bold text-xs ${improved ? "text-green-500" : "text-red-500"}`}>→</span>
-      <span className={`px-1 py-0.5 rounded ${curOk ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-        {curOk ? "여유" : "없음"}
-      </span>
-    </div>
-  );
-}

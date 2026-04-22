@@ -1,6 +1,21 @@
 # 변화 추적 (비교) 시스템
 
-> 최종 수정: 2026-04-12
+> ## ⚠️ 이 시스템은 2026-04-22 전면 폐기되었습니다
+>
+> 아래 설명하는 **ref/changelog 기반 비교 시스템**은 리팩토링을 통해 제거되었습니다.
+> - 웹 UI(`CompareFilterPanel`) → "준비 중" 플레이스홀더로 교체
+> - API(`/api/compare/*`) 3개 파일 삭제
+> - 크롤러 `sync_ref`/`detect_changes` 메서드 + flush 5·6단계 호출 제거
+> - DB 테이블 `kepco_capa_ref`, `kepco_capa_changelog` 및 관련 RPC 7개 → **수동 DROP 예정**
+>
+> **신규 비교 방식**: 사용자가 과거 시점에 내려받은 엑셀을 업로드 → 현재 DB 와 비교.
+> 설계 진행 중. 체크리스트: [.claude/memory/project_refactor_checklist.md](../.claude/memory/project_refactor_checklist.md)
+>
+> 이 문서의 아래 내용은 **과거 설계 기록**으로만 보존합니다. 현재 동작하지 않습니다.
+
+---
+
+> 최종 수정: 2026-04-12 (폐기 전 기록)
 
 ---
 

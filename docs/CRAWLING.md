@@ -50,23 +50,18 @@ KEPCO API → 크롤러 (crawler.py)
     ↓
 4. MV 새로고침 (kepco_map_summary)
     ↓
-5. ref 스냅샷 동기화 (새 지번만, ON CONFLICT DO NOTHING)
-    ↓
-6. 변화 감지 (ref 대비 → kepco_capa_changelog)
-    ↓
 체크포인트 저장 (crawl_jobs.checkpoint)
 ```
 
 ### flush 사이클 (100건마다)
 
 1. kepco_addr UPSERT (캐시 miss인 주소만, 응답으로 addr_id 캐시)
-2. kepco_capa UPSERT (addr_id 붙여서, 응답으로 upserted_ids 수집)
+2. kepco_capa UPSERT (addr_id 붙여서, return=minimal)
 3. 새 주소 지오코딩 (카카오 API → geocode_cache → kepco_addr.lat/lng)
 4. Materialized View 새로고침 (1시간 간격, 웹 새로고침 버튼으로도 수동 가능)
-5. sync_capa_ref(upserted_ids) — 새 지번만 ref에 추가 (ON CONFLICT DO NOTHING)
-6. detect_changes(upserted_ids) — ref 대비 변화 감지 → changelog 기록 (같은 날 첫 감지만)
 
-> 상세 흐름은 [COMPARE.md](./COMPARE.md) 참조
+> **2026-04-22**: 기존 5·6단계(ref 스냅샷 동기화 + 변화 감지)는 비교 기능 리팩토링으로 제거됨.
+> 폐기된 설계 기록은 [COMPARE.md](./COMPARE.md) 참조.
 
 ---
 
@@ -119,8 +114,6 @@ KEPCO API → 크롤러 (crawler.py)
 | 주소 목록 수신 실패 복구 | 세션 재생성 + 5/15/30초 점진 대기 재시도 (§10) | crawler.py `_safe_get_addr_list` |
 | 체크포인트 일관성 | 레벨 진입 시 하위 인덱스 리셋 (§10) | crawler.py `_reset_progress_below` |
 | MV 새로고침 부하 방지 | 1시간 간격 제한 (time.time() 기반) | crawl_to_db.py |
-| 변화 감지 | ref 대비 changelog (detect_changes RPC) | 016_changelog.sql |
-| 같은 날 중복 감지 방지 | ON CONFLICT DO NOTHING (첫 감지만) | 016_changelog.sql |
 
 ---
 
@@ -250,10 +243,11 @@ cron 실행 시 matrix로 스레드 1/2/3 모두 체크.
 
 ## 11. 변경 이력
 
+- 2026-04-22: 비교 기능 전면 리팩토링 — ref/changelog 기반 flush 5·6단계 제거, `sync_ref`/`detect_changes` 메서드 삭제, upserted_ids 수집 로직 간소화 (return=minimal). 폐기 이력은 [COMPARE.md](./COMPARE.md)
 - 2026-04-19: 주소 목록 수신 실패 복구 추가 — `_safe_get_addr_list` 세션 재생성 재시도 + 체크포인트 일관성 `_reset_progress_below` (Job #180 사례 대응, §10)
-- 2026-04-12: 변화 감지 시스템 전환 — 트리거 → ref + changelog 방식 ([COMPARE.md](./COMPARE.md))
-- 2026-04-12: sync_capa_ref 파라미터화 (전체 스캔 → flush ID만)
-- 2026-04-12: detect_changes ON CONFLICT DO NOTHING (하루 첫 감지만 기록)
+- 2026-04-12: 변화 감지 시스템 전환 — 트리거 → ref + changelog 방식 ([COMPARE.md](./COMPARE.md)) — **2026-04-22 폐기**
+- 2026-04-12: sync_capa_ref 파라미터화 (전체 스캔 → flush ID만) — **2026-04-22 폐기**
+- 2026-04-12: detect_changes ON CONFLICT DO NOTHING (하루 첫 감지만 기록) — **2026-04-22 폐기**
 - 2026-04-10: 멀티스레드 시스템 도입 (3개 독립 스레드, 반복 모드)
 - 2026-04-10: 에러 상세 로그 (recent_errors + all_errors)
 - 2026-04-09: 차단 우회 강화 (세션 재생성, UA 랜덤, 점진적 백오프)

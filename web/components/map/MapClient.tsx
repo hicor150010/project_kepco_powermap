@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef, startTransition } from "react";
 import Link from "next/link";
 import { useIsMobile } from "@/lib/useIsMobile";
 import KakaoMap from "./KakaoMap";
@@ -527,17 +527,9 @@ export default function MapClient({ isAdmin, email }: Props) {
         setSimpleToast("이 주소는 지도 위치를 찾을 수 없어요. 용량 정보는 아래에서 확인할 수 있습니다.");
       }
 
-      // 변화추적 지번 클릭 → 상세 모달 자동 열기 + 지번 필터
-      if (pick.kind === "ji_compare") {
-        setInitialJibunSearch(pick.jibun);
-        if (targetAddr) {
-          openLocationDetail(targetAddr).then(() => setDetailModalOpen(true));
-        }
-      } else {
-        setInitialJibunSearch("");
-        if (targetAddr) {
-          openLocationDetail(targetAddr);
-        }
+      setInitialJibunSearch("");
+      if (targetAddr) {
+        openLocationDetail(targetAddr);
       }
     },
     [mapInstance, openLocationDetail, gpsActive, gpsAutoFollow, mapFilteredAddrs, clearMapFilter, moveMapTo]
@@ -800,11 +792,14 @@ export default function MapClient({ isAdmin, email }: Props) {
         setDetailModalOpen(false);
         const cached = parcelDataCacheRef.current.get(jibunKey);
         if (cached) {
-          setSelectedJibun(cached.jibun);
-          setSelectedGeometry(cached.geometry);
-          setParcelCapa(cached.capa);
-          setParcelMatchMode(cached.matchMode);
-          setParcelNearestJibun(cached.nearestJibun);
+          // transition 으로 래핑 — 패널 5개 setState 를 non-urgent 처리해 UI 반응 유지
+          startTransition(() => {
+            setSelectedJibun(cached.jibun);
+            setSelectedGeometry(cached.geometry);
+            setParcelCapa(cached.capa);
+            setParcelMatchMode(cached.matchMode);
+            setParcelNearestJibun(cached.nearestJibun);
+          });
         }
         moveMapTo(existing.lat, existing.lng);
         return;
@@ -820,13 +815,16 @@ export default function MapClient({ isAdmin, email }: Props) {
       const villageAddr = parts.slice(0, -1).join(" "); // 지번 제외한 마을 주소 (KV 인덱스)
 
       setDetailModalOpen(false);
-      setCenterMessage(`📍 ${jibunKey} 조회 중...`);
 
       // 시퀀스 가드 — 중복 클릭 시 늦게 오는 응답 무시
       const seq = ++parcelReqSeqRef.current;
+      // 즉시 ParcelInfoPanel 을 로딩 스켈레톤 상태로 열기 (체감 반응성)
       setParcelLoading(true);
       setSelectedJibun(null);
       setSelectedGeometry(null);
+      setParcelCapa([]);
+      setParcelMatchMode(null);
+      setParcelNearestJibun(null);
 
       try {
         // 주소 구성 파라미터를 함께 보냄 → 서버가 VWorld 와 KEPCO 를 병렬 실행
@@ -845,17 +843,9 @@ export default function MapClient({ isAdmin, email }: Props) {
         const data = await res.json();
 
         if (!data.ok || !data.jibun || !data.geometry) {
-          setCenterMessage(`⚠️ ${jibunKey} 필지 정보를 찾을 수 없어요`);
-          setTimeout(() => setCenterMessage(null), 2000);
+          setSimpleToast(`⚠️ ${jibunKey} 필지 정보를 찾을 수 없어요`);
           return;
         }
-
-        // 패널 채우기
-        setSelectedJibun(data.jibun);
-        setSelectedGeometry(data.geometry);
-        setParcelCapa(data.capa ?? []);
-        setParcelMatchMode(data.matchMode ?? null);
-        setParcelNearestJibun(data.nearestJibun ?? null);
 
         // 재클릭 대비 응답 캐시
         parcelDataCacheRef.current.set(jibunKey, {
@@ -864,6 +854,15 @@ export default function MapClient({ isAdmin, email }: Props) {
           capa: data.capa ?? [],
           matchMode: data.matchMode ?? null,
           nearestJibun: data.nearestJibun ?? null,
+        });
+
+        // 패널 5개 setState 를 non-urgent 로 처리 → 카카오 SDK 연산과 경쟁 회피
+        startTransition(() => {
+          setSelectedJibun(data.jibun);
+          setSelectedGeometry(data.geometry);
+          setParcelCapa(data.capa ?? []);
+          setParcelMatchMode(data.matchMode ?? null);
+          setParcelNearestJibun(data.nearestJibun ?? null);
         });
 
         // 핀 위치 — Turf.js centroid 로 계산된 중심점 (서버 제공)
@@ -892,11 +891,9 @@ export default function MapClient({ isAdmin, email }: Props) {
           }
           moveMapTo(lat, lng);
         }
-        setCenterMessage(null);
       } catch {
         if (seq === parcelReqSeqRef.current) {
-          setCenterMessage(`⚠️ 필지 조회 중 오류가 발생했어요`);
-          setTimeout(() => setCenterMessage(null), 2000);
+          setSimpleToast(`⚠️ 필지 조회 중 오류가 발생했어요`);
         }
       } finally {
         if (seq === parcelReqSeqRef.current) setParcelLoading(false);
@@ -1160,7 +1157,6 @@ export default function MapClient({ isAdmin, email }: Props) {
               setDetailModalOpen(false);
               clearJibunPin();
             }}
-            compareRows={[]}
           />
         )}
 

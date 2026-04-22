@@ -498,18 +498,7 @@ export default function Sidebar({
             />
           )}
 
-          {activeTab === "compare" && (
-            <CompareFilterPanel
-              onSearchPick={(pick) => {
-                onSearchPick?.(pick);
-                if (window.innerWidth < 768) onToggle();
-              }}
-              selectedAddr={selectedAddr}
-              onMapFilter={(addrs) => onMapFilter?.(addrs, "compare")}
-              onClearMapFilter={onClearMapFilter}
-              resetKey={panelResetKey}
-            />
-          )}
+          {activeTab === "compare" && <CompareFilterPanel />}
         </div>
 
         {/* 푸터 */}

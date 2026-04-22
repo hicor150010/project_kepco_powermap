@@ -181,8 +181,7 @@ VWORLD_KEY  # 인증키 (서버 전용)
 - `kepco_addr` — 주소 마스터 (시도/시/구/동/리/지번)
 - `kepco_capa` — 용량 데이터 (addr_id FK, 시설명, kW 수치)
 - `kepco_map_summary` — 지도 마커용 MV (리 단위 집계)
-- `kepco_capa_ref` — 기준 스냅샷 (불변, 변화 비교용)
-- `kepco_capa_changelog` — 일별 변화 이력
+- ~~`kepco_capa_ref`~~, ~~`kepco_capa_changelog`~~ — **2026-04-22 폐기** (ref/changelog 기반 비교 시스템 제거, 테이블/RPC 수동 DROP 대기. [COMPARE.md](./COMPARE.md))
 - `geocode_cache` — 주소→좌표 영구 캐시
 - `crawl_jobs` — 크롤링 작업 관리
 - `user_roles` — 사용자 권한
@@ -327,7 +326,8 @@ SECRETS.local.md
 ---
 
 ## 변경 이력
-- 2026-04-12: DB 구조 갱신 — kepco_addr/capa 분리, ref+changelog 추가, history 삭제
+- 2026-04-22: 비교 기능 리팩토링 — ref/changelog 테이블·RPC 사용 중단 (수동 DROP 예정). 신규 방식은 엑셀 업로드 기반
+- 2026-04-12: DB 구조 갱신 — kepco_addr/capa 분리, ref+changelog 추가, history 삭제 (ref/changelog 은 2026-04-22 폐기)
 - 2026-04-11: API 캐시 — map-summary, location에 CDN 캐시 1시간 + 새로고침 버튼 추가
 - 2026-04-11: DB 최적화 — 불필요 인덱스 8개 제거 + UPSERT unique 해시화 (110MB → 53MB)
 - 2026-04-10: Vercel 배포 완료. 계정/프로젝트/도메인 정보 추가. VWorld 서비스URL 와일드카드 확인.

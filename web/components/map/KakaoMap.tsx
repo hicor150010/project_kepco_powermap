@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { MapSummaryRow, MarkerColor } from "@/lib/types";
-import type { CompareRefRow } from "@/app/api/compare/route";
 import {
   colorForMarker,
   ratiosForMarker,
@@ -40,8 +39,6 @@ interface Props {
   selectedAddr?: string | null;
   /** 지도 타입: "roadmap" | "skyview" | "hybrid" */
   mapType?: "roadmap" | "skyview" | "hybrid";
-  /** 비교 결과 — 값이 있으면 변경 마커 오버레이 표시 */
-  compareRows?: CompareRefRow[];
   /** 표시할 마을 주소 집합 — null이면 전체, Set이면 해당 마을만 표시 */
   visibleAddrs?: Set<string> | null;
   /** 마커 재구성 진행 상태 콜백 — true 가 200ms 이상 지속되면 상위에서 로딩 인디케이터 표시 */
@@ -289,7 +286,6 @@ export default function KakaoMap({
   measureAddPointRef,
   selectedAddr = null,
   mapType = "roadmap",
-  compareRows = [],
   visibleAddrs = null,
   onRenderingChange,
   roadviewActive = false,
@@ -638,93 +634,6 @@ export default function KakaoMap({
       }
     }
   }, [loaded, selectedAddr, rows]);
-
-  // ── 비교 오버레이 ──
-  const compareOverlaysRef = useRef<any[]>([]);
-
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map || !loaded) return;
-
-    // 기존 오버레이 제거
-    compareOverlaysRef.current.forEach((o) => o.setMap(null));
-    compareOverlaysRef.current = [];
-
-    if (compareRows.length === 0) return;
-
-    // geocode_address별로 그룹핑 → 마을 단위 오버레이
-    const byAddr = new Map<string, { rows: CompareRefRow[]; lat: number; lng: number }>();
-    for (const r of compareRows) {
-      if (!byAddr.has(r.geocode_address)) {
-        byAddr.set(r.geocode_address, { rows: [], lat: r.lat, lng: r.lng });
-      }
-      byAddr.get(r.geocode_address)!.rows.push(r);
-    }
-
-    byAddr.forEach(({ rows: cRows, lat, lng }, addr) => {
-      // 마을 내 방향 판단 (ref 기반)
-      let gained = 0;
-      let lost = 0;
-      for (const r of cRows) {
-        if (!r.prev_subst_ok && r.curr_subst_ok) gained++;
-        if (r.prev_subst_ok && !r.curr_subst_ok) lost++;
-        if (!r.prev_mtr_ok && r.curr_mtr_ok) gained++;
-        if (r.prev_mtr_ok && !r.curr_mtr_ok) lost++;
-        if (!r.prev_dl_ok && r.curr_dl_ok) gained++;
-        if (r.prev_dl_ok && !r.curr_dl_ok) lost++;
-      }
-      const hasWorsen = lost > 0;
-      const hasImprove = gained > 0;
-
-      let color: string;
-      let arrow: string;
-      let ringColor: string;
-      if (hasWorsen && hasImprove) {
-        color = "#f59e0b"; // amber — mixed
-        arrow = "&#8693;"; // ⇅
-        ringColor = "rgba(245,158,11,0.3)";
-      } else if (hasWorsen) {
-        color = "#ef4444"; // red — worsened
-        arrow = "&#9660;"; // ▼
-        ringColor = "rgba(239,68,68,0.3)";
-      } else {
-        color = "#22c55e"; // green — improved
-        arrow = "&#9650;"; // ▲
-        ringColor = "rgba(34,197,94,0.3)";
-      }
-
-      const html = `
-        <div style="position:relative;width:0;height:0;pointer-events:none;">
-          <div style="
-            position:absolute;left:-16px;top:-16px;
-            width:32px;height:32px;border-radius:50%;
-            background:${ringColor};
-            border:2.5px solid ${color};
-            display:flex;align-items:center;justify-content:center;
-            font-size:14px;color:${color};font-weight:bold;
-            pointer-events:auto;cursor:pointer;
-            animation:kepcoCompPulse 2.5s ease-out infinite;
-          ">${arrow}<span style="font-size:9px;margin-left:1px;">${cRows.length}</span></div>
-          <style>
-            @keyframes kepcoCompPulse {
-              0% { box-shadow: 0 0 0 0 ${ringColor}; }
-              70% { box-shadow: 0 0 0 12px rgba(0,0,0,0); }
-              100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
-            }
-          </style>
-        </div>`;
-
-      const overlay = new window.kakao.maps.CustomOverlay({
-        position: new window.kakao.maps.LatLng(lat, lng),
-        content: html,
-        yAnchor: 0.5,
-        xAnchor: 0.5,
-        zIndex: 100,
-      });
-      overlay.setMap(map);
-      compareOverlaysRef.current.push(overlay);
-    });
-  }, [loaded, compareRows]);
 
   // ─────────────────────────────────────────────
   // 로드뷰 모드 — 파란선 오버레이 + 지도 클릭 핸들러

@@ -167,22 +167,16 @@ function CompareTab() {
   return (
     <div>
       <p className="text-xs text-gray-500 pb-3 mb-3 border-b border-gray-100 leading-relaxed">
-        두 시점을 비교해 <b className="text-gray-700">여유 상태가 달라진 지역</b>을 찾는 기능. 새로 생긴 여유 지역을 빠르게 발견 가능.
+        <b className="text-gray-700">변화 추적 기능은 현재 개편 중</b>입니다.
       </p>
-      <Section title="1. 비교 시점 선택">
-        <li><b>시점 A</b>, <b>시점 B</b> 두 날짜를 각각 선택</li>
-        <li>시점 B를 오늘로 두면 현재 상태와 비교됨</li>
-        <li>예: 시점 A = 1주 전, 시점 B = 오늘 → 일주일 사이 변화 확인</li>
+      <Section title="곧 바뀌는 방식">
+        <li>과거 특정 시점에 다운받은 <b>엑셀을 업로드</b></li>
+        <li>업로드한 엑셀과 <b>현재 데이터</b>를 비교</li>
+        <li>달라진 부분만 한눈에 확인</li>
       </Section>
-      <Section title="2. 변화 유형 필터">
-        <li><b>없음 → 있음</b>: 여유가 새로 생긴 곳 <span className="text-gray-400">(가장 중요!)</span></li>
-        <li><b>있음 → 없음</b>: 여유가 사라진 곳</li>
-        <li><b>혼합</b>: 시설마다 방향이 다른 곳</li>
-      </Section>
-      <Section title="3. 지번별 상세 보기">
-        <li>마을을 클릭하면 지번별 변화 내역이 펼쳐짐</li>
-        <li>특정 지번을 클릭하면 <b>해당 지번의 상세 용량 정보</b>가 열림</li>
-        <li>어떤 시설이 어떻게 달라졌는지 바로 확인 가능</li>
+      <Section title="참고">
+        <li>기존 날짜 선택 방식은 제거되었습니다</li>
+        <li>준비가 끝나면 다시 안내드릴게요</li>
       </Section>
     </div>
   );

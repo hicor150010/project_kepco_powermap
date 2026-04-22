@@ -22,3 +22,4 @@
 - 서니로직 벤치마크 계정 → `../../docs/SECRETS.local.md` 에 보관 (의뢰자 본인 계정, 자동견적 UX 참고용)
 - [GitHub 계정 이전 이력](reference_github_migration.md) — 2026-04-19 `hicor1` → `hicor150010` 이전 완료. 구 저장소/PAT 모두 삭제됨
 - [도메인 sunlap.kr](project_domain_sunlap.md) — 가비아 구매. Vercel 등록 완료, 가비아 DNS 입력 대기 (2026-04-21)
+- [1차 리팩토링 체크리스트](project_refactor_checklist.md) 🔧 — 비교 기능 엑셀 업로드 개편 + 리 테두리 오버레이. 비용 청구 X, 카톡 노출 X

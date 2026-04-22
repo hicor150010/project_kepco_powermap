@@ -23,8 +23,7 @@ import { FacilityCard, StepBlock } from "./FacilityCard";
 
 export type SearchPick =
   | { kind: "ri"; row: SearchRiResult }
-  | { kind: "ji"; row: KepcoDataRow }
-  | { kind: "ji_compare"; row: { geocode_address: string; lat: number; lng: number }; jibun: string };
+  | { kind: "ji"; row: KepcoDataRow };
 
 interface Props {
   mode: "ri" | "ji";

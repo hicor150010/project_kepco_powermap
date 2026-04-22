@@ -237,23 +237,19 @@ class CrawlDbWriter:
                 continue
             capa_rows.append(_to_capa_row(result, addr_id))
 
-        upserted_ids: list[int] = []
         for i in range(0, len(capa_rows), BATCH_SIZE):
             chunk = capa_rows[i : i + BATCH_SIZE]
             try:
                 resp = requests.post(
                     f"{self._url}/rest/v1/kepco_capa"
-                    "?on_conflict=addr_id,addr_jibun,subst_nm,mtr_no,dl_nm"
-                    "&select=id",
+                    "?on_conflict=addr_id,addr_jibun,subst_nm,mtr_no,dl_nm",
                     json=chunk,
                     headers=self._headers(
-                        "resolution=merge-duplicates,return=representation"
+                        "resolution=merge-duplicates,return=minimal"
                     ),
                     timeout=60,
                 )
-                if resp.status_code in (200, 201):
-                    rows = resp.json()
-                    upserted_ids.extend(r["id"] for r in rows)
+                if resp.status_code in (200, 201, 204):
                     self._stats["upserted"] += len(chunk)
                     logger.info(f"kepco_capa UPSERT: {len(chunk)}건")
                 else:
@@ -287,14 +283,6 @@ class CrawlDbWriter:
         if time.time() - self._last_mv_refresh > self._mv_interval:
             self.refresh_mv()
             self._last_mv_refresh = time.time()
-
-        # ── 5단계: ref 스냅샷 동기화 (새 지번만 추가) ──
-        if upserted_ids:
-            self.sync_ref(upserted_ids)
-
-        # ── 6단계: 변화 감지 (ref 대비 달라진 지번만 changelog 기록) ──
-        if upserted_ids:
-            self.detect_changes(upserted_ids)
 
     def _geocode_addresses(self, addresses: set[str]):
         """주소 목록을 지오코딩하여 geocode_cache + kepco_addr 업데이트"""
@@ -397,46 +385,6 @@ class CrawlDbWriter:
             )
         except Exception:
             pass
-
-    def detect_changes(self, capa_ids: list[int]):
-        """ref 대비 여유 판정 변화를 changelog에 기록 (detect_changes RPC)"""
-        try:
-            resp = requests.post(
-                f"{self._url}/rest/v1/rpc/detect_changes",
-                json={"capa_ids": capa_ids},
-                headers=self._headers(),
-                timeout=120,
-            )
-            if resp.status_code in (200, 204):
-                count = resp.json() if resp.text.strip() else 0
-                if count:
-                    logger.info(f"변화 감지: {count}건 기록")
-            else:
-                logger.warning(
-                    f"변화 감지 실패 (HTTP {resp.status_code}): "
-                    f"{resp.text[:300]}"
-                )
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"변화 감지 네트워크 오류: {e}")
-
-    def sync_ref(self, capa_ids: list[int] | None = None):
-        """ref 스냅샷 동기화 — 새 지번만 추가 (sync_capa_ref RPC)"""
-        try:
-            resp = requests.post(
-                f"{self._url}/rest/v1/rpc/sync_capa_ref",
-                json={"capa_ids": capa_ids},
-                headers=self._headers(),
-                timeout=120,
-            )
-            if resp.status_code in (200, 204):
-                logger.info("ref 스냅샷 동기화 완료")
-            else:
-                logger.warning(
-                    f"ref 동기화 실패 (HTTP {resp.status_code}): "
-                    f"{resp.text[:300]}"
-                )
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"ref 동기화 네트워크 오류: {e}")
 
     def refresh_mv(self):
         """Materialized View 새로고침 (refresh_kepco_summary RPC)"""
