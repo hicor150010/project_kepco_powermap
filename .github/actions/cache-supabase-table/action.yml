@@ -1,14 +1,5 @@
 name: Cache Supabase Table
-description: >
-  Supabase 테이블을 Actions Cache 에 저장/복원.
-  max(updated_at) 을 14자리 timestamp 로 변환해 key 로 사용 → 데이터 변경 시 자동 invalidation.
-  사용 예:
-    - uses: ./.github/actions/cache-supabase-table
-      with:
-        table_name: bjd_master
-        columns: bjd_code,sep_1,sep_2,sep_3,sep_4,sep_5
-        supabase_url: ${{ secrets.SUPABASE_URL }}
-        supabase_key: ${{ secrets.SUPABASE_SERVICE_KEY }}
+description: "Supabase 테이블을 Actions Cache 에 저장/복원. max(updated_at) 14자리 timestamp 를 key 로 사용해 데이터 변경 시 자동 invalidation. 사용 예는 prep_caches.yml 참고."
 
 inputs:
   table_name:
