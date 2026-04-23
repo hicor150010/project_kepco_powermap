@@ -331,23 +331,49 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  // 2) GitHub run cancel 시도 (fire-and-forget — 크롤러 self-check 안전망 있음)
+  // 2) GitHub run cancel — await 해서 응답 확인.
+  //    GH 가 202(Accepted) 또는 409(Conflict - 이미 cancel 중) 주면
+  //    run 을 kill 할 것이 확정되므로 크롤러가 자기 status 를 못 씀.
+  //    우리가 대신 status='cancelled' 를 마킹해서 UI 가 빠르게 전환되게.
+  //    (타임아웃 5초 — 초과 시 intent 만 남기고 크롤러 self-check 에 맡김)
+  let ghConfirmed = false;
   if (job.github_run_id && GITHUB_PAT && GITHUB_REPO) {
-    fetch(
-      `https://api.github.com/repos/${GITHUB_REPO}/actions/runs/${job.github_run_id}/cancel`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `token ${GITHUB_PAT}`,
-          Accept: "application/vnd.github.v3+json",
-        },
+    try {
+      const resp = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/actions/runs/${job.github_run_id}/cancel`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `token ${GITHUB_PAT}`,
+            Accept: "application/vnd.github.v3+json",
+          },
+          signal: AbortSignal.timeout(5000),
+        }
+      );
+      if (resp.status === 202 || resp.status === 409 || resp.status === 404) {
+        // 404 = run 이 이미 완전히 없어진 경우 — 어차피 끝
+        ghConfirmed = true;
+      } else {
+        console.error(`[GitHub Actions] run cancel 비정상 응답 (${resp.status}):`, await resp.text());
       }
-    ).catch((err) => {
+    } catch (err) {
       console.error("[GitHub Actions] run cancel 오류:", err);
-    });
+    }
   }
 
-  return NextResponse.json({ ok: true });
+  // 3) GH cancel 이 수락됐으면 status 도 우리가 확정
+  if (ghConfirmed) {
+    await supabase
+      .from("crawl_jobs")
+      .update({
+        status: "cancelled",
+        error_message: "사용자 정지 — GH run cancel 수락 확정",
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", body.id);
+  }
+
+  return NextResponse.json({ ok: true, gh_confirmed: ghConfirmed });
 }
 
 // ─────────────────────────────────────────────
