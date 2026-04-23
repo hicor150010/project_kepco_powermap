@@ -32,9 +32,13 @@ runs:
         KEY: ${{ inputs.supabase_key }}
         TABLE: ${{ inputs.table_name }}
       run: |
-        RAW=$(curl -sS --fail \
+        set -euo pipefail
+        RESP=$(curl -sS --fail-with-body \
           "$URL/rest/v1/$TABLE?select=updated_at&order=updated_at.desc&limit=1" \
-          -H "apikey: $KEY" | jq -er '.[0].updated_at')
+          -H "apikey: $KEY" \
+          -H "Authorization: Bearer $KEY")
+        echo "resp=$RESP"
+        RAW=$(echo "$RESP" | jq -er '.[0].updated_at')
         V=$(echo "$RAW" | tr -d '-:T' | cut -c1-14)
         echo "raw=$RAW"
         echo "v=$V"
@@ -56,14 +60,16 @@ runs:
         TABLE: ${{ inputs.table_name }}
         COLS: ${{ inputs.columns }}
       run: |
+        set -euo pipefail
         mkdir -p .cache
         PAGE=1000
         OFFSET=0
         ACC="[]"
         while true; do
-          BATCH=$(curl -sS --fail \
+          BATCH=$(curl -sS --fail-with-body \
             "$URL/rest/v1/$TABLE?select=$COLS&limit=$PAGE&offset=$OFFSET" \
-            -H "apikey: $KEY")
+            -H "apikey: $KEY" \
+            -H "Authorization: Bearer $KEY")
           COUNT=$(echo "$BATCH" | jq 'length')
           if [ "$COUNT" = "0" ]; then break; fi
           ACC=$(jq -n --argjson a "$ACC" --argjson b "$BATCH" '$a + $b')
