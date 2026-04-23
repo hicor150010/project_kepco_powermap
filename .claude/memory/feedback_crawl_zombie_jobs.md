@@ -1,8 +1,13 @@
 ---
-name: 크롤 좀비 job — recurring 모드 cancel 경쟁 조건
-description: recurring 모드 cancel 시 오래된 job 이 재활성화되는 경쟁 조건. 주기적 좀비 체크 필요
+name: 크롤 좀비 job — recurring 모드 cancel 경쟁 조건 [RESOLVED 2026-04-23]
+description: (해결) recurring cancel 경쟁조건 + 유령 Job 부활. 2중 제어 모델(intent/status 분리)로 근본 제거
 type: feedback
 ---
+
+> **✅ 해결됨 (2026-04-23)**: 2중 제어 모델 재설계로 근본 원인 제거.
+> 아래 "근본 해결 (미구현, 차후 과제)" 섹션의 모든 항목이 현재 구현됨.
+> 자세한 내용은 [feedback_2tier_control_model.md](feedback_2tier_control_model.md) 참고.
+> 아래 기록은 사고 복기 + 향후 비슷한 문제 진단용으로 보존.
 
 ## 증상
 
