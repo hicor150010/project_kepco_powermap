@@ -123,7 +123,7 @@ export function ActiveJobCard({ job, onStop, onDelete }: Props) {
                       <td className="px-2 py-2 text-center font-semibold text-gray-800">{job.progress.addr_parts.gu || "-"}<span className="text-[10px] text-blue-500 font-normal">{tag("gu")}</span></td>
                       <td className="px-2 py-2 text-center font-semibold text-gray-800">{job.progress.addr_parts.dong || "-"}<span className="text-[10px] text-blue-500 font-normal">{tag("dong")}</span></td>
                       <td className="px-2 py-2 text-center font-semibold text-gray-800">{job.progress.addr_parts.li || "-"}<span className="text-[10px] text-blue-500 font-normal">{tag("li")}</span></td>
-                      <td className="px-2 py-2 text-center font-bold text-blue-700">{job.progress.addr_parts.jibun || "-"}</td>
+                      <td className="px-2 py-2 text-center font-bold text-blue-700">{job.progress.addr_parts.jibun || "-"}<span className="text-[10px] text-blue-500 font-normal">{tag("jibun")}</span></td>
                     </tr>
                   );
                 })() : job.progress.current_address ? (
