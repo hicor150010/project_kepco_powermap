@@ -61,20 +61,22 @@ runs:
         COLS: ${{ inputs.columns }}
       run: |
         set -euo pipefail
-        mkdir -p .cache
+        mkdir -p .cache/parts
         PAGE=1000
         OFFSET=0
-        ACC="[]"
+        IDX=0
         while true; do
-          BATCH=$(curl -sS --fail-with-body \
+          PART=".cache/parts/${TABLE}_${IDX}.json"
+          curl -sS --fail-with-body \
             "$URL/rest/v1/$TABLE?select=$COLS&limit=$PAGE&offset=$OFFSET" \
             -H "apikey: $KEY" \
-            -H "Authorization: Bearer $KEY")
-          COUNT=$(echo "$BATCH" | jq 'length')
-          if [ "$COUNT" = "0" ]; then break; fi
-          ACC=$(jq -n --argjson a "$ACC" --argjson b "$BATCH" '$a + $b')
+            -H "Authorization: Bearer $KEY" > "$PART"
+          COUNT=$(jq 'length' "$PART")
+          if [ "$COUNT" = "0" ]; then rm "$PART"; break; fi
           if [ "$COUNT" -lt "$PAGE" ]; then break; fi
+          IDX=$((IDX + 1))
           OFFSET=$((OFFSET + PAGE))
         done
-        echo "$ACC" > ".cache/$TABLE.json"
-        echo "Total: $(echo "$ACC" | jq 'length') rows, $(wc -c < .cache/$TABLE.json) bytes"
+        jq -s 'add' .cache/parts/${TABLE}_*.json > ".cache/$TABLE.json"
+        rm -rf .cache/parts
+        echo "Total: $(jq 'length' ".cache/$TABLE.json") rows, $(wc -c < .cache/$TABLE.json) bytes"
