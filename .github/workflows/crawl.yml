@@ -30,7 +30,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        thread: ${{ fromJSON(format('[{0}]', inputs.thread)) }}
+        # inputs.thread 가 빈 문자열로 넘어오면 matrix 빈 배열 → 0 jobs → 영원 queued.
+        # default '1' fallback 으로 최소한 1 job 은 생성되도록 보장.
+        thread: ${{ fromJSON(format('[{0}]', inputs.thread || '1')) }}
 
     steps:
       - name: Checkout
