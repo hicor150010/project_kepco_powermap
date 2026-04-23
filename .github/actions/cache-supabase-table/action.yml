@@ -1,0 +1,83 @@
+name: Cache Supabase Table
+description: >
+  Supabase 테이블을 Actions Cache 에 저장/복원.
+  max(updated_at) 을 14자리 timestamp 로 변환해 key 로 사용 → 데이터 변경 시 자동 invalidation.
+  사용 예:
+    - uses: ./.github/actions/cache-supabase-table
+      with:
+        table_name: bjd_master
+        columns: bjd_code,sep_1,sep_2,sep_3,sep_4,sep_5
+        supabase_url: ${{ secrets.SUPABASE_URL }}
+        supabase_key: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+inputs:
+  table_name:
+    required: true
+    description: "Supabase 테이블명. 예: bjd_master"
+  columns:
+    required: true
+    description: "select 컬럼 목록. 예: bjd_code,sep_1,sep_2"
+  supabase_url:
+    required: true
+  supabase_key:
+    required: true
+
+outputs:
+  version:
+    description: "14자리 타임스탬프 (예: 20260423232733)"
+    value: ${{ steps.ver.outputs.v }}
+  cache_hit:
+    description: "Cache HIT 여부 (true/false)"
+    value: ${{ steps.cache.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    # max(updated_at) → 14자리 변환
+    - id: ver
+      shell: bash
+      env:
+        URL: ${{ inputs.supabase_url }}
+        KEY: ${{ inputs.supabase_key }}
+        TABLE: ${{ inputs.table_name }}
+      run: |
+        RAW=$(curl -sS --fail \
+          "$URL/rest/v1/$TABLE?select=updated_at&order=updated_at.desc&limit=1" \
+          -H "apikey: $KEY" | jq -er '.[0].updated_at')
+        V=$(echo "$RAW" | tr -d '-:T' | cut -c1-14)
+        echo "raw=$RAW"
+        echo "v=$V"
+        echo "v=$V" >> $GITHUB_OUTPUT
+
+    # Cache 복원 시도 (key 매칭 시 .cache/<table>.json 복원)
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: .cache/${{ inputs.table_name }}.json
+        key: ${{ inputs.table_name }}_${{ steps.ver.outputs.v }}
+
+    # Cache MISS 시 Supabase 에서 전체 다운로드 (PostgREST max-rows 1000 제약으로 페이지네이션)
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        URL: ${{ inputs.supabase_url }}
+        KEY: ${{ inputs.supabase_key }}
+        TABLE: ${{ inputs.table_name }}
+        COLS: ${{ inputs.columns }}
+      run: |
+        mkdir -p .cache
+        PAGE=1000
+        OFFSET=0
+        ACC="[]"
+        while true; do
+          BATCH=$(curl -sS --fail \
+            "$URL/rest/v1/$TABLE?select=$COLS&limit=$PAGE&offset=$OFFSET" \
+            -H "apikey: $KEY")
+          COUNT=$(echo "$BATCH" | jq 'length')
+          if [ "$COUNT" = "0" ]; then break; fi
+          ACC=$(jq -n --argjson a "$ACC" --argjson b "$BATCH" '$a + $b')
+          if [ "$COUNT" -lt "$PAGE" ]; then break; fi
+          OFFSET=$((OFFSET + PAGE))
+        done
+        echo "$ACC" > ".cache/$TABLE.json"
+        echo "Total: $(echo "$ACC" | jq 'length') rows, $(wc -c < .cache/$TABLE.json) bytes"

@@ -18,10 +18,16 @@ on:
         type: string
 
 jobs:
+  # 선행: Supabase 마스터 테이블을 Actions Cache 에 준비
+  prep_caches:
+    uses: ./.github/workflows/prep_caches.yml
+    secrets: inherit
+
   crawl:
     name: "수집기 ${{ matrix.thread }}"
     runs-on: ubuntu-latest
     timeout-minutes: 350
+    needs: prep_caches   # prep 완료 후에만 시작
 
     concurrency:
       group: kepco-crawl-${{ matrix.thread }}
@@ -46,6 +52,15 @@ jobs:
       - name: Install dependencies
         run: pip install -r crawler/requirements.txt
 
+      # prep_caches 가 업로드한 Cache 를 복원 (HIT 확정)
+      - name: Restore bjd_master cache
+        uses: ./.github/actions/cache-supabase-table
+        with:
+          table_name: bjd_master
+          columns: bjd_code,sep_1,sep_2,sep_3,sep_4,sep_5
+          supabase_url: ${{ secrets.SUPABASE_URL }}
+          supabase_key: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
       - name: Run crawler
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -54,4 +69,5 @@ jobs:
           GH_PAT: ${{ secrets.GH_PAT }}
           GITHUB_REPO: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
+          BJD_CACHE_FILE: ${{ github.workspace }}/.cache/bjd_master.json
         run: cd crawler && python run_crawl.py --job-id=${{ inputs.job_id }} --thread=${{ matrix.thread }}

@@ -32,6 +32,14 @@ Thumbs.db
 crawler/*.log
 crawler/fill_coords_*.jsonl
 crawler/fill_coords_*.json
+crawler/fill_bjd_*.jsonl
+crawler/fill_bjd_*.json
 
 # 로컬 전용 런처 (시크릿 하드코딩 포함)
-crawler/run_fill_local.py
+crawler/run_*_local.py
+
+# Cache 파일 (Actions 또는 로컬 fallback 으로 생성)
+.cache/
+
+# 편집기 tmp 파일
+*.tmp.*
