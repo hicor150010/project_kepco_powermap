@@ -39,7 +39,7 @@ runs:
           -H "Authorization: Bearer $KEY")
         echo "resp=$RESP"
         RAW=$(echo "$RESP" | jq -er '.[0].updated_at')
-        V=$(echo "$RAW" | tr -d '-:T' | cut -c1-14)
+        V=$(echo "$RAW" | tr -d -- '-:T' | cut -c1-14)
         echo "raw=$RAW"
         echo "v=$V"
         echo "v=$V" >> $GITHUB_OUTPUT
