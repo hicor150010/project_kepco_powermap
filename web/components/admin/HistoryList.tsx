@@ -71,7 +71,7 @@ export function HistoryList({
                     <span className="text-gray-400 text-xs flex-shrink-0">{isExpanded ? "▼" : "▶"}</span>
                     <span className="text-gray-500 text-sm flex-shrink-0">#{job.id}</span>
                     <span className="text-sm font-medium text-gray-900 truncate flex-1 min-w-0">{formatScope(job)}</span>
-                    <CrawlStatusBadge status={job.status} />
+                    <CrawlStatusBadge job={job} />
                     <span className="text-sm text-gray-600 flex-shrink-0">
                       {job.progress.found != null ? `${job.progress.found.toLocaleString()}건` : "-"}
                     </span>

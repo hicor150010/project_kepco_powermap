@@ -1,23 +1,20 @@
 """
-Test B-2 — 취소 API PATCH 분기 로직 검증.
+Test B-2 — 취소 API PATCH 분기 로직 검증 (2중 제어 모델).
 
-route.ts 의 새 분기 로직 (3케이스) 을 Python 으로 재현 + 실 DB roundtrip 으로
-각 케이스가 기대대로 전환되는지 end-to-end 검증.
+새 PATCH 동작 (web/app/api/admin/crawl/route.ts):
+  1. pending                         → status='cancelled' 즉시 확정
+  2. running + heartbeat 3분+ (좀비) → status='cancelled' 즉시 확정
+  3. running + heartbeat 정상        → intent='cancel' 만 기록 (크롤러 self-check)
+  4. 이미 종료 상태 (completed/failed/cancelled) → skip
 
-참고: 이 스크립트는 route.ts 를 HTTP 호출하지 않고 동일 로직을 Python 으로
-재현하는 형태. 배포 전 단계에서 로직 자체를 증명하기 위함.
-배포 후에는 관리자 UI 에서 실제 취소 버튼으로 최종 확인 필요.
-
-절차:
-  1. status=pending / running / stop_requested 3개 fake Job 생성
-  2. 각각에 대해 simulate_cancel(status) → 기대 새 상태 계산
-  3. 실제 Supabase update 적용
-  4. 다시 읽어서 실제 상태 변경 검증
-  5. 임시 Job 3개 DELETE
+검증 방식:
+  - route.ts 의 분기 로직을 Python 으로 재현
+  - 실 Supabase 에 roundtrip 으로 각 시나리오 검증
 """
 import os
 import re
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -43,131 +40,163 @@ HDR = {
     "Authorization": f"Bearer {KEY}",
     "Content-Type": "application/json",
 }
+HEARTBEAT_ZOMBIE_MS = 3 * 60 * 1000
 
 PASS = "✅"
 FAIL = "❌"
 
 
-# ─── route.ts 의 새 분기 로직 Python 재현 ───
-def simulate_cancel(current_status: str) -> tuple[str | None, bool]:
+# ─── route.ts PATCH 의 새 분기 로직 Python 재현 ───
+def simulate_patch(job: dict) -> dict:
     """
-    route.ts PATCH 핸들러의 새 분기 로직 재현.
-    반환: (new_status or None, completed_at 도 설정해야 하는지 여부)
+    입력: job row (최소 status/intent/last_heartbeat)
+    반환: {
+        new_status: str | None,      # status 즉시 변경 여부
+        new_intent: str | None,      # intent 변경 여부
+        set_completed_at: bool,
+        branch: str,                 # 디버그용
+    }
     """
-    if current_status == "running":
-        return ("stop_requested", False)
-    if current_status in ("pending", "stop_requested"):
-        return ("cancelled", True)
-    return (None, False)
+    status = job["status"]
+    if status in ("completed", "cancelled", "failed"):
+        return {"new_status": None, "new_intent": None, "set_completed_at": False, "branch": "already_terminal"}
 
+    if status == "pending":
+        return {
+            "new_status": "cancelled",
+            "new_intent": "cancel",
+            "set_completed_at": True,
+            "branch": "pending_immediate_cancel",
+        }
 
-# ─── 테스트 ───
+    # status == 'running'
+    last_hb = job.get("last_heartbeat")
+    if last_hb is None:
+        age_ms = float("inf")
+    else:
+        age_ms = (datetime.now(timezone.utc) - datetime.fromisoformat(last_hb.replace("Z", "+00:00"))).total_seconds() * 1000
+
+    if age_ms > HEARTBEAT_ZOMBIE_MS:
+        return {
+            "new_status": "cancelled",
+            "new_intent": "cancel",
+            "set_completed_at": True,
+            "branch": "zombie_immediate_cancel",
+        }
+
+    return {
+        "new_status": None,
+        "new_intent": "cancel",
+        "set_completed_at": False,
+        "branch": "normal_intent_cancel",
+    }
+
 
 print("=" * 60)
-print("Test B-2 — 취소 API 분기 로직 (실 DB roundtrip)")
+print("Test B-2 — 취소 API PATCH 분기 (실 DB roundtrip)")
 print("=" * 60)
+
+# heartbeat 타임스탬프 (5분 전 = 좀비)
+ZOMBIE_HB = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+FRESH_HB = datetime.now(timezone.utc).isoformat()
 
 cases = [
-    # (초기 상태, 기대 새 상태, 기대 completed_at 설정 여부)
-    ("pending",        "cancelled",     True),
-    ("running",        "stop_requested", False),
-    ("stop_requested", "cancelled",     True),
-    ("completed",      None,            False),  # no-op
+    # (초기 상태, last_heartbeat, 기대 branch, 기대 new_status)
+    ("pending", None, "pending_immediate_cancel", "cancelled"),
+    ("running", ZOMBIE_HB, "zombie_immediate_cancel", "cancelled"),
+    ("running", FRESH_HB, "normal_intent_cancel", "running"),  # status 안 바뀜
+    ("completed", None, "already_terminal", "completed"),
 ]
 
 created_ids: list[int] = []
+passed = 0
+failed = 0
+
 try:
-    # 1) 각 케이스별 fake Job 생성
-    for initial_status, _, _ in cases:
+    for i, (init_status, init_hb, expected_branch, expected_final_status) in enumerate(cases):
+        # 1) 테스트 Job 생성
+        post_body = {
+            "sido": f"TEST_CANCEL_{init_status}_{i}",
+            "status": init_status,
+            "mode": "single",
+            "thread": 5,
+            "cycle_count": 0,
+            "intent": "run",
+        }
+        if init_hb:
+            post_body["last_heartbeat"] = init_hb
+
         resp = requests.post(
             f"{URL}/rest/v1/crawl_jobs",
-            json={
-                "sido": f"TEST_CANCEL_BRANCH_{initial_status}",
-                "status": initial_status,
-                "mode": "single",
-                "thread": 5,
-                "cycle_count": 0,
-                # running 이면 heartbeat 있어야 좀비로 분류 안 됨
-                **({"last_heartbeat": "now()"} if initial_status == "running" else {}),
-            },
+            json=post_body,
             headers={**HDR, "Prefer": "return=representation"},
             timeout=30,
         )
-        assert resp.status_code in (200, 201), resp.text
-        tmp_id = resp.json()[0]["id"]
-        created_ids.append(tmp_id)
-        print(f"[준비] {initial_status} → Job #{tmp_id} 생성")
+        assert resp.status_code in (200, 201), f"INSERT 실패: {resp.text}"
+        job = resp.json()[0]
+        created_ids.append(job["id"])
+        print(f"\n[{i+1}] Job #{job['id']} (init={init_status}, hb={'zombie' if init_hb == ZOMBIE_HB else ('fresh' if init_hb else 'null')})")
 
-    # 2) 각각 취소 시뮬레이션 + 적용 + 검증
-    passed = 0
-    failed = 0
-    for i, (initial_status, expected_status, expect_completed) in enumerate(cases):
-        tmp_id = created_ids[i]
-        print(f"\n[Test] Job #{tmp_id} (초기={initial_status}) → 기대={expected_status!r}")
-
-        new_status, set_completed = simulate_cancel(initial_status)
-        if new_status != expected_status:
-            print(f"    {FAIL} 분기 로직 불일치: simulate={new_status!r}, 기대={expected_status!r}")
-            failed += 1
-            continue
-
-        if new_status is None:
-            # no-op 케이스
-            print(f"    {PASS} no-op 분기 (current={initial_status})")
+        # 2) simulate_patch 로 기대값 계산
+        decision = simulate_patch(job)
+        branch_ok = decision["branch"] == expected_branch
+        mark = PASS if branch_ok else FAIL
+        print(f"    {mark} branch={decision['branch']} (기대 {expected_branch})")
+        if branch_ok:
             passed += 1
-            continue
-
-        # Supabase 에 실제 update 적용
-        payload = {"status": new_status}
-        if set_completed:
-            payload["completed_at"] = "now()"
-        resp = requests.patch(
-            f"{URL}/rest/v1/crawl_jobs",
-            params={"id": f"eq.{tmp_id}"},
-            json=payload,
-            headers={**HDR, "Prefer": "return=minimal"},
-            timeout=30,
-        )
-        if resp.status_code not in (200, 204):
-            print(f"    {FAIL} PATCH 실패: HTTP {resp.status_code}")
+        else:
             failed += 1
             continue
 
-        # 재조회
+        # 3) 실제 PATCH 시뮬레이션 — DB 에 적용
+        if decision["branch"] == "already_terminal":
+            # skip — 아무것도 안 함
+            pass
+        else:
+            update_body = {}
+            if decision["new_intent"]:
+                update_body["intent"] = decision["new_intent"]
+            if decision["new_status"]:
+                update_body["status"] = decision["new_status"]
+                update_body["error_message"] = f"테스트 — {decision['branch']}"
+            if decision["set_completed_at"]:
+                update_body["completed_at"] = datetime.now(timezone.utc).isoformat()
+
+            resp = requests.patch(
+                f"{URL}/rest/v1/crawl_jobs",
+                params={"id": f"eq.{job['id']}"},
+                json=update_body,
+                headers={**HDR, "Prefer": "return=minimal"},
+                timeout=30,
+            )
+            assert resp.status_code in (200, 204), f"PATCH 실패: {resp.text}"
+
+        # 4) DB 재조회 + 최종 status 검증
         resp = requests.get(
             f"{URL}/rest/v1/crawl_jobs",
-            params={"id": f"eq.{tmp_id}", "select": "status,completed_at"},
+            params={"id": f"eq.{job['id']}", "select": "status,intent"},
             headers=HDR,
             timeout=30,
         )
-        row = resp.json()[0]
-        actual_status = row["status"]
-        actual_completed = row["completed_at"]
-
-        ok_status = actual_status == expected_status
-        ok_completed = (actual_completed is not None) if expect_completed else True
-        # (expect_completed=False 면 굳이 검증 안 함 — 기존에 null 일 수도 있으니)
-
-        if ok_status and ok_completed:
-            print(f"    {PASS} status: {initial_status} → {actual_status}"
-                  + (f" + completed_at 기록됨" if expect_completed else ""))
+        after = resp.json()[0]
+        status_ok = after["status"] == expected_final_status
+        mark = PASS if status_ok else FAIL
+        print(f"    {mark} DB status: {after['status']} (기대 {expected_final_status}), intent={after['intent']}")
+        if status_ok:
             passed += 1
         else:
-            print(f"    {FAIL} status={actual_status} (기대 {expected_status}),"
-                  f" completed_at={actual_completed}")
             failed += 1
 
     print()
     print("=" * 60)
-    print(f"결과: {passed} 통과 / {failed} 실패 / 총 {len(cases)}")
+    print(f"결과: {passed} 통과 / {failed} 실패 / 총 {len(cases) * 2}")
     print("=" * 60)
 
 finally:
-    # 3) 정리
-    for tmp_id in created_ids:
+    for tid in created_ids:
         requests.delete(
             f"{URL}/rest/v1/crawl_jobs",
-            params={"id": f"eq.{tmp_id}"},
+            params={"id": f"eq.{tid}"},
             headers=HDR,
             timeout=30,
         )

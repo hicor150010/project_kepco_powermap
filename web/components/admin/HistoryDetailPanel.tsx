@@ -24,7 +24,7 @@ export function HistoryDetailPanel({ job, allJobs, submitting, onResume }: Props
   const hNoData = Math.max(0, hProcessed - hFound - hErrors);
 
   const canResume = !!(
-    (job.status === "stopped" || job.status === "failed" || job.status === "cancelled") &&
+    (job.status === "failed" || job.status === "cancelled") &&
     job.checkpoint
   );
   const threadBusy =

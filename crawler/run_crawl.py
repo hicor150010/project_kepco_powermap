@@ -1,22 +1,22 @@
 """
-KEPCO 크롤링 엔트리포인트 (GitHub Actions용)
-- 멀티스레드 지원 (스레드 1/2/3 독립 실행)
-- 1회/반복 모드
-- crawl_jobs 테이블에서 작업 읽기
-- 스트리밍 flush (100건 단위)
-- 10건마다 progress 업데이트
-- 100건마다 checkpoint 저장 + stop 체크
-- 타임아웃 보호 (모드별 상이)
+KEPCO 크롤링 엔트리포인트 (GitHub Actions 용, 2중 제어 모델)
+
+- 멀티스레드 지원 (스레드 1~5 독립 실행)
+- 1회 / 반복 모드
+- API/Worker 가 생성한 pending Job 을 --job-id 로 받아 실행
+- 100건마다 checkpoint 저장 + cancel 의도 체크 (intent='cancel')
+- 타임아웃 임박 시 auto_continue 로 새 Job 생성 + 자기 자신 넘김
+
+설계 원칙:
+  - API 와 UI 는 "의도(intent)" 만 기록하고, 본 크롤러는 그 의도를 읽어 self-stop.
+  - 좀비 정리 / cron 픽업은 여기서 하지 않음 (Worker = /api/reconcile 담당).
 """
 import argparse
-import json
 import logging
 import os
-import signal
 import sys
 import threading
 import time
-from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -71,44 +71,6 @@ def read_job(job_id: int) -> dict | None:
     return rows[0] if rows else None
 
 
-def find_next_job(thread: int) -> dict | None:
-    """해당 스레드의 다음 작업 찾기 (우선순위: pending > stopped+checkpoint)"""
-    # 1) pending 우선
-    resp = requests.get(
-        f"{SUPABASE_URL}/rest/v1/crawl_jobs",
-        params={
-            "status": "eq.pending",
-            "thread": f"eq.{thread}",
-            "order": "created_at.asc",
-            "limit": "1",
-            "select": "*",
-        },
-        headers=_headers(),
-        timeout=30,
-    )
-    rows = resp.json()
-    if rows:
-        return rows[0]
-
-    # 2) stopped + checkpoint 있는 것 (타임아웃 재개)
-    #    cancelled는 사용자 취소이므로 여기에 안 걸림
-    resp = requests.get(
-        f"{SUPABASE_URL}/rest/v1/crawl_jobs",
-        params={
-            "status": "eq.stopped",
-            "thread": f"eq.{thread}",
-            "checkpoint": "not.is.null",
-            "order": "created_at.asc",
-            "limit": "1",
-            "select": "*",
-        },
-        headers=_headers(),
-        timeout=30,
-    )
-    rows = resp.json()
-    return rows[0] if rows else None
-
-
 def _sanitize_json(obj):
     """lone surrogate 제거 — DB 저장 전 단일 방어선.
 
@@ -140,50 +102,24 @@ def update_job(job_id: int, data: dict):
         logger.warning(f"Job 업데이트 실패: {e}")
 
 
-def check_stop_requested(job_id: int) -> bool:
-    """stop_requested 상태인지 확인"""
+def check_cancel_intent(job_id: int) -> bool:
+    """사용자가 cancel 의도를 DB 에 기록했는가 (2중 제어 모델).
+
+    status 가 아닌 intent 컬럼을 본다. 사용자의 "정지" 클릭은
+    route.ts PATCH 에서 intent='cancel' 로 기록되므로, 이 플래그만 보면
+    크롤러가 깔끔하게 self-stop 가능.
+    """
     try:
         resp = requests.get(
             f"{SUPABASE_URL}/rest/v1/crawl_jobs",
-            params={"id": f"eq.{job_id}", "select": "status"},
+            params={"id": f"eq.{job_id}", "select": "intent"},
             headers=_headers(),
             timeout=10,
         )
         rows = resp.json()
-        return rows and rows[0].get("status") == "stop_requested"
+        return bool(rows) and rows[0].get("intent") == "cancel"
     except requests.exceptions.RequestException:
         return False
-
-
-# ══════════════════════════════════════════════
-# 좀비 Job 정리
-# ══════════════════════════════════════════════
-
-def cleanup_zombie_jobs(thread: int):
-    """running인데 heartbeat가 30분 이상 없는 Job을 failed로 전환"""
-    try:
-        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
-        resp = requests.get(
-            f"{SUPABASE_URL}/rest/v1/crawl_jobs",
-            params={
-                "status": "eq.running",
-                "thread": f"eq.{thread}",
-                "last_heartbeat": f"lt.{cutoff}",
-                "select": "id",
-            },
-            headers=_headers(),
-            timeout=30,
-        )
-        zombies = resp.json()
-        for z in zombies:
-            logger.warning(f"좀비 Job #{z['id']} 감지 — failed로 전환")
-            update_job(z["id"], {
-                "status": "failed",
-                "error_message": "좀비 Job 감지: heartbeat 30분 이상 없음",
-                "completed_at": "now()",
-            })
-    except Exception as e:
-        logger.warning(f"좀비 정리 중 오류: {e}")
 
 
 # ══════════════════════════════════════════════
@@ -260,13 +196,24 @@ GITHUB_PAT = os.environ.get("GH_PAT", "")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
 
 def auto_continue(job: dict, checkpoint: dict | None, thread: int):
-    """새 Job 생성 + GitHub Actions 자동 트리거 (3회 재시도)"""
+    """새 Job 생성 + GitHub Actions 자동 트리거 (3회 재시도).
+
+    [심층 방어] 호출 직전에 thread 의 최신 cancel 의도를 한 번 더 확인.
+    run() 에서 이미 체크하지만 호출과 POST 사이 race 가 있을 수 있음.
+    """
     mode = job.get("mode", "single")
     cycle_count = job.get("cycle_count", 0)
+    parent_job_id = job.get("id")
+
+    # 부모 Job 의 intent 재확인 (race 방어선)
+    if parent_job_id and check_cancel_intent(parent_job_id):
+        logger.info(f"auto_continue 취소: 부모 Job #{parent_job_id} 에 cancel 의도 감지")
+        return
+
     logger.info(f"자동 재시작: mode={mode}, cycle={cycle_count}")
 
     try:
-        # 1. 새 crawl_jobs row 생성
+        # 1. 새 crawl_jobs row 생성 (intent 는 DEFAULT 'run' 사용)
         new_job = {
             "sido": job["sido"],
             "si": job.get("si"),
@@ -408,8 +355,8 @@ def run(job: dict, thread: int):
                 "progress": build_progress_json(progress, db_writer.get_stats().get("geocoded", 0)),
                 "last_heartbeat": "now()",
             })
-            if check_stop_requested(job_id):
-                logger.info("중단 요청 감지 — 크롤링을 중지합니다.")
+            if check_cancel_intent(job_id):
+                logger.info("cancel 의도 감지 — 크롤링을 중지합니다.")
                 crawler.stop()
 
     def on_result(result: CrawlResult):
@@ -458,16 +405,17 @@ def run(job: dict, thread: int):
     # MV 새로고침
     db_writer.refresh_mv()
 
-    # ── 최종 상태 결정 ──
-    #   stopped   = 타임아웃 / 주소 목록 수신 실패 등 시스템적 중단 → 체크포인트에서 자동 재개
-    #   cancelled = 사용자 취소, 재개 안 함
-    #   completed = 정상 완료
-    if timeout_triggered.is_set():
-        final_status = "stopped"
-    elif crawler._error is not None:
-        # crawl 중 예외 발생 (주소 목록 재시도 3회 실패, TooManyErrors 등) → 재개 대상
-        final_status = "stopped"
+    # ── 최종 상태 결정 (2중 제어 모델) ──
+    #   failed    = 크롤 중 예외 발생 → Worker 가 재개 여부 판단
+    #   cancelled = 사용자 cancel 의도 감지 (crawler.is_stopped() 호출됨, timeout 아님)
+    #   completed = 정상 완료 또는 타임아웃 (checkpoint 유무로 "전체 끝" vs "이어받기" 구별)
+    if crawler._error is not None:
+        final_status = "failed"
+    elif timeout_triggered.is_set():
+        # 타임아웃 → completed. auto_continue 가 checkpoint 로 이어받음.
+        final_status = "completed"
     elif crawler.is_stopped():
+        # check_cancel_intent 로 인해 stop() 호출된 경우
         final_status = "cancelled"
     else:
         final_status = "completed"
@@ -494,17 +442,23 @@ def run(job: dict, thread: int):
 
     timer.cancel()
 
-    # ── 자동 재시작 ──
+    # ── 자동 재시작 (2중 제어 모델) ──
     # cancelled/failed → 절대 재시작 안 함
-    # completed/stopped → 모드에 따라 판단
+    # completed → (timeout 이면 이어받기 / recurring 이면 다음 사이클)
+    # 단, 그 사이 사용자가 cancel 의도 냈으면 무조건 스킵
     if final_status in ("cancelled", "failed"):
         logger.info(f"{final_status} — 자동 재시작 없음")
         return
 
+    # [최후의 안전장치] 크롤 종료와 cancel 클릭이 경쟁할 수 있으므로 재확인
+    if check_cancel_intent(job_id):
+        logger.info("cancel 의도 감지 — 자동 재시작 스킵")
+        return
+
     restart_count = (job.get("options") or {}).get("_restart_count", 0)
 
-    if final_status == "stopped":
-        # 타임아웃 → 체크포인트에서 이어서 (1회/반복 공통)
+    if timeout_triggered.is_set():
+        # 타임아웃 → 체크포인트에서 이어서 (single/recurring 공통)
         if checkpoint and restart_count < MAX_AUTO_RESTARTS:
             next_options = dict(options)
             next_options["_restart_count"] = restart_count + 1
@@ -513,8 +467,8 @@ def run(job: dict, thread: int):
         elif restart_count >= MAX_AUTO_RESTARTS:
             logger.warning(f"자동 재시작 한도 도달 ({MAX_AUTO_RESTARTS}회)")
 
-    elif final_status == "completed" and mode == "recurring":
-        # 반복 모드 한 바퀴 완료 → 다음 순환
+    elif mode == "recurring":
+        # 정상 완료 + 반복 모드 → 다음 순환 시작
         new_cycle = cycle_count + 1
         if max_cycles and new_cycle >= max_cycles:
             logger.info(f"반복 모드: 최대 순환 횟수 도달 ({max_cycles}회) — 종료")
@@ -527,37 +481,42 @@ def run(job: dict, thread: int):
 
 
 def main():
+    """
+    2중 제어 모델 진입점.
+    - --job-id 는 필수. API 또는 auto_continue 가 만든 pending Job 의 id 를 받음.
+    - 과거의 --job-id=0 자동 픽업 경로는 제거됨 (cron 안전망과 세트였음).
+    - 좀비 정리는 Worker (/api/reconcile) 가 담당.
+    """
     parser = argparse.ArgumentParser(description="KEPCO 크롤링 실행")
-    parser.add_argument("--job-id", type=int, default=0,
-                        help="crawl_jobs ID (0=자동 선택)")
+    parser.add_argument("--job-id", type=int, required=True,
+                        help="crawl_jobs ID (필수)")
     parser.add_argument("--thread", type=int, default=1,
-                        help="스레드 번호 (1/2/3)")
+                        help="스레드 번호 (1~5)")
     args = parser.parse_args()
 
     if not SUPABASE_URL or not SUPABASE_KEY:
         logger.error("SUPABASE_URL, SUPABASE_SERVICE_KEY 환경 변수가 필요합니다.")
         sys.exit(1)
 
+    if args.job_id <= 0:
+        logger.error("--job-id 필수 (자동 픽업 경로는 제거됨). Worker 또는 UI 에서 Job 을 먼저 만드세요.")
+        sys.exit(1)
+
     thread = args.thread
+    job = read_job(args.job_id)
+    if not job:
+        logger.error(f"Job #{args.job_id}을(를) 찾을 수 없습니다.")
+        sys.exit(1)
 
-    # 좀비 Job 정리
-    cleanup_zombie_jobs(thread)
+    # 실행 전 의도 확인 — cancel 이면 즉시 종료
+    if job.get("intent") == "cancel":
+        logger.info(f"Job #{args.job_id} 은 cancel 의도 상태 — 실행하지 않습니다.")
+        sys.exit(0)
 
-    # Job 찾기
-    if args.job_id > 0:
-        job = read_job(args.job_id)
-        if not job:
-            logger.error(f"Job #{args.job_id}을(를) 찾을 수 없습니다.")
-            sys.exit(1)
-        if job["status"] not in ("pending", "stopped"):
-            logger.error(f"Job #{args.job_id} 상태가 '{job['status']}'입니다. "
-                         f"pending 또는 stopped만 실행 가능합니다.")
-            sys.exit(1)
-    else:
-        job = find_next_job(thread)
-        if not job:
-            logger.info(f"스레드 {thread}: 실행할 작업이 없습니다.")
-            sys.exit(0)
+    # pending 만 실행 대상. running/completed/failed/cancelled 는 부적격.
+    if job["status"] != "pending":
+        logger.error(f"Job #{args.job_id} 상태가 '{job['status']}' — pending 만 실행 가능.")
+        sys.exit(1)
 
     logger.info(f"스레드 {thread}: Job #{job['id']} 선택: {job['sido']} (status={job['status']})")
     run(job, thread)

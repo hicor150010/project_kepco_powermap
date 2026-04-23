@@ -1,10 +1,15 @@
 /**
- * 관리자 전용 — 크롤링 작업 관리
+ * 관리자 전용 — 크롤링 작업 관리 (2중 제어 모델)
  *
  * GET    /api/admin/crawl          → 작업 목록 (최신 50건)
- * POST   /api/admin/crawl          → 새 작업 생성 + GitHub Actions 트리거
- * PATCH  /api/admin/crawl          → 중단 요청 (status → stop_requested)
- * DELETE /api/admin/crawl?id=      → 작업 기록 삭제
+ * POST   /api/admin/crawl          → 새 Job 생성 (intent='run') + GitHub Actions 트리거
+ * PATCH  /api/admin/crawl          → 정지 요청 (intent='cancel' + GH run cancel)
+ * DELETE /api/admin/crawl?id=      → 종료된 Job 기록 삭제
+ *
+ * 설계 원칙:
+ *   - API 는 "의도(intent)" 만 기록한다.
+ *   - "관측(status)" 은 크롤러와 Worker(/api/reconcile) 가 갱신한다.
+ *   - 좀비 정리는 Worker 주기에 맡긴다 (여기서 하면 2중 구조가 무의미).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
@@ -43,7 +48,7 @@ export async function GET() {
 }
 
 // ─────────────────────────────────────────────
-// POST — 새 작업 생성 + GitHub Actions 트리거
+// POST — 새 Job 생성 + GH Actions 트리거
 // ─────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   const me = await requireAdmin();
@@ -64,9 +69,9 @@ export async function POST(request: NextRequest) {
       fetch_step_data?: boolean;
       delay?: number;
       flush_size?: number;
+      progress_interval?: number;
     };
     checkpoint?: Record<string, unknown>;
-    // 멀티스레드
     thread?: number;
     mode?: "single" | "recurring";
     max_cycles?: number;
@@ -98,51 +103,19 @@ export async function POST(request: NextRequest) {
 
   const supabase = createAdminClient();
 
-  // 좀비 Job 정리: GitHub Actions 가 비정상 종료되면 status 가 살아있는 채로 남아
-  // 다음 작업을 영구히 차단하므로, 30분 이상 갱신이 없으면 failed 로 전환한다.
-  // (crawler/run_crawl.py 의 cleanup_zombie_jobs 와 동일 기준 — 새 작업이 시작 못 하면
-  //  그쪽 정리 로직이 호출될 일이 없어 catch-22가 되므로 여기서도 한 번 돌린다)
-  const zombieCutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  await supabase
-    .from("crawl_jobs")
-    .update({
-      status: "failed",
-      error_message: "좀비 Job 자동 정리: 30분 이상 갱신 없음",
-      completed_at: new Date().toISOString(),
-    })
-    .eq("thread", thread)
-    .in("status", ["running", "stop_requested"])
-    .or(`last_heartbeat.lt.${zombieCutoff},last_heartbeat.is.null`)
-    .lt("created_at", zombieCutoff);
-
-  // pending 인데 created_at 이 오래된 것도 좀비로 간주 (Actions 트리거 실패)
-  await supabase
-    .from("crawl_jobs")
-    .update({
-      status: "failed",
-      error_message: "좀비 Job 자동 정리: pending 상태로 30분 이상 방치",
-      completed_at: new Date().toISOString(),
-    })
-    .eq("thread", thread)
-    .eq("status", "pending")
-    .lt("created_at", zombieCutoff);
-
-  // 같은 스레드 내에서 이미 실행/대기 중인 작업이 있는지 확인
+  // 같은 thread 에 이미 활성 Job (pending/running) 이 있으면 차단.
+  // Worker 가 좀비를 정리하므로 여기선 "살아있는 intent='run'" 만 체크.
   const { data: existing } = await supabase
     .from("crawl_jobs")
-    .select("id, status, sido")
-    .in("status", ["pending", "running", "stop_requested"])
+    .select("id, status, sido, intent")
+    .in("status", ["pending", "running"])
     .eq("thread", thread)
+    .eq("intent", "run")
     .limit(1);
 
   if (existing && existing.length > 0) {
     const ej = existing[0];
-    const statusLabel =
-      ej.status === "running"
-        ? "실행 중"
-        : ej.status === "pending"
-          ? "대기 중"
-          : "중단 대기";
+    const statusLabel = ej.status === "running" ? "실행 중" : "대기 중";
     return NextResponse.json(
       {
         ok: false,
@@ -152,7 +125,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // crawl_jobs 생성
+  // 새 Job INSERT (intent='run' 기본값, status='pending' 기본값)
   const { data: job, error: insertErr } = await supabase
     .from("crawl_jobs")
     .insert({
@@ -179,7 +152,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // GitHub Actions workflow_dispatch 트리거
+  // GitHub Actions workflow_dispatch 트리거.
+  // 실패해도 Job 은 남아있음 — Worker 가 주기 체크에서 재dispatch 시도.
+  let warning: string | undefined;
   if (GITHUB_PAT && GITHUB_REPO) {
     try {
       const ghResp = await fetch(
@@ -200,34 +175,27 @@ export async function POST(request: NextRequest) {
           }),
         }
       );
-
       if (!ghResp.ok) {
         const errText = await ghResp.text();
         console.error(
           `[GitHub Actions] dispatch 실패 (${ghResp.status}):`,
           errText
         );
-        return NextResponse.json({
-          ok: true,
-          job,
-          warning: "작업은 생성되었지만 GitHub Actions 트리거에 실패했습니다.",
-        });
+        warning = "GitHub Actions 트리거 실패 — Worker 가 곧 재시도합니다.";
       }
     } catch (err) {
       console.error("[GitHub Actions] dispatch 네트워크 오류:", err);
-      return NextResponse.json({
-        ok: true,
-        job,
-        warning: "작업은 생성되었지만 GitHub Actions 트리거에 실패했습니다.",
-      });
+      warning = "GitHub Actions 트리거 실패 — Worker 가 곧 재시도합니다.";
     }
+  } else {
+    warning = "GITHUB_PAT/GITHUB_REPO 미설정 — dispatch 생략됨.";
   }
 
-  return NextResponse.json({ ok: true, job });
+  return NextResponse.json({ ok: true, job, ...(warning ? { warning } : {}) });
 }
 
 // ─────────────────────────────────────────────
-// PATCH — 중단 요청
+// PATCH — 정지 요청 (intent='cancel' 기록 + GH run cancel)
 // ─────────────────────────────────────────────
 export async function PATCH(request: NextRequest) {
   const me = await requireAdmin();
@@ -257,14 +225,9 @@ export async function PATCH(request: NextRequest) {
 
   const supabase = createAdminClient();
 
-  // 현재 상태 확인 — 상태에 따라 다른 전환을 수행한다.
-  //   running          : 크롤러가 감지하도록 stop_requested 로 변경
-  //   pending          : GitHub Actions 에 트리거된 적 없음 → 즉시 cancelled
-  //   stop_requested   : 크롤러가 응답 못 하는 좀비 → 즉시 cancelled
-  //   그 외 (completed/failed/cancelled) : 이미 종료된 Job, 변경 불필요
   const { data: job, error: readErr } = await supabase
     .from("crawl_jobs")
-    .select("status")
+    .select("id, status, intent, github_run_id, last_heartbeat")
     .eq("id", body.id)
     .single();
 
@@ -275,12 +238,8 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  let newStatus: string | null = null;
-  if (job.status === "running") newStatus = "stop_requested";
-  else if (job.status === "pending" || job.status === "stop_requested")
-    newStatus = "cancelled";
-
-  if (!newStatus) {
+  // 이미 종료된 Job 은 스킵
+  if (["completed", "cancelled", "failed"].includes(job.status)) {
     return NextResponse.json({
       ok: true,
       skipped: true,
@@ -288,28 +247,111 @@ export async function PATCH(request: NextRequest) {
     });
   }
 
-  const { error } = await supabase
+  // ─── pending 즉시 처분 ───
+  // pending 은 아직 크롤러가 시작 못 함 → intent 만 찍어도 감지할 주체 없음.
+  // 바로 status='cancelled' 로 마감해서 UI 깨끗하게.
+  if (job.status === "pending") {
+    const { error } = await supabase
+      .from("crawl_jobs")
+      .update({
+        intent: "cancel",
+        status: "cancelled",
+        error_message: "사용자 정지 — pending 상태에서 확정 취소",
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", body.id);
+
+    if (error) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, message: "pending Job 취소 완료" });
+  }
+
+  // ─── 좀비 즉시 처분 ───
+  // running 인데 heartbeat 3분+ 끊겼으면 크롤러 프로세스가 죽은 것.
+  // intent='cancel' 찍어봐야 감지할 주체가 없으므로 즉시 status='cancelled' 로 마감.
+  const HEARTBEAT_ZOMBIE_MS = 3 * 60 * 1000;
+  const heartbeatAge = job.last_heartbeat
+    ? Date.now() - new Date(job.last_heartbeat).getTime()
+    : Infinity;
+
+  if (job.status === "running" && heartbeatAge > HEARTBEAT_ZOMBIE_MS) {
+    const ageMin = Math.round(heartbeatAge / 60000);
+    const { error: killErr } = await supabase
+      .from("crawl_jobs")
+      .update({
+        intent: "cancel",
+        status: "cancelled",
+        error_message: `좀비 정지: heartbeat ${ageMin}분 끊김 (PATCH 에서 즉시 처분)`,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", body.id);
+
+    if (killErr) {
+      return NextResponse.json(
+        { ok: false, error: killErr.message },
+        { status: 500 }
+      );
+    }
+
+    // 만일의 살아있음 대비 GH cancel 도 쏨 (fire-and-forget)
+    if (job.github_run_id && GITHUB_PAT && GITHUB_REPO) {
+      fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/actions/runs/${job.github_run_id}/cancel`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `token ${GITHUB_PAT}`,
+            Accept: "application/vnd.github.v3+json",
+          },
+        }
+      ).catch(() => {
+        /* zombie 처분이 이미 끝남 — GH 응답 무관 */
+      });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      zombie: true,
+      message: `좀비 감지 (heartbeat ${ageMin}분 끊김) — 즉시 cancelled 처리`,
+    });
+  }
+
+  // ─── 정상 정지 요청 ───
+  // 1) DB 에 의도 기록 (마스터)
+  const { error: updErr } = await supabase
     .from("crawl_jobs")
-    .update({
-      status: newStatus,
-      ...(newStatus === "cancelled"
-        ? { completed_at: new Date().toISOString() }
-        : {}),
-    })
+    .update({ intent: "cancel" })
     .eq("id", body.id);
 
-  if (error) {
+  if (updErr) {
     return NextResponse.json(
-      { ok: false, error: error.message },
+      { ok: false, error: updErr.message },
       { status: 500 }
     );
   }
 
-  return NextResponse.json({ ok: true, status: newStatus });
+  // 2) GitHub run cancel 시도 (fire-and-forget — 크롤러 self-check 안전망 있음)
+  if (job.github_run_id && GITHUB_PAT && GITHUB_REPO) {
+    fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/actions/runs/${job.github_run_id}/cancel`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `token ${GITHUB_PAT}`,
+          Accept: "application/vnd.github.v3+json",
+        },
+      }
+    ).catch((err) => {
+      console.error("[GitHub Actions] run cancel 오류:", err);
+    });
+  }
+
+  return NextResponse.json({ ok: true });
 }
 
 // ─────────────────────────────────────────────
-// DELETE — 작업 기록 삭제
+// DELETE — 종료된 Job 기록 삭제
 // ─────────────────────────────────────────────
 export async function DELETE(request: NextRequest) {
   const me = await requireAdmin();
@@ -330,24 +372,21 @@ export async function DELETE(request: NextRequest) {
 
   const supabase = createAdminClient();
 
-  // running 상태인 작업은 삭제 불가
+  // 활성 Job 은 삭제 불가 — 먼저 PATCH 로 cancel 해야 함
   const { data: job } = await supabase
     .from("crawl_jobs")
     .select("status")
     .eq("id", id)
     .single();
 
-  if (job?.status === "running") {
+  if (job && ["pending", "running"].includes(job.status)) {
     return NextResponse.json(
-      { ok: false, error: "실행 중인 작업은 삭제할 수 없습니다. 먼저 중단해주세요." },
+      { ok: false, error: "활성 상태의 작업은 삭제할 수 없습니다. 먼저 정지해주세요." },
       { status: 400 }
     );
   }
 
-  const { error } = await supabase
-    .from("crawl_jobs")
-    .delete()
-    .eq("id", id);
+  const { error } = await supabase.from("crawl_jobs").delete().eq("id", id);
 
   if (error) {
     return NextResponse.json(

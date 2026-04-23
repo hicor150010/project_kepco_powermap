@@ -1,23 +1,21 @@
 name: KEPCO Crawl
-run-name: "KEPCO Crawl (스레드 ${{ inputs.thread || 'cron' }})"
+run-name: "KEPCO Crawl (스레드 ${{ inputs.thread }})"
 
+# 2중 제어 모델: 이 워크플로는 수동 dispatch 만 받는다.
+# - API(/api/admin/crawl POST) 와 Worker(/api/reconcile) 와 크롤러(auto_continue) 가 dispatch 함
+# - 과거의 '*/5 * * * *' cron 안전망은 제거됨 (유령 Job 부활 원인)
 on:
   workflow_dispatch:
     inputs:
       job_id:
-        description: 'crawl_jobs ID (0=자동)'
+        description: 'crawl_jobs ID (필수)'
         required: true
         type: string
       thread:
         description: '스레드 번호 (1/2/3/4/5)'
-        required: false
+        required: true
         default: '1'
         type: string
-
-  schedule:
-    # 매 5분 — dispatch 실패 등 어떤 사고든 5분 안에 자동 픽업하는 안전망.
-    # find_next_job 이 작업 없으면 즉시 종료하므로 부담 미미 (public repo 무료).
-    - cron: '*/5 * * * *'
 
 jobs:
   crawl:
@@ -32,8 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # dispatch: 지정 스레드만 / cron: 5개 모두
-        thread: ${{ github.event_name == 'schedule' && fromJSON('[1, 2, 3, 4, 5]') || fromJSON(format('[{0}]', inputs.thread || '1')) }}
+        thread: ${{ fromJSON(format('[{0}]', inputs.thread)) }}
 
     steps:
       - name: Checkout
@@ -55,4 +52,4 @@ jobs:
           GH_PAT: ${{ secrets.GH_PAT }}
           GITHUB_REPO: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-        run: cd crawler && python run_crawl.py --job-id=${{ inputs.job_id || '0' }} --thread=${{ matrix.thread }}
+        run: cd crawler && python run_crawl.py --job-id=${{ inputs.job_id }} --thread=${{ matrix.thread }}

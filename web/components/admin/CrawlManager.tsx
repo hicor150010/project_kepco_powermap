@@ -6,6 +6,7 @@ import {
   THREADS,
   isActiveJob,
   isHistoryJob,
+  displayStatus,
 } from "@/lib/crawler";
 import { CrawlForm } from "./CrawlForm";
 import { ActiveJobCard } from "./ActiveJobCard";
@@ -165,13 +166,14 @@ export default function CrawlManager() {
                 }`}
               >
                 수집기 {t}
-                {threadActive && (
-                  <span className={`ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                    threadActive.status === "running" ? "bg-blue-100 text-blue-700" : "bg-yellow-100 text-yellow-700"
-                  }`}>
-                    {threadActive.status === "running" ? "실행중" : "대기"}
-                  </span>
-                )}
+                {threadActive && (() => {
+                  const label = displayStatus(threadActive);
+                  return (
+                    <span className={`ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded ${label.color}`}>
+                      {label.text}
+                    </span>
+                  );
+                })()}
               </button>
             );
           })}

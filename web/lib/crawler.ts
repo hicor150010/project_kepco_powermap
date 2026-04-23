@@ -13,6 +13,9 @@ export interface CrawlJob {
   gu: string | null;
   dong: string | null;
   li: string | null;
+  // [의도] 사용자가 원하는 상태 — UI/API 만 수정
+  intent: "run" | "cancel";
+  // [관측] 실제 일어난 상태 — 크롤러/Worker 만 수정
   status: string;
   progress: {
     processed?: number;
@@ -46,18 +49,26 @@ export interface CrawlJob {
   last_heartbeat: string | null;
 }
 
+// status 값은 5개로 단순화 (stop_requested, stopped 제거)
+// "정지 요청 중" 같은 UI 표시는 intent='cancel' + status='running/pending' 으로 파생
 export const STATUS_LABELS: Record<string, { text: string; color: string }> = {
   pending: { text: "대기 중", color: "bg-yellow-100 text-yellow-800" },
   running: { text: "실행 중", color: "bg-blue-100 text-blue-800" },
   completed: { text: "완료", color: "bg-green-100 text-green-800" },
   failed: { text: "실패", color: "bg-red-100 text-red-800" },
-  stopped: { text: "타임아웃", color: "bg-gray-100 text-gray-800" },
-  stop_requested: { text: "중단 요청", color: "bg-orange-100 text-orange-800" },
   cancelled: { text: "취소됨", color: "bg-gray-100 text-gray-600" },
 };
 
-export const ACTIVE_STATUSES = ["running", "pending", "stop_requested"] as const;
-export const HISTORY_STATUSES = ["completed", "failed", "stopped", "cancelled"] as const;
+export const ACTIVE_STATUSES = ["running", "pending"] as const;
+export const HISTORY_STATUSES = ["completed", "failed", "cancelled"] as const;
+
+// UI 가 배지에 쓰는 파생 상태 — intent + status 조합으로 결정
+export function displayStatus(job: CrawlJob): { text: string; color: string } {
+  if (job.intent === "cancel" && (job.status === "running" || job.status === "pending")) {
+    return { text: "정지 요청 중", color: "bg-orange-100 text-orange-800" };
+  }
+  return STATUS_LABELS[job.status] ?? { text: job.status, color: "bg-gray-100 text-gray-800" };
+}
 
 export function isActiveJob(job: CrawlJob): boolean {
   return (ACTIVE_STATUSES as readonly string[]).includes(job.status);

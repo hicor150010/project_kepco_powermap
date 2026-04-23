@@ -31,25 +31,19 @@ export function ActiveJobCard({ job, onStop, onDelete }: Props) {
               반복{job.cycle_count > 0 ? ` ${job.cycle_count + 1}회차` : ""}
             </span>
           )}
-          <CrawlStatusBadge status={job.status} />
+          <CrawlStatusBadge job={job} />
           <span className="text-base font-semibold text-gray-900">{formatScope(job)}</span>
           <span className="text-sm text-gray-400">Job #{job.id}</span>
         </div>
         <div className="flex items-center gap-2">
-          {job.status === "running" && (
+          {/* intent='cancel' 중이면 버튼 비활성화 (이중 클릭 방지) */}
+          {(job.status === "running" || job.status === "pending") && (
             <button
               onClick={() => onStop(job.id)}
-              className="text-sm text-red-600 hover:text-red-800 border border-red-300 hover:bg-red-50 px-4 py-2 rounded-md font-medium transition-colors"
+              disabled={job.intent === "cancel"}
+              className="text-sm text-red-600 hover:text-red-800 border border-red-300 hover:bg-red-50 px-4 py-2 rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              중단
-            </button>
-          )}
-          {job.status === "pending" && (
-            <button
-              onClick={() => onDelete(job.id)}
-              className="text-sm text-gray-500 hover:text-red-600 border border-gray-300 hover:border-red-300 hover:bg-red-50 px-4 py-2 rounded-md font-medium transition-colors"
-            >
-              취소
+              {job.intent === "cancel" ? "정지 처리 중..." : job.status === "running" ? "중단" : "취소"}
             </button>
           )}
         </div>
