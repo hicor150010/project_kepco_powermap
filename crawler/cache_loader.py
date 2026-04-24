@@ -14,11 +14,14 @@ GitHub Actions 에서 prep_caches workflow 가 Cache 로 파일을 제공하는 
     rows = load_table("bjd_master", "bjd_code,sep_1,sep_2,sep_3,sep_4,sep_5")
 """
 import json
+import logging
 import os
 import time
 from pathlib import Path
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 # 프로세스 내 캐시 — 테이블별 1회 로드
@@ -61,6 +64,8 @@ def _fetch_from_supabase(table: str, columns: str) -> list:
     rows: list = []
     page = 1000
     offset = 0
+    pages = 0
+    t0 = time.time()
     while True:
         r = _get_with_retry(
             f"{url}/rest/v1/{table}"
@@ -72,9 +77,15 @@ def _fetch_from_supabase(table: str, columns: str) -> list:
         if not data:
             break
         rows.extend(data)
+        pages += 1
         if len(data) < page:
             break
         offset += page
+    elapsed = time.time() - t0
+    logger.info(
+        f"[cache_loader] {table}: Supabase fetch ({len(rows):,} rows, "
+        f"{pages} pages, {elapsed:.1f}s)"
+    )
     return rows
 
 
@@ -96,11 +107,18 @@ def load_table(table: str, columns: str = "*") -> list:
 
     # 1. 파일 우선
     if path.exists() and path.stat().st_size > 10:
+        t0 = time.time()
         rows = json.loads(path.read_text(encoding="utf-8"))
+        size_mb = path.stat().st_size / (1024 * 1024)
+        logger.info(
+            f"[cache_loader] {table}: 파일 로드 {path} "
+            f"({len(rows):,} entries, {size_mb:.2f} MB, {time.time() - t0:.2f}s)"
+        )
         _MEMO[table] = rows
         return rows
 
-    # 2. Supabase fallback
+    # 2. Supabase fallback (파일 부재 또는 비어 있음)
+    logger.info(f"[cache_loader] {table}: 파일 부재 → Supabase fallback")
     rows = _fetch_from_supabase(table, columns)
 
     # 파일로 저장 (다음 프로세스 재사용 & actions/cache 자동 업로드 대상)

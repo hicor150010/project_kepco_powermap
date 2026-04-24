@@ -1,26 +1,34 @@
 """
-KEPCO 크롤링 결과 → Supabase DB UPSERT
+KEPCO 크롤링 결과 → Supabase kepco_capa UPSERT
 PostgREST REST API 직접 호출 (supabase-py 불필요)
 
-정규화 구조:
-  kepco_addr  — 리 단위 주소 마스터 (geocode_address UNIQUE). 좌표는 별도 워커가 채움.
-  kepco_capa  — 지번×시설 용량 데이터 (addr_id FK)
+신 구조 (031 마이그레이션 후):
+  kepco_capa  — 지번×시설 용량 데이터. 주소 키는 bjd_code CHAR(10).
+  bjd_master  — 행안부 법정동코드 마스터 (cache_loader 경유 프로세스 메모리 로드).
 
-좌표 정책 (2026-04-22 변경):
-  - 크롤러는 주소만 저장. lat/lng 는 NULL 로 INSERT.
-  - 기존 행은 ignore-duplicates 로 기존 좌표 보존.
-  - 좌표 채우기는 별도 배치 워커 (crawler/fill_kepco_coords.py, VWorld + PNU) 담당.
+bjd_code 매칭:
+  CrawlResult 5필드(addr_do/si/gu/lidong/li) → bjd_lookup.lookup() → bjd_code 또는 None.
+  None 일 경우 sentinel '0000000000' 저장 (UNIQUE 정합성 + 매칭률 모니터링용).
+  실패 카운트는 _stats["bjd_unmatched"] 로 누적.
+
+MV refresh:
+  kepco_map_summary 부재 시(032 작성 전) 매시간 warning 로그 발생 — 의도적 무시.
+  032 RPC/MV 재생성 후 자동 정상화.
 """
 import logging
 import time
 
 import requests
 from crawler import CrawlResult
+from bjd_lookup import lookup as bjd_lookup
 
 logger = logging.getLogger(__name__)
 
 # PostgREST 배치 한도
 BATCH_SIZE = 1000
+
+# 매칭 실패 sentinel (031 마이그레이션 정의와 동일)
+BJD_UNMATCHED = "0000000000"
 
 
 def _parse_int(value: str):
@@ -41,46 +49,10 @@ def _empty_to_none(value: str):
     return value.strip()
 
 
-def _build_geocode_address(
-    addr_do: str,
-    addr_si: str,
-    addr_gu: str,
-    addr_dong: str,
-    addr_li: str,
-) -> str:
-    """
-    리 단위 정규화 주소 생성.
-    웹 buildGeocodeAddress()와 동일 로직: "-기타지역" 제외, 공백 join.
-    """
-    parts = []
-    for p in [addr_do, addr_si, addr_gu, addr_dong, addr_li]:
-        if p and p.strip() and p.strip() != "-기타지역":
-            parts.append(p.strip())
-    return " ".join(parts)
-
-
-def _to_addr_row(result: CrawlResult) -> dict:
-    """CrawlResult → kepco_addr row dict"""
-    return {
-        "addr_do": result.addr_do or None,
-        "addr_si": _empty_to_none(result.addr_si),
-        "addr_gu": _empty_to_none(result.addr_gu),
-        "addr_dong": _empty_to_none(result.addr_lidong),
-        "addr_li": _empty_to_none(result.addr_li),
-        "geocode_address": _build_geocode_address(
-            result.addr_do,
-            result.addr_si,
-            result.addr_gu,
-            result.addr_lidong,
-            result.addr_li,
-        ),
-    }
-
-
-def _to_capa_row(result: CrawlResult, addr_id: int) -> dict:
+def _to_capa_row(result: CrawlResult, bjd_code: str) -> dict:
     """CrawlResult → kepco_capa row dict"""
     return {
-        "addr_id": addr_id,
+        "bjd_code": bjd_code,
         "addr_jibun": _empty_to_none(result.addr_jibun),
         "subst_nm": _empty_to_none(result.subst_nm),
         "mtr_no": _empty_to_none(result.mtr_no),
@@ -108,7 +80,7 @@ def _to_capa_row(result: CrawlResult, addr_id: int) -> dict:
 
 
 class CrawlDbWriter:
-    """크롤링 결과를 Supabase kepco_addr + kepco_capa 에 2단계 UPSERT."""
+    """크롤링 결과를 Supabase kepco_capa 에 UPSERT (bjd_master 메모리 매칭 경유)."""
 
     def __init__(
         self,
@@ -120,10 +92,12 @@ class CrawlDbWriter:
         self._key = supabase_key
         self._flush_size = flush_size
         self._buffer: list[CrawlResult] = []
-        # geocoded 키는 run_crawl.py 가 참조 — 항상 0 유지 (좌표 채우기는 별도 워커)
-        self._stats = {"upserted": 0, "errors": 0, "geocoded": 0}
-        # addr_id 캐시 (geocode_address → id)
-        self._addr_id_cache: dict[str, int] = {}
+        self._stats = {
+            "upserted": 0,
+            "errors": 0,
+            "geocoded": 0,           # run_crawl.py 호환 — 항상 0 (좌표는 별도 워커)
+            "bjd_unmatched": 0,      # bjd_lookup 매칭 실패 = sentinel 사용 카운트
+        }
         # MV 갱신 주기 (1시간)
         self._last_mv_refresh: float = 0.0
         self._mv_interval: float = 3600.0
@@ -151,72 +125,37 @@ class CrawlDbWriter:
         return False
 
     def flush(self):
-        """버퍼의 모든 데이터를 Supabase에 2단계 UPSERT 후 비움 + 지오코딩"""
+        """버퍼의 모든 데이터를 bjd_lookup 매칭 후 kepco_capa UPSERT."""
         if not self._buffer:
             return
 
         results = self._buffer.copy()
         self._buffer.clear()
 
-        # ── 1단계: kepco_addr UPSERT ──
-        # 고유 geocode_address 추출
-        addr_rows_map: dict[str, dict] = {}
-        for result in results:
-            addr_row = _to_addr_row(result)
-            ga = addr_row["geocode_address"]
-            if ga and ga not in addr_rows_map:
-                addr_rows_map[ga] = addr_row
-
-        # 캐시에 없는 주소만 UPSERT
-        new_addr_rows = [
-            row for ga, row in addr_rows_map.items()
-            if ga not in self._addr_id_cache
-        ]
-
-        if new_addr_rows:
-            for i in range(0, len(new_addr_rows), BATCH_SIZE):
-                chunk = new_addr_rows[i : i + BATCH_SIZE]
-                try:
-                    resp = requests.post(
-                        f"{self._url}/rest/v1/kepco_addr"
-                        "?on_conflict=geocode_address",
-                        json=chunk,
-                        headers=self._headers(
-                            "resolution=merge-duplicates,return=representation"
-                        ),
-                        timeout=60,
-                    )
-                    if resp.status_code in (200, 201):
-                        for r in resp.json():
-                            self._addr_id_cache[r["geocode_address"]] = r["id"]
-                        logger.info(f"kepco_addr UPSERT: {len(chunk)}건")
-                    else:
-                        logger.error(
-                            f"kepco_addr UPSERT 실패 (HTTP {resp.status_code}): "
-                            f"{resp.text[:500]}"
-                        )
-                except requests.exceptions.RequestException as e:
-                    logger.error(f"kepco_addr 네트워크 오류: {e}")
-
-        # ── 2단계: kepco_capa UPSERT ──
+        # ── bjd_code 매칭 + capa row 빌드 ──
         capa_rows = []
+        unmatched_in_batch = 0
         for result in results:
-            ga = _build_geocode_address(
-                result.addr_do, result.addr_si, result.addr_gu,
-                result.addr_lidong, result.addr_li,
+            bjd_code = bjd_lookup(
+                result.addr_do,
+                result.addr_si,
+                result.addr_gu,
+                result.addr_lidong,
+                result.addr_li,
             )
-            addr_id = self._addr_id_cache.get(ga)
-            if not addr_id:
-                self._stats["errors"] += 1
-                continue
-            capa_rows.append(_to_capa_row(result, addr_id))
+            if bjd_code is None:
+                bjd_code = BJD_UNMATCHED
+                unmatched_in_batch += 1
+            capa_rows.append(_to_capa_row(result, bjd_code))
+        self._stats["bjd_unmatched"] += unmatched_in_batch
 
+        # ── kepco_capa UPSERT ──
         for i in range(0, len(capa_rows), BATCH_SIZE):
             chunk = capa_rows[i : i + BATCH_SIZE]
             try:
                 resp = requests.post(
                     f"{self._url}/rest/v1/kepco_capa"
-                    "?on_conflict=addr_id,addr_jibun,subst_nm,mtr_no,dl_nm",
+                    "?on_conflict=bjd_code,addr_jibun,subst_nm,mtr_no,dl_nm",
                     json=chunk,
                     headers=self._headers(
                         "resolution=merge-duplicates,return=minimal"
@@ -225,7 +164,10 @@ class CrawlDbWriter:
                 )
                 if resp.status_code in (200, 201, 204):
                     self._stats["upserted"] += len(chunk)
-                    logger.info(f"kepco_capa UPSERT: {len(chunk)}건")
+                    logger.info(
+                        f"kepco_capa UPSERT: {len(chunk)}건 "
+                        f"(bjd 매칭 실패 {unmatched_in_batch}/{len(chunk)})"
+                    )
                 else:
                     self._stats["errors"] += len(chunk)
                     logger.error(
@@ -236,8 +178,8 @@ class CrawlDbWriter:
                 self._stats["errors"] += len(chunk)
                 logger.error(f"kepco_capa 네트워크 오류: {e}")
 
-        # ── 3단계: MV 새로고침 (1시간 간격) ──
-        # 좌표 채우기는 별도 워커(fill_kepco_coords.py) 담당 — 여기서는 안 함.
+        # ── MV 새로고침 (1시간 간격) ──
+        # kepco_map_summary 부재 시 warning 로그만 — 의도적 무시 (032 후 자동 정상화).
         if time.time() - self._last_mv_refresh > self._mv_interval:
             self.refresh_mv()
             self._last_mv_refresh = time.time()
