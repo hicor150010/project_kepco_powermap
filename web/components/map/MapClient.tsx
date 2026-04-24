@@ -1,12 +1,23 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback, useRef, startTransition } from "react";
+/**
+ * MapClient — 지도 base.
+ *
+ * 책임:
+ *   - 마커 데이터 로딩 (/api/map-summary)
+ *   - 지도/검색/필터/측정/GPS/로드뷰/지적도/새로고침/공유 등 base 기능
+ *
+ * 인터랙션 흐름 (마을 마커 클릭 / 지번 클릭 / 좌표 클릭 → 패널) 은
+ * atomic endpoints (/api/capa/by-bjd, /api/capa/by-jibun, /api/parcel/by-pnu,
+ * /api/parcel/by-latlng, /api/polygon/by-bjd) 로 새로 채울 자리.
+ * 본 파일에서는 callback stub 만 둔다.
+ */
+
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useIsMobile } from "@/lib/useIsMobile";
 import KakaoMap from "./KakaoMap";
 import Sidebar from "./Sidebar";
-import LocationSummaryCard from "./LocationSummaryCard";
-import LocationDetailModal from "./LocationDetailModal";
 import MapToolbar from "./MapToolbar";
 import DistanceTool from "./DistanceTool";
 import type { SearchPick } from "./SearchResultList";
@@ -14,25 +25,16 @@ import Toast from "./Toast";
 import TopRemainingList from "./TopRemainingList";
 import GpsTracker from "./GpsTracker";
 import RoadviewPanel from "./RoadviewPanel";
-import ParcelInfoPanel from "./ParcelInfoPanel";
-import type { JibunInfo, ParcelGeometry } from "@/lib/vworld/parcel";
-// ⚠️ 특허 출원 중 워터마크 — 특허 등록 후 제거 예정
-//    환경변수 NEXT_PUBLIC_PATENT_PENDING=false 로 즉시 끌 수 있음
-//    자세한 제거 방법은 PatentWatermark.tsx 상단 주석 참고
+import LocationSummaryCard from "./LocationSummaryCard";
+import LocationDetailModal from "./LocationDetailModal";
 import PatentWatermark from "./PatentWatermark";
 import {
   emptyFilters,
   type ColumnFilters,
   type MapSummaryRow,
-  type KepcoDataRow,
   type MarkerColor,
+  type KepcoDataRow,
 } from "@/lib/types";
-import { colorForMarker } from "@/lib/markerColor";
-
-// 지번 핀 표시 최대 줌 레벨 (카카오맵: 숫자 클수록 멀리, 7 이하에서만 표시)
-const JIBUN_PIN_MAX_LEVEL = 7;
-// 마을/지번 클릭 시 이동 줌 레벨
-const DETAIL_ZOOM_LEVEL = 7;
 
 interface Props {
   isAdmin: boolean;
@@ -40,225 +42,38 @@ interface Props {
 }
 
 export default function MapClient({ isAdmin, email }: Props) {
+  // ───────────────────────────── 데이터 ─────────────────────────────
   const [allRows, setAllRows] = useState<MapSummaryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<ColumnFilters>(emptyFilters());
-  const [colorFilter] = useState<Set<MarkerColor>>(
-    new Set(["red", "yellow", "green", "blue"])
-  );
-  const [fitBoundsKey, setFitBoundsKey] = useState(0);
-  const isMobile = useIsMobile();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  // 모바일 첫 진입 시 사이드바 닫기
-  const mobileInitRef = useRef(false);
+
   useEffect(() => {
-    if (isMobile && !mobileInitRef.current) {
-      mobileInitRef.current = true;
-      setSidebarOpen(false);
-    }
-  }, [isMobile]);
-
-  // 마커 클릭 → 마을 상세 데이터
-  const [selectedAddr, setSelectedAddr] = useState<string | null>(null);
-  const [selectedRows, setSelectedRows] = useState<KepcoDataRow[] | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailModalOpen, setDetailModalOpen] = useState(false);
-  const [initialJibunSearch, setInitialJibunSearch] = useState("");
-  const [centerMessage, setCenterMessage] = useState<string | null>(null);
-  const [detailCache] = useState<Map<string, KepcoDataRow[]>>(new Map());
-
-  // 편의 도구: 카카오 지도 인스턴스 + 거리재기 모드 + 유망부지 패널
-  const [mapInstance, setMapInstance] = useState<any>(null);
-  const [measureActive, setMeasureActive] = useState(false);
-  const [topListOpen, setTopListOpen] = useState(false);
-  const [mapType, setMapType] = useState<"roadmap" | "skyview" | "hybrid">("roadmap");
-  const [zoomLevel, setZoomLevel] = useState<number | undefined>(undefined);
-
-  // 지도 필터 — 2단계 결과 진입 시 해당 마을만 표시
-  const [mapFilteredAddrs, setMapFilteredAddrs] = useState<Set<string> | null>(null);
-  const [mapFilterSource, setMapFilterSource] = useState<"search" | "filter" | "compare" | null>(null);
-  const [panelResetKey, setPanelResetKey] = useState(0);
-
-  // 필터 해제 + 패널 리셋 + 전국 범위로 복원
-  const clearMapFilter = useCallback(() => {
-    setMapFilteredAddrs(null);
-    setMapFilterSource(null);
-    setPanelResetKey((k) => k + 1);
-    setFitBoundsKey((k) => k + 1);
+    setLoading(true);
+    fetch("/api/map-summary", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setAllRows(d.rows ?? []))
+      .catch(() => setError("지도 데이터를 불러오지 못했어요."))
+      .finally(() => setLoading(false));
   }, []);
 
-  // 필터 적용
-  const applyMapFilter = useCallback((addrs: Set<string>, source: "search" | "filter" | "compare") => {
-    setMapFilteredAddrs(addrs);
-    setMapFilterSource(source);
-  }, []);
-
-  // GPS 실시간 추적
-  const [gpsActive, setGpsActive] = useState(false);
-  const [gpsAutoFollow, setGpsAutoFollow] = useState(true);
-
-  // 로드뷰 — active=ON 이면 지도에 파란선 표시, position 이 있으면 패널 열림.
-  // pan: 시야 방향(도, 0=북, 90=동) — 지도 위 부채꼴 방향용.
-  const [roadviewActive, setRoadviewActive] = useState(false);
-  const [roadviewPosition, setRoadviewPosition] = useState<{
-    lat: number;
-    lng: number;
-    pan?: number;
-  } | null>(null);
-  const handleToggleRoadview = useCallback(() => {
-    setRoadviewActive((prev) => {
-      const next = !prev;
-      if (next) {
-        // 다른 도구와 충돌 방지 — 카카오맵 본체와 동일 정책
-        setMeasureActive(false);
-        setTopListOpen(false);
-        setSimpleToast(
-          "로드뷰 — 파란선 위 지점을 클릭하면 그 위치의 거리뷰가 열립니다"
-        );
-      } else {
-        setRoadviewPosition(null);
-      }
-      return next;
-    });
-  }, []);
-  const handleRoadviewClick = useCallback((lat: number, lng: number) => {
-    setRoadviewPosition({ lat, lng });
-  }, []);
-  const handleRoadviewClose = useCallback(() => {
-    setRoadviewPosition(null);
-    setRoadviewActive(false);
-  }, []);
-
-  // 지적편집도 오버레이 ON/OFF — 카카오 USE_DISTRICT.
-  // 줌 레벨 5 이하에서만 시각적으로 보이므로 너무 멀면 확대 안내 토스트.
-  const [cadastralActive, setCadastralActive] = useState(false);
-  const handleToggleCadastral = useCallback(() => {
-    setCadastralActive((prev) => {
-      const next = !prev;
-      if (next) {
-        const level = mapInstance?.getLevel?.();
-        if (level != null && level > 5) {
-          setSimpleToast("지적편집도는 지도를 더 확대해야 잘 보입니다");
-        } else {
-          setSimpleToast("지적편집도 — 필지 경계가 지도에 표시됩니다");
-        }
-      } else {
-        // 지적편집도 끄면 선택된 필지도 같이 정리
-        setSelectedJibun(null);
-        setSelectedGeometry(null);
-        setParcelCapa([]);
-        setParcelMatchMode(null);
-        setParcelNearestJibun(null);
-      }
-      return next;
-    });
-  }, [mapInstance]);
-
-  // 필지 클릭 → VWorld + KEPCO 조회 → 패널 + 하이라이트
-  const [selectedJibun, setSelectedJibun] = useState<JibunInfo | null>(null);
-  const [selectedGeometry, setSelectedGeometry] = useState<ParcelGeometry | null>(
-    null,
-  );
-  const [parcelCapa, setParcelCapa] = useState<KepcoDataRow[]>([]);
-  const [parcelMatchMode, setParcelMatchMode] = useState<
-    "exact" | "nearest_jibun" | null
-  >(null);
-  const [parcelNearestJibun, setParcelNearestJibun] = useState<string | null>(
-    null,
-  );
-  const [parcelLoading, setParcelLoading] = useState(false);
-  const parcelReqSeqRef = useRef(0);
-
-  // 지번별 API 응답 캐시 — 같은 지번 재클릭 시 API 재호출 없이 패널 즉시 갱신
-  interface CachedParcelData {
-    jibun: JibunInfo;
-    geometry: ParcelGeometry;
-    capa: KepcoDataRow[];
-    matchMode: "exact" | "nearest_jibun" | null;
-    nearestJibun: string | null;
-  }
-  const parcelDataCacheRef = useRef(new Map<string, CachedParcelData>());
-
-  const handleParcelClick = useCallback(async (lat: number, lng: number) => {
-    const seq = ++parcelReqSeqRef.current;
-    setParcelLoading(true);
-    setSelectedJibun(null);
-    setSelectedGeometry(null);
-    try {
-      const res = await fetch(`/api/parcel?lat=${lat}&lng=${lng}`);
-      if (seq !== parcelReqSeqRef.current) return;
-      const data = await res.json();
-      if (!data.ok) {
-        setSimpleToast(data.error || "필지 조회 실패");
-        return;
-      }
-      setSelectedJibun(data.jibun ?? null);
-      setSelectedGeometry(data.geometry ?? null);
-      setParcelCapa(data.capa ?? []);
-      setParcelMatchMode(data.matchMode ?? null);
-      setParcelNearestJibun(data.nearestJibun ?? null);
-      if (!data.jibun) {
-        setSimpleToast("이 위치에 필지가 없습니다 (바다/산 등)");
-      }
-    } catch {
-      if (seq === parcelReqSeqRef.current) {
-        setSimpleToast("필지 조회 중 오류가 발생했습니다.");
-      }
-    } finally {
-      if (seq === parcelReqSeqRef.current) setParcelLoading(false);
-    }
-  }, []);
-
-  const handleParcelClose = useCallback(() => {
-    parcelReqSeqRef.current++;
-    setSelectedJibun(null);
-    setSelectedGeometry(null);
-    setParcelCapa([]);
-    setParcelMatchMode(null);
-    setParcelNearestJibun(null);
-    setParcelLoading(false);
-  }, []);
-
-  // 사이드바 토글 / 로드뷰 분할 시 카카오맵 relayout (컨테이너 크기 변경 반영)
-  const desktopRoadviewSplit = !!roadviewPosition && !isMobile;
-  useEffect(() => {
-    if (!mapInstance) return;
-    const timer = setTimeout(() => {
-      mapInstance.relayout();
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [sidebarOpen, mapInstance, desktopRoadviewSplit]);
-
-  // 지번 핀 마커 — 같은 마을 내 클릭한 지번들 누적 표시
-  const [jibunPinCount, setJibunPinCount] = useState(0);
-  // 마을별 지번 좌표 캐시 — 마을 재선택 시 즉시 복원
-  const [jibunCache] = useState<Map<string, { lat: number; lng: number; jibun: string }[]>>(new Map());
-
-  // 데이터 새로고침 (MV 갱신 + 데이터 로드)
+  // ─────────────────── 새로고침 (MV refresh → map-summary) ───────────────────
   const [refreshing, setRefreshing] = useState(false);
-  const [refreshPhase, setRefreshPhase] = useState<string>("");
+  const [refreshPhase, setRefreshPhase] = useState("");
+  const [simpleToast, setSimpleToast] = useState<string | null>(null);
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      // 1단계: MV 갱신 — 함수 측 60초 cooldown / advisory lock 으로
-      // 연타·동시 클릭은 skipped:true 로 즉시 반환된다.
       setRefreshPhase("데이터 집계 중...");
-      const mvRes = await fetch("/api/refresh-mv", { method: "POST" });
-      if (!mvRes.ok) throw new Error("MV 갱신 실패");
-      const mvJson = (await mvRes.json()) as { skipped?: boolean };
+      const mv = await fetch("/api/refresh-mv", { method: "POST" });
+      if (!mv.ok) throw new Error("MV 갱신 실패");
+      const mvJson = (await mv.json()) as { skipped?: boolean };
 
-      // 2단계: 데이터 로드
       setRefreshPhase("지도 데이터 불러오는 중...");
-      const res = await fetch(`/api/map-summary?_t=${Date.now()}`, {
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error("새로고침 실패");
-      const data = await res.json();
+      const r = await fetch(`/api/map-summary?_t=${Date.now()}`, { cache: "no-store" });
+      if (!r.ok) throw new Error("새로고침 실패");
+      const data = await r.json();
       setAllRows(data.rows ?? []);
-      detailCache.clear();
-      setSelectedAddr(null);
-      setSelectedRows(null);
       setSimpleToast(
         mvJson.skipped
           ? "최근에 갱신된 데이터를 불러왔습니다."
@@ -270,20 +85,63 @@ export default function MapClient({ isAdmin, email }: Props) {
       setRefreshing(false);
       setRefreshPhase("");
     }
-  }, [detailCache]);
+  }, []);
 
-  // 범용 토스트 (공유 링크 등)
-  const [simpleToast, setSimpleToast] = useState<string | null>(null);
-
-  // 검색 결과가 필터에 가려졌을 때 자동 해제하면서 띄우는 토스트.
-  // filterSnapshot은 "되돌리기" 시 복원할 이전 필터.
+  // ───────────────────────────── 필터 ─────────────────────────────
+  const [filters, setFilters] = useState<ColumnFilters>(emptyFilters());
+  const [colorFilter] = useState<Set<MarkerColor>>(
+    new Set(["red", "yellow", "green", "blue"])
+  );
+  const [mapFilteredAddrs, setMapFilteredAddrs] = useState<Set<string> | null>(
+    null
+  );
+  const [mapFilterSource, setMapFilterSource] = useState<
+    "search" | "filter" | "compare" | null
+  >(null);
+  const [panelResetKey, setPanelResetKey] = useState(0);
   const [toast, setToast] = useState<{
     message: string;
     snapshot: ColumnFilters;
   } | null>(null);
-  // 측정 모드 중 마커 클릭 → DistanceTool에 점 추가를 위임할 핸들러
+
+  const clearMapFilter = useCallback(() => {
+    setMapFilteredAddrs(null);
+    setMapFilterSource(null);
+    setPanelResetKey((k) => k + 1);
+  }, []);
+  const applyMapFilter = useCallback(
+    (addrs: Set<string>, source: "search" | "filter" | "compare") => {
+      setMapFilteredAddrs(addrs);
+      setMapFilterSource(source);
+    },
+    []
+  );
+
+  // ───────────────────────────── 지도 ─────────────────────────────
+  const [mapInstance, setMapInstance] = useState<any>(null);
+  const [mapType, setMapType] = useState<"roadmap" | "skyview" | "hybrid">(
+    "roadmap"
+  );
+  const [zoomLevel, setZoomLevel] = useState<number | undefined>(undefined);
+  const [fitBoundsKey] = useState(0);
+  const [centerMessage, setCenterMessage] = useState<string | null>(null);
+
+  // ─────────────────────────── UI / 모바일 ───────────────────────────
+  const isMobile = useIsMobile();
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [topListOpen, setTopListOpen] = useState(false);
+
+  const mobileInitRef = useRef(false);
+  useEffect(() => {
+    if (isMobile && !mobileInitRef.current) {
+      setSidebarOpen(false);
+      mobileInitRef.current = true;
+    }
+  }, [isMobile]);
+
+  // ─────────────────── 도구: 측정 / GPS / 지적도 / 로드뷰 ───────────────────
+  const [measureActive, setMeasureActive] = useState(false);
   const measureAddPointRef = useRef<((latlng: any) => void) | null>(null);
-  // 콜백을 effect 의존성에서 안정적으로 쓰기 위해 useCallback으로 고정
   const registerMeasureAddPoint = useCallback(
     (fn: ((latlng: any) => void) | null) => {
       measureAddPointRef.current = fn;
@@ -291,625 +149,166 @@ export default function MapClient({ isAdmin, email }: Props) {
     []
   );
 
-  // 1. 페이지 진입 시 Light 데이터 로드
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    fetch("/api/map-summary", { cache: "no-store" })
-      .then(async (res) => {
-        if (!res.ok) {
-          // 사용자 친화적 메시지 — 기술 용어(HTTP 코드) 대신 행동 안내
-          throw new Error(
-            "지도 데이터를 불러오지 못했어요. 잠시 후 다시 시도해 주세요."
-          );
-        }
-        return res.json();
-      })
-      .then((data) => {
-        if (cancelled) return;
-        setAllRows(data.rows ?? []);
-        setFitBoundsKey((k) => k + 1);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(String(err?.message || err));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+  const [gpsActive, setGpsActive] = useState(false);
+  const [gpsAutoFollow, setGpsAutoFollow] = useState(true);
+
+  const [cadastralActive, setCadastralActive] = useState(false);
+  const handleToggleCadastral = useCallback(() => {
+    setCadastralActive((v) => !v);
+    const level = mapInstance?.getLevel?.();
+    if (!cadastralActive && level != null && level > 5) {
+      setSimpleToast("지적편집도는 지도를 더 확대해야 잘 보입니다");
+    }
+  }, [mapInstance, cadastralActive]);
+
+  const [roadviewActive, setRoadviewActive] = useState(false);
+  const [roadviewPosition, setRoadviewPosition] = useState<{
+    lat: number;
+    lng: number;
+    pan?: number;
+  } | null>(null);
+  const handleToggleRoadview = useCallback(() => {
+    setRoadviewActive((v) => {
+      const next = !v;
+      if (!next) setRoadviewPosition(null);
+      return next;
+    });
+  }, []);
+  const handleRoadviewClick = useCallback((lat: number, lng: number) => {
+    setRoadviewPosition({ lat, lng });
+  }, []);
+  const handleRoadviewClose = useCallback(() => {
+    setRoadviewActive(false);
+    setRoadviewPosition(null);
   }, []);
 
-  // 줌 레벨 실시간 추적
+  const desktopRoadviewSplit = !!roadviewPosition && !isMobile;
   useEffect(() => {
     if (!mapInstance) return;
-    setZoomLevel(mapInstance.getLevel());
-    const handler = () => setZoomLevel(mapInstance.getLevel());
-    window.kakao.maps.event.addListener(mapInstance, "zoom_changed", handler);
-    return () => {
-      window.kakao.maps.event.removeListener(mapInstance, "zoom_changed", handler);
-    };
-  }, [mapInstance]);
+    const t = setTimeout(() => mapInstance.relayout(), 350);
+    return () => clearTimeout(t);
+  }, [sidebarOpen, mapInstance, desktopRoadviewSplit]);
 
-  // 줌 레벨에 따라 지번 핀 표시/숨김 (너무 멀면 안 보이게)
-  useEffect(() => {
-    if (zoomLevel == null) return;
-    const visible = zoomLevel <= JIBUN_PIN_MAX_LEVEL;
-    for (const pin of jibunPinsRef.current) {
-      pin.overlay.setMap(visible ? mapInstance : null);
-      if (pin.line) pin.line.setMap(visible ? mapInstance : null);
-    }
-    if (jibunBoundCircleRef.current) {
-      jibunBoundCircleRef.current.setMap(visible ? mapInstance : null);
-    }
-  }, [zoomLevel, mapInstance]);
+  // ─────────────── 마을 클릭 → /api/capa/by-bjd ───────────────
+  // raw rows 는 bjd_code+시설/용량만 포함 → 화면 컴포넌트가 기대하는 주소 필드를
+  // MapSummaryRow 에서 enrich 해서 채움 (DB 에서 다시 join 하지 않고 클라이언트 합성).
+  interface SelectedVillage {
+    bjdCode: string;
+    addr: string;
+    rows: KepcoDataRow[];
+    loading: boolean;
+    error: string | null;
+  }
+  const [selectedVillage, setSelectedVillage] = useState<SelectedVillage | null>(
+    null,
+  );
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const villageReqSeqRef = useRef(0);
 
-  // 공유 링크 복원 — 데이터 로드 + 맵 준비 후 URL 파라미터 적용 (1회)
-  const sharedAppliedRef = useRef(false);
-  useEffect(() => {
-    if (sharedAppliedRef.current || !mapInstance || allRows.length === 0) return;
-    sharedAppliedRef.current = true;
-
-    const params = new URLSearchParams(window.location.search);
-    const lat = params.get("lat");
-    const lng = params.get("lng");
-    const zoom = params.get("zoom");
-
-    if (lat && lng) {
-      const pos = new window.kakao.maps.LatLng(parseFloat(lat), parseFloat(lng));
-      mapInstance.setCenter(pos);
-      if (zoom) mapInstance.setLevel(parseInt(zoom, 10));
-    }
-
-    // 필터 복원
-    const filterKeys: (keyof ColumnFilters)[] = [
-      "addr_do", "addr_gu", "addr_dong", "addr_li",
-      "subst_nm", "dl_nm", "cap_subst", "cap_mtr", "cap_dl",
-    ];
-    let hasFilter = false;
-    const restored = emptyFilters();
-    for (const key of filterKeys) {
-      const val = params.get(key);
-      if (val) {
-        restored[key] = new Set(val.split(","));
-        hasFilter = true;
-      }
-    }
-    if (hasFilter) {
-      setFilters(restored);
-    }
-
-    // 선택된 마커 복원 — addr (geocode_address) 로 들어와도 bjd_code 로 매핑해 호출
-    const addr = params.get("addr");
-    if (addr) {
-      const bjdCode = allRows.find((r) => r.geocode_address === addr)?.bjd_code;
-      if (bjdCode) {
-        setSelectedAddr(addr);
-        setDetailLoading(true);
-        fetch(`/api/location?bjd_code=${encodeURIComponent(bjdCode)}`)
-          .then((res) => res.json())
-          .then((data) => {
-            const rows = data.rows ?? [];
-            detailCache.set(addr, rows);
-            setSelectedRows(rows);
-          })
-          .catch(() => {})
-          .finally(() => setDetailLoading(false));
-      }
-    }
-
-    // URL 정리 — 파라미터 제거해서 깔끔하게
-    if (params.toString()) {
-      window.history.replaceState({}, "", window.location.pathname);
-    }
-  }, [mapInstance, allRows, detailCache]);
-
-
-  // 3. 마을(geocode_address) 상세 데이터 fetch + 카드 열기
-  //    마커 클릭 / 검색 결과 클릭 양쪽이 공유하는 핵심 로직
-  const openLocationDetail = useCallback(
-    async (addr: string) => {
-      // 다른 마을이면 기존 핀 제거
-      const villageChanged = addr !== selectedAddr;
-      if (villageChanged) {
-        for (const pin of jibunPinsRef.current) {
-          pin.overlay.setMap(null);
-          if (pin.line) pin.line.setMap(null);
-        }
-        jibunPinsRef.current = [];
-        setJibunPinCount(0);
-        if (jibunBoundCircleRef.current) {
-          jibunBoundCircleRef.current.setMap(null);
-          jibunBoundCircleRef.current = null;
-        }
-      }
-      setSelectedAddr(addr);
-      setDetailModalOpen(false);
-
-      // 캐시 확인 — 이미 받아둔 마을이면 재호출 X (호출 최소화 원칙)
-      const cached = detailCache.get(addr);
-      if (cached) {
-        setSelectedRows(cached);
-        // detailCache가 있으므로 핀 복원 가능
-        if ((villageChanged || jibunPinsRef.current.length === 0) && mapInstance) {
-          restoreCachedPins(addr, mapInstance);
-        }
-        return;
-      }
-
-      setSelectedRows(null);
-      setDetailLoading(true);
-      try {
-        // addr (geocode_address) 로 받아서 allRows 에서 bjd_code 추출 — API/RPC 는 bjd_code 키.
-        const bjdCode = allRows.find((r) => r.geocode_address === addr)?.bjd_code;
-        if (!bjdCode) {
-          throw new Error("마을 식별 정보를 찾지 못했어요.");
-        }
-        const res = await fetch(`/api/location?bjd_code=${encodeURIComponent(bjdCode)}`);
-        if (!res.ok) {
-          throw new Error("마을 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
-        }
-        const data = await res.json();
-        const rows: KepcoDataRow[] = data.rows ?? [];
-        detailCache.set(addr, rows);
-        setSelectedRows(rows);
-        // 데이터 로드 완료 후 핀 복원
-        if (mapInstance) restoreCachedPins(addr, mapInstance);
-      } catch (err) {
-        // 에러는 UI에서 처리
-      } finally {
-        setDetailLoading(false);
-      }
-    },
-    [detailCache, selectedAddr, mapInstance, allRows]
+  const enrichRowsWithVillage = useCallback(
+    (rows: KepcoDataRow[], v: MapSummaryRow): KepcoDataRow[] =>
+      rows.map((r) => ({
+        ...r,
+        addr_do: v.addr_do,
+        addr_si: v.addr_si,
+        addr_gu: v.addr_gu,
+        addr_dong: v.addr_dong,
+        addr_li: v.addr_li,
+        geocode_address: v.geocode_address,
+        lat: v.lat,
+        lng: v.lng,
+      })),
+    [],
   );
 
-  // 마커 클릭 (측정 모드일 때는 KakaoMap이 직접 처리하므로 여기로 안 옴)
   const handleMarkerClick = useCallback(
     async (row: MapSummaryRow) => {
-      await openLocationDetail(row.geocode_address);
-    },
-    [openLocationDetail]
-  );
-
-  // 공통 지도 이동 — 마을/지번/핀 클릭 모두 이 함수 사용
-  // 1) 줌을 먼저 맞추고 2) 다음 프레임에 panTo로 부드럽게 이동
-  //    (setLevel 직후 panTo를 호출하면 레이아웃 미완료로 중심이 밀릴 수 있음)
-  const moveMapTo = useCallback(
-    (lat: number, lng: number, level: number = DETAIL_ZOOM_LEVEL) => {
-      if (!mapInstance) return;
-      const pos = new window.kakao.maps.LatLng(lat, lng);
-      // 이미 충분히 확대된 상태(현재 레벨 ≤ 목표)면 줌 그대로 두고 이동만.
-      // 카카오: 숫자 작을수록 확대 — 사용자가 더 가까이 본 걸 강제로 멀어지게 하지 않음.
-      const currentLevel = mapInstance.getLevel();
-      if (currentLevel > level) {
-        mapInstance.setLevel(level);
-        requestAnimationFrame(() => mapInstance.panTo(pos));
-      } else {
-        mapInstance.panTo(pos);
+      const seq = ++villageReqSeqRef.current;
+      setSelectedVillage({
+        bjdCode: row.bjd_code,
+        addr: row.geocode_address,
+        rows: [],
+        loading: true,
+        error: null,
+      });
+      try {
+        const res = await fetch(
+          `/api/capa/by-bjd?bjd_code=${encodeURIComponent(row.bjd_code)}`,
+        );
+        if (seq !== villageReqSeqRef.current) return;
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "조회 실패");
+        const enriched = enrichRowsWithVillage(data.rows ?? [], row);
+        setSelectedVillage({
+          bjdCode: row.bjd_code,
+          addr: row.geocode_address,
+          rows: enriched,
+          loading: false,
+          error: null,
+        });
+      } catch (err) {
+        if (seq !== villageReqSeqRef.current) return;
+        setSelectedVillage({
+          bjdCode: row.bjd_code,
+          addr: row.geocode_address,
+          rows: [],
+          loading: false,
+          error: String((err as Error).message ?? err),
+        });
       }
     },
-    [mapInstance]
+    [enrichRowsWithVillage],
   );
 
-  // 사이드바 TOP 유망 부지 클릭 — 지도 이동 + 상세 카드 열기
-  const handleSidebarPick = useCallback(
-    async (row: MapSummaryRow) => {
-      if (row.lat != null && row.lng != null) moveMapTo(row.lat, row.lng);
-      await openLocationDetail(row.geocode_address);
-    },
-    [moveMapTo, openLocationDetail]
-  );
+  const closeVillage = useCallback(() => {
+    villageReqSeqRef.current++;
+    setSelectedVillage(null);
+    setDetailModalOpen(false);
+  }, []);
+  const handleParcelClick = useCallback((_lat: number, _lng: number) => {
+    // TODO
+  }, []);
+  const handleSearchPick = useCallback((_pick: SearchPick) => {
+    // TODO
+  }, []);
+  const handleSidebarPick = useCallback((_row: MapSummaryRow) => {
+    // TODO
+  }, []);
+  const handleJibunPin = useCallback((_row: unknown) => {
+    // TODO
+  }, []);
 
-  // 4. 검색 결과 클릭 → 지도 이동 + 마커 강조 + (가려졌으면) 필터 자동 해제
-  //
-  //    동작 흐름:
-  //    1) 좌표로 지도 이동
-  //    2) 해당 마을의 마커를 강조(selectedAddr) — 마커 클릭과 동일한 시각 피드백
-  //    3) 그 마을이 현재 filteredRows에 있는지 검사
-  //    4) 없으면(=필터에 가려짐) 필터를 비우고 토스트로 알림
-  const handleSearchPick = useCallback(
-    (pick: SearchPick) => {
-      if (!mapInstance) return;
-
-      const targetAddr = pick.row.geocode_address;
-      const lat = pick.row.lat;
-      const lng = pick.row.lng;
-
-      // GPS 추적 중이면 autoFollow 해제
-      if (gpsActive && gpsAutoFollow) {
-        setGpsAutoFollow(false);
-      }
-
-      // 필터가 걸려 있고, 이 마을이 필터에 없으면 → 필터 해제
-      if (mapFilteredAddrs && !mapFilteredAddrs.has(targetAddr)) {
-        clearMapFilter();
-      }
-
-      // 지도 이동 — 좌표가 없는 주소(KEPCO 원본 주소 이슈)는 이동 생략 + 사용자 안내
-      if (lat != null && lng != null) {
-        moveMapTo(lat, lng);
-      } else if (pick.kind === "ri") {
-        setSimpleToast("이 주소는 지도 위치를 찾을 수 없어요. 용량 정보는 아래에서 확인할 수 있습니다.");
-      }
-
-      setInitialJibunSearch("");
-      if (targetAddr) {
-        openLocationDetail(targetAddr);
-      }
-    },
-    [mapInstance, openLocationDetail, gpsActive, gpsAutoFollow, mapFilteredAddrs, clearMapFilter, moveMapTo]
-  );
-
-  // 5. 공유 링크 생성 + 클립보드 복사
+  // ─────────────────────── 공유 / 줌 ───────────────────────
   const handleShare = useCallback(() => {
     if (!mapInstance) return;
-
     const center = mapInstance.getCenter();
     const params = new URLSearchParams();
     params.set("lat", center.getLat().toFixed(6));
     params.set("lng", center.getLng().toFixed(6));
     params.set("zoom", String(mapInstance.getLevel()));
-
-    // 필터 — 값이 있는 것만 직렬화
     const filterKeys: (keyof ColumnFilters)[] = [
-      "addr_do", "addr_gu", "addr_dong", "addr_li",
-      "subst_nm", "dl_nm", "cap_subst", "cap_mtr", "cap_dl",
+      "addr_do",
+      "addr_gu",
+      "addr_dong",
+      "addr_li",
+      "subst_nm",
+      "dl_nm",
+      "cap_subst",
+      "cap_mtr",
+      "cap_dl",
     ];
-    for (const key of filterKeys) {
-      const s = filters[key];
-      if (s.size > 0) {
-        params.set(key, [...s].join(","));
-      }
+    for (const k of filterKeys) {
+      const s = filters[k];
+      if (s.size > 0) params.set(k, [...s].join(","));
     }
-
-    // 선택된 마커
-    if (selectedAddr) {
-      params.set("addr", selectedAddr);
-    }
-
     const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
-    navigator.clipboard.writeText(url).then(() => {
-      setSimpleToast("링크가 복사되었습니다");
-    }).catch(() => {
-      setSimpleToast("링크 복사에 실패했어요");
-    });
-  }, [mapInstance, filters, selectedAddr]);
+    navigator.clipboard
+      .writeText(url)
+      .then(() => setSimpleToast("링크가 복사되었습니다"))
+      .catch(() => setSimpleToast("링크 복사에 실패했어요"));
+  }, [mapInstance, filters]);
 
-  // 6. 지번 핀 — 같은 마을 내 여러 지번 누적 표시
-  const jibunPinsRef = useRef<{ overlay: any; line: any; jibun: string; lat: number; lng: number }[]>([]);
-  const jibunBoundCircleRef = useRef<any>(null);
-
-  /** 마을 마커 + 핀 전부를 감싸는 최소 외접원 (Welzl 알고리즘) */
-  function updateBoundCircle(map: any, villageAddr?: string) {
-    // 기존 원 제거
-    if (jibunBoundCircleRef.current) {
-      jibunBoundCircleRef.current.setMap(null);
-      jibunBoundCircleRef.current = null;
-    }
-
-    if (jibunPinsRef.current.length === 0) return;
-
-    // 좌표 수집: 핀들 + 마을 마커
-    const points: { lat: number; lng: number }[] = jibunPinsRef.current.map((p) => ({ lat: p.lat, lng: p.lng }));
-    const addr = villageAddr ?? selectedAddr;
-    const village = allRows.find((r) => r.geocode_address === addr);
-    if (village) points.push({ lat: village.lat, lng: village.lng });
-
-    // --- 최소 외접원 (Welzl) — 위경도 → 미터 근사 ---
-    const REF_LAT = points[0].lat;
-    const M_PER_LAT = 111_320;
-    const M_PER_LNG = 111_320 * Math.cos((REF_LAT * Math.PI) / 180);
-    const toXY = (p: { lat: number; lng: number }) => ({
-      x: (p.lng - points[0].lng) * M_PER_LNG,
-      y: (p.lat - points[0].lat) * M_PER_LAT,
-    });
-    type Pt = { x: number; y: number };
-
-    const dist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y);
-
-    const circleFrom1 = (a: Pt): { cx: number; cy: number; r: number } => ({ cx: a.x, cy: a.y, r: 0 });
-    const circleFrom2 = (a: Pt, b: Pt) => ({
-      cx: (a.x + b.x) / 2,
-      cy: (a.y + b.y) / 2,
-      r: dist(a, b) / 2,
-    });
-    const circleFrom3 = (a: Pt, b: Pt, c: Pt) => {
-      const ax = a.x, ay = a.y, bx = b.x, by = b.y, cx2 = c.x, cy2 = c.y;
-      const D = 2 * (ax * (by - cy2) + bx * (cy2 - ay) + cx2 * (ay - by));
-      if (Math.abs(D) < 1e-10) return circleFrom2(a, dist(a, b) > dist(a, c) ? b : c);
-      const ux = ((ax * ax + ay * ay) * (by - cy2) + (bx * bx + by * by) * (cy2 - ay) + (cx2 * cx2 + cy2 * cy2) * (ay - by)) / D;
-      const uy = ((ax * ax + ay * ay) * (cx2 - bx) + (bx * bx + by * by) * (ax - cx2) + (cx2 * cx2 + cy2 * cy2) * (bx - ax)) / D;
-      return { cx: ux, cy: uy, r: dist({ x: ux, y: uy }, a) };
-    };
-
-    const inside = (c: { cx: number; cy: number; r: number }, p: Pt) =>
-      dist({ x: c.cx, y: c.cy }, p) <= c.r + 1e-6;
-
-    // Welzl iterative (셔플 + 경계 포인트 최대 3개)
-    const pts = points.map(toXY);
-    // 셔플
-    for (let i = pts.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pts[i], pts[j]] = [pts[j], pts[i]];
-    }
-
-    let circle = circleFrom1(pts[0]);
-    for (let i = 1; i < pts.length; i++) {
-      if (!inside(circle, pts[i])) {
-        circle = circleFrom1(pts[i]);
-        for (let j = 0; j < i; j++) {
-          if (!inside(circle, pts[j])) {
-            circle = circleFrom2(pts[i], pts[j]);
-            for (let k = 0; k < j; k++) {
-              if (!inside(circle, pts[k])) {
-                circle = circleFrom3(pts[i], pts[j], pts[k]);
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // 미터 좌표 → 위경도 복원
-    const centerLat = points[0].lat + circle.cy / M_PER_LAT;
-    const centerLng = points[0].lng + circle.cx / M_PER_LNG;
-    const radius = Math.max(circle.r * 1.05, 30); // 5% 패딩, 최소 30m
-
-    const center = new window.kakao.maps.LatLng(centerLat, centerLng);
-    jibunBoundCircleRef.current = new window.kakao.maps.Circle({
-      center,
-      radius,
-      strokeWeight: 1.5,
-      strokeColor: "#ef4444",
-      strokeOpacity: 0.35,
-      strokeStyle: "dashed",
-      fillColor: "#ef4444",
-      fillOpacity: 0.06,
-    });
-    jibunBoundCircleRef.current.setMap(map);
-  }
-
-  /** 지도 위 핀 오버레이 + 연결선 1개 생성 (공통 헬퍼) */
-  function createPinOverlay(
-    map: any,
-    lat: number,
-    lng: number,
-    jibun: string,
-    villageLat?: number | null,
-    villageLng?: number | null,
-  ) {
-    const pos = new window.kakao.maps.LatLng(lat, lng);
-    const pinHtml = `
-      <div style="position:relative;width:0;height:0;pointer-events:none;">
-        <div style="
-          position:absolute;left:-16px;top:-42px;
-          width:32px;height:42px;
-          filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));
-        ">
-          <svg width="32" height="42" viewBox="0 0 32 42" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M16 0C7.16 0 0 7.16 0 16c0 12 16 26 16 26s16-14 16-26C32 7.16 24.84 0 16 0z" fill="#e53e3e"/>
-            <circle cx="16" cy="16" r="8" fill="white"/>
-            <circle cx="16" cy="16" r="5" fill="#e53e3e"/>
-          </svg>
-        </div>
-        <div style="
-          position:absolute;left:20px;top:-40px;
-          background:white;border:1px solid #e53e3e;
-          border-radius:6px;padding:3px 8px;
-          font-size:11px;font-weight:bold;color:#c53030;
-          white-space:nowrap;
-          box-shadow:0 2px 6px rgba(0,0,0,0.15);
-        ">${jibun}</div>
-      </div>`;
-
-    const overlay = new window.kakao.maps.CustomOverlay({
-      position: pos, content: pinHtml, yAnchor: 0.5, xAnchor: 0.5, zIndex: 300,
-    });
-    overlay.setMap(map);
-
-    let line: any = null;
-    if (villageLat != null && villageLng != null) {
-      const villagePos = new window.kakao.maps.LatLng(villageLat, villageLng);
-      line = new window.kakao.maps.Polyline({
-        path: [villagePos, pos],
-        strokeWeight: 1.5, strokeColor: "#e53e3e", strokeOpacity: 0.4, strokeStyle: "dashed",
-      });
-      line.setMap(map);
-    }
-    return { overlay, line, jibun, lat, lng };
-  }
-
-  /** 마을의 지번 중 DB에 좌표가 저장된 것만 핀으로 표시 */
-  async function restoreCachedPins(addr: string, map: any) {
-    // 세션 캐시 히트 → DB 재조회 불필요
-    const sessionCached = jibunCache.get(addr);
-    if (sessionCached) {
-      if (sessionCached.length === 0) return;
-      const village = allRows.find((r) => r.geocode_address === addr);
-      for (const c of sessionCached) {
-        jibunPinsRef.current.push(
-          createPinOverlay(map, c.lat, c.lng, c.jibun, village?.lat, village?.lng)
-        );
-      }
-      setJibunPinCount(jibunPinsRef.current.length);
-      updateBoundCircle(map, addr);
-      return;
-    }
-
-    // DB 조회용 prefix 구성 — 기타지역 제거 (저장 형식과 일치시킴)
-    const rows = detailCache.get(addr);
-    let villagePrefix = addr; // fallback
-    if (rows && rows.length > 0) {
-      const first = rows[0];
-      villagePrefix = [first.addr_do, first.addr_si, first.addr_gu, first.addr_dong, first.addr_li]
-        .filter(Boolean)
-        .filter((p) => !p!.includes("기타지역"))
-        .join(" ");
-    }
-
-    try {
-      const res = await fetch(
-        `/api/geocode-cached?village=${encodeURIComponent(villagePrefix)}`
-      );
-      const data = await res.json();
-      const pins: { jibun: string; lat: number; lng: number }[] = data.pins ?? [];
-
-      // 세션 캐시에 저장 (빈 배열도 저장 → 다음엔 DB 재조회 안 함)
-      jibunCache.set(addr, pins);
-
-      if (pins.length === 0) return;
-      const village = allRows.find((r) => r.geocode_address === addr);
-      for (const p of pins) {
-        jibunPinsRef.current.push(
-          createPinOverlay(map, p.lat, p.lng, p.jibun, village?.lat, village?.lng)
-        );
-      }
-      setJibunPinCount(jibunPinsRef.current.length);
-      updateBoundCircle(map, addr);
-    } catch {
-      // 조회 실패 시 무시
-    }
-  }
-
-  const clearJibunPin = useCallback(() => {
-    for (const pin of jibunPinsRef.current) {
-      pin.overlay.setMap(null);
-      if (pin.line) pin.line.setMap(null);
-    }
-    jibunPinsRef.current = [];
-    setJibunPinCount(0);
-    if (jibunBoundCircleRef.current) {
-      jibunBoundCircleRef.current.setMap(null);
-      jibunBoundCircleRef.current = null;
-    }
-  }, []);
-
-  // 지번 클릭 — VWorld 검색 API 한 번으로 좌표+필지 확보, 지적도 자동 ON, 패널 자동 열기
-  // (2026-04-22) 기존 카카오 지오코딩 제거. 서버가 VWorld + KEPCO 병렬로 처리 + KV 캐시.
-  const handleJibunPin = useCallback(
-    async (row: KepcoDataRow) => {
-      if (!mapInstance) return;
-
-      const jibunKey = row.addr_jibun || "";
-      // 이미 같은 지번 핀이 있으면: 캐시된 데이터로 패널 갱신 + 지도 이동 (API 재호출 X)
-      const existing = jibunPinsRef.current.find((p) => p.jibun === jibunKey);
-      if (existing) {
-        setDetailModalOpen(false);
-        const cached = parcelDataCacheRef.current.get(jibunKey);
-        if (cached) {
-          // transition 으로 래핑 — 패널 5개 setState 를 non-urgent 처리해 UI 반응 유지
-          startTransition(() => {
-            setSelectedJibun(cached.jibun);
-            setSelectedGeometry(cached.geometry);
-            setParcelCapa(cached.capa);
-            setParcelMatchMode(cached.matchMode);
-            setParcelNearestJibun(cached.nearestJibun);
-          });
-        }
-        moveMapTo(existing.lat, existing.lng);
-        return;
-      }
-
-      // "기타지역" 는 법정 주소에 없는 임시 토큰 — VWorld 검색에 방해되니 제외
-      const parts = [
-        row.addr_do, row.addr_si, row.addr_gu, row.addr_dong, row.addr_li, row.addr_jibun,
-      ]
-        .filter(Boolean)
-        .filter((p) => !p!.includes("기타지역")) as string[];
-      const fullAddr = parts.join(" ");
-      const villageAddr = parts.slice(0, -1).join(" "); // 지번 제외한 마을 주소 (KV 인덱스)
-
-      setDetailModalOpen(false);
-
-      // 시퀀스 가드 — 중복 클릭 시 늦게 오는 응답 무시
-      const seq = ++parcelReqSeqRef.current;
-      // 즉시 ParcelInfoPanel 을 로딩 스켈레톤 상태로 열기 (체감 반응성)
-      setParcelLoading(true);
-      setSelectedJibun(null);
-      setSelectedGeometry(null);
-      setParcelCapa([]);
-      setParcelMatchMode(null);
-      setParcelNearestJibun(null);
-
-      try {
-        // 주소 구성 파라미터를 함께 보냄 → 서버가 VWorld 와 KEPCO 를 병렬 실행
-        const qs = new URLSearchParams({
-          address: fullAddr,
-          ...(villageAddr ? { village: villageAddr } : {}),
-          addr_do: row.addr_do ?? "",
-          addr_si: row.addr_si ?? "",
-          addr_gu: row.addr_gu ?? "",
-          addr_dong: row.addr_dong ?? "",
-          addr_li: row.addr_li ?? "",
-          addr_jibun: row.addr_jibun ?? "",
-        });
-        const res = await fetch(`/api/parcel-by-address?${qs.toString()}`);
-        if (seq !== parcelReqSeqRef.current) return;
-        const data = await res.json();
-
-        if (!data.ok || !data.jibun || !data.geometry) {
-          setSimpleToast(`⚠️ ${jibunKey} 필지 정보를 찾을 수 없어요`);
-          return;
-        }
-
-        // 재클릭 대비 응답 캐시
-        parcelDataCacheRef.current.set(jibunKey, {
-          jibun: data.jibun,
-          geometry: data.geometry,
-          capa: data.capa ?? [],
-          matchMode: data.matchMode ?? null,
-          nearestJibun: data.nearestJibun ?? null,
-        });
-
-        // 패널 5개 setState 를 non-urgent 로 처리 → 카카오 SDK 연산과 경쟁 회피
-        startTransition(() => {
-          setSelectedJibun(data.jibun);
-          setSelectedGeometry(data.geometry);
-          setParcelCapa(data.capa ?? []);
-          setParcelMatchMode(data.matchMode ?? null);
-          setParcelNearestJibun(data.nearestJibun ?? null);
-        });
-
-        // 핀 위치 — Turf.js centroid 로 계산된 중심점 (서버 제공)
-        const { lat, lng } = data.geometry?.center ?? {};
-        if (lat != null && lng != null) {
-          const village = allRows.find((r) => r.geocode_address === row.geocode_address);
-          const pin = createPinOverlay(
-            mapInstance, lat, lng, jibunKey,
-            village?.lat, village?.lng,
-          );
-          jibunPinsRef.current.push(pin);
-          setJibunPinCount(jibunPinsRef.current.length);
-          updateBoundCircle(mapInstance, row.geocode_address);
-
-          // 세션 캐시 (같은 지번 재클릭 시 API 재호출 방지)
-          const geoAddr = row.geocode_address;
-          const list = jibunCache.get(geoAddr) ?? [];
-          list.push({ lat, lng, jibun: jibunKey });
-          jibunCache.set(geoAddr, list);
-
-          // 줌 확대 (지적도 자동 전환은 하지 않음 — 필지 폴리곤은 KakaoMap 이
-          // highlightedParcel prop 으로 직접 테두리만 그려줌. 현재 맵 옵션 유지)
-          const lv = mapInstance.getLevel?.();
-          if (lv != null && lv > 5) {
-            mapInstance.setLevel(3);
-          }
-          moveMapTo(lat, lng);
-        }
-      } catch {
-        if (seq === parcelReqSeqRef.current) {
-          setSimpleToast(`⚠️ 필지 조회 중 오류가 발생했어요`);
-        }
-      } finally {
-        if (seq === parcelReqSeqRef.current) setParcelLoading(false);
-      }
-    },
-    [mapInstance, allRows, jibunCache, moveMapTo]
-  );
-
+  // ─────────────────────────── render ───────────────────────────
   return (
     <div className="flex h-dvh overflow-hidden relative">
       <Sidebar
@@ -923,13 +322,11 @@ export default function MapClient({ isAdmin, email }: Props) {
         onSearchPick={handleSearchPick}
         onJibunPin={handleJibunPin}
         onSearchFocus={() => {
-          setSelectedAddr(null);
-          setSelectedRows(null);
-          clearJibunPin();
+          /* TODO: 검색 포커스 시 선택 마을 해제 */
         }}
         onRefresh={handleRefresh}
         refreshing={refreshing}
-        selectedAddr={selectedAddr}
+        selectedAddr={null}
         onMapFilter={applyMapFilter}
         onClearMapFilter={clearMapFilter}
         panelResetKey={panelResetKey}
@@ -941,276 +338,274 @@ export default function MapClient({ isAdmin, email }: Props) {
             desktopRoadviewSplit ? "w-1/2" : "w-full"
           }`}
         >
-        {loading && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70">
-            <div className="bg-white rounded-lg shadow-lg px-6 py-4 border border-gray-200">
-              <div className="text-sm text-gray-700">지도를 불러오는 중...</div>
-            </div>
-          </div>
-        )}
-
-        {refreshing && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/20 backdrop-blur-[1px]">
-            <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 border border-gray-100 flex flex-col items-center gap-3 min-w-[220px]">
-              <div className="relative w-10 h-10">
-                <div className="absolute inset-0 rounded-full border-[3px] border-gray-200" />
-                <div className="absolute inset-0 rounded-full border-[3px] border-t-blue-500 animate-spin" />
-              </div>
-              <div className="text-sm font-semibold text-gray-800">데이터 갱신 중</div>
-              <div className="text-xs text-gray-500">{refreshPhase || "잠시만 기다려주세요..."}</div>
-              <div className="w-full bg-gray-100 rounded-full h-1 overflow-hidden mt-1">
-                <div className="h-full bg-blue-500 rounded-full animate-pulse" style={{ width: "60%" }} />
+          {loading && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70">
+              <div className="bg-white rounded-lg shadow-lg px-6 py-4 border border-gray-200">
+                <div className="text-sm text-gray-700">지도를 불러오는 중...</div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {error && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-red-50 border border-red-200 text-red-700 text-xs px-4 py-2.5 rounded-lg shadow-md flex items-center gap-2 max-w-md">
-            <span className="text-base">⚠️</span>
-            <span className="flex-1">{error}</span>
-            <button
-              onClick={() => setError(null)}
-              className="text-red-400 hover:text-red-700 leading-none text-base ml-2"
-              aria-label="닫기"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        <KakaoMap
-          rows={allRows}
-          colorFilter={colorFilter}
-          onMarkerClick={handleMarkerClick}
-          fitBoundsKey={fitBoundsKey}
-          onMapReady={setMapInstance}
-          measureMode={measureActive}
-          measureAddPointRef={measureAddPointRef}
-          selectedAddr={selectedAddr}
-          mapType={mapType}
-          onRenderingChange={(rendering) =>
-            setCenterMessage(rendering ? "지도 마커 준비 중..." : null)
-          }
-          visibleAddrs={mapFilteredAddrs}
-          roadviewActive={roadviewActive}
-          roadviewPosition={roadviewPosition}
-          onRoadviewClick={handleRoadviewClick}
-          cadastralActive={cadastralActive}
-          onParcelClick={handleParcelClick}
-          highlightedParcel={selectedGeometry?.polygon ?? null}
-        />
-
-        {/* 지도 상태 바 — 항상 표시 (모바일: 하단, 데스크톱: 상단) */}
-        {allRows.length > 0 && (() => {
-          const isFiltered = mapFilteredAddrs != null;
-          const visibleCount = isFiltered ? mapFilteredAddrs.size : allRows.length;
-          const visibleJibun = isFiltered
-            ? allRows.filter((r) => mapFilteredAddrs.has(r.geocode_address)).reduce((s, r) => s + r.total, 0)
-            : allRows.reduce((s, r) => s + r.total, 0);
-          const sourceLabel = mapFilterSource === "search" ? "주소검색"
-            : mapFilterSource === "filter" ? "조건검색"
-            : mapFilterSource === "compare" ? "변화추적"
-            : "전체 보기";
-          const dotColor = mapFilterSource === "compare" ? "bg-orange-500"
-            : mapFilterSource === "search" ? "bg-green-500"
-            : mapFilterSource === "filter" ? "bg-blue-500"
-            : "bg-gray-400";
-
-          return (
-            <div className={`absolute z-20 left-1/2 -translate-x-1/2
-              ${selectedAddr ? "bottom-44 md:bottom-auto md:top-2" : "bottom-4 md:bottom-auto md:top-2"}`}
-            >
-              <div className="flex items-center gap-1.5 md:gap-2 bg-white/95 backdrop-blur border border-gray-200 shadow-lg rounded-full px-3 py-1.5 md:px-4 md:py-2 text-[11px] md:text-xs whitespace-nowrap">
-                {isFiltered ? (
-                  <button
-                    type="button"
-                    onClick={clearMapFilter}
-                    className={`flex items-center gap-1 px-1.5 py-0.5 md:px-2 md:py-1 rounded-full text-[10px] md:text-[11px] font-bold text-white shrink-0 hover:opacity-80 active:opacity-60 transition-opacity ${dotColor}`}
-                  >
-                    {sourceLabel}
-                    <span className="text-white/70 text-[9px] ml-0.5">✕</span>
-                  </button>
-                ) : (
-                  <span className={`px-1.5 py-0.5 md:px-2 md:py-1 rounded-full text-[10px] md:text-[11px] font-bold text-white shrink-0 ${dotColor}`}>
-                    {sourceLabel}
-                  </span>
-                )}
-                <span className="text-gray-800 font-bold tabular-nums">{visibleCount.toLocaleString()}</span>
-                <span className="text-gray-400 text-[10px] md:text-[11px]">마을</span>
-                <span className="text-gray-300">·</span>
-                <span className="text-gray-800 font-bold tabular-nums">{visibleJibun.toLocaleString()}</span>
-                <span className="text-gray-400 text-[10px] md:text-[11px]">지번</span>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* 우상단 도구 패널 (거리재기 / 유망 부지 TOP) */}
-        <MapToolbar
-          measureActive={measureActive}
-          onToggleMeasure={() => {
-            setMeasureActive((v) => {
-              if (!v) setSimpleToast("거리재기 모드 — 지도를 클릭하세요");
-              return !v;
-            });
-          }}
-          topListActive={topListOpen}
-          onToggleTopList={() => setTopListOpen((v) => !v)}
-          gpsActive={gpsActive}
-          gpsAutoFollow={gpsAutoFollow}
-          onToggleGps={() => {
-            if (gpsActive) {
-              setGpsActive(false);
-            } else {
-              setGpsActive(true);
-              setGpsAutoFollow(true);
-              setSimpleToast("GPS 추적 시작");
-            }
-          }}
-          onGpsRecenter={() => setGpsAutoFollow(true)}
-          zoomLevel={zoomLevel}
-          mapType={mapType}
-          onMapTypeChange={setMapType}
-          roadviewActive={roadviewActive}
-          onToggleRoadview={handleToggleRoadview}
-          cadastralActive={cadastralActive}
-          onToggleCadastral={handleToggleCadastral}
-          onZoomIn={() => mapInstance?.setLevel(mapInstance.getLevel() - 1)}
-          onZoomOut={() => mapInstance?.setLevel(mapInstance.getLevel() + 1)}
-          onShare={handleShare}
-        />
-
-        {/* 비교 패널은 사이드바 탭으로 이동됨 */}
-
-        {/* 유망 부지 TOP 플로팅 패널 — open 일 때만 마운트 */}
-        {topListOpen && (
-          <TopRemainingList
-            rows={allRows}
-            onPick={handleSidebarPick}
-            onClose={() => setTopListOpen(false)}
-            topN={10}
-          />
-        )}
-
-        {/* 거리재기 — active일 때만 클릭 리스너/오버레이 활성 */}
-        <DistanceTool
-          map={mapInstance}
-          active={measureActive}
-          onClose={() => setMeasureActive(false)}
-          registerAddPoint={registerMeasureAddPoint}
-        />
-
-        {/* GPS 실시간 위치 추적 */}
-        <GpsTracker
-          map={mapInstance}
-          active={gpsActive}
-          autoFollow={gpsAutoFollow}
-          onAutoFollowChange={setGpsAutoFollow}
-          onError={(msg) => setError(msg)}
-        />
-
-        {/* 필터 자동 해제 시 토스트 (되돌리기 가능) */}
-        {toast && (
-          <Toast
-            message={toast.message}
-            actionLabel="되돌리기"
-            onAction={() => setFilters(toast.snapshot)}
-            onClose={() => setToast(null)}
-          />
-        )}
-
-        {/* 범용 토스트 (공유 링크 등) */}
-        {simpleToast && (
-          <Toast
-            message={simpleToast}
-            onClose={() => setSimpleToast(null)}
-            duration={3000}
-          />
-        )}
-
-        {/* 중앙 스피너 — 마을 로딩 / 지번 핀 로딩 등 */}
-        {(detailLoading || centerMessage) && (
-          <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
-            <div className="bg-white/90 rounded-xl px-5 py-4 shadow-lg flex items-center gap-3">
-              <div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm text-gray-600">{centerMessage ?? "마을 정보를 불러오는 중..."}</span>
-            </div>
-          </div>
-        )}
-
-        {/* 마커 클릭 시 카드 */}
-        {/* 필지 정보 패널 (지적편집도 모드에서 지도 클릭 시) */}
-        {(parcelLoading || selectedJibun) && (
-          <ParcelInfoPanel
-            jibun={selectedJibun}
-            geometry={selectedGeometry}
-            capa={parcelCapa}
-            matchMode={parcelMatchMode}
-            nearestJibun={parcelNearestJibun}
-            loading={parcelLoading}
-            onClose={handleParcelClose}
-          />
-        )}
-
-        {selectedAddr && !selectedJibun && !parcelLoading && (
-          <LocationSummaryCard
-            key={selectedAddr}
-            rows={selectedRows}
-            loading={detailLoading}
-            onShowDetail={() => setDetailModalOpen(true)}
-            onClose={() => {
-              setSelectedAddr(null);
-              setSelectedRows(null);
-              setDetailModalOpen(false);
-              clearJibunPin();
-            }}
-          />
-        )}
-
-        {/* 상세 모달 */}
-        {detailModalOpen && selectedRows && (
-          <LocationDetailModal
-            rows={selectedRows}
-            onClose={() => {
-              setDetailModalOpen(false);
-              setInitialJibunSearch("");
-            }}
-            onJibunPin={handleJibunPin}
-            initialSearch={initialJibunSearch}
-          />
-        )}
-
-        {/* 빈 데이터 안내 — 관리자/일반사용자별 차별화 */}
-        {!loading && allRows.length === 0 && !error && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="bg-white rounded-xl shadow-lg px-8 py-6 border border-gray-200 text-center pointer-events-auto max-w-md">
-              <div className="text-4xl mb-3">📭</div>
-              <div className="text-base font-semibold text-gray-900 mb-2">
-                아직 보여드릴 데이터가 없어요
-              </div>
-              {isAdmin ? (
-                <>
-                  <div className="text-xs text-gray-600 leading-relaxed mb-4">
-                    KEPCO 여유용량 엑셀 파일을 업로드하시면<br />
-                    바로 지도에 표시됩니다.
-                  </div>
-                  <Link
-                    href="/admin/upload"
-                    className="inline-block bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium px-4 py-2 rounded-md transition-colors"
-                  >
-                    📤 지금 엑셀 업로드하기
-                  </Link>
-                </>
-              ) : (
-                <div className="text-xs text-gray-600 leading-relaxed">
-                  관리자가 데이터를 업로드하면<br />
-                  이 화면에서 바로 확인하실 수 있어요.
+          {refreshing && (
+            <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/20 backdrop-blur-[1px]">
+              <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 border border-gray-100 flex flex-col items-center gap-3 min-w-[220px]">
+                <div className="relative w-10 h-10">
+                  <div className="absolute inset-0 rounded-full border-[3px] border-gray-200" />
+                  <div className="absolute inset-0 rounded-full border-[3px] border-t-blue-500 animate-spin" />
                 </div>
-              )}
+                <div className="text-sm font-semibold text-gray-800">
+                  데이터 갱신 중
+                </div>
+                <div className="text-xs text-gray-500">
+                  {refreshPhase || "잠시만 기다려주세요..."}
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-1 overflow-hidden mt-1">
+                  <div
+                    className="h-full bg-blue-500 rounded-full animate-pulse"
+                    style={{ width: "60%" }}
+                  />
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+
+          {error && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-red-50 border border-red-200 text-red-700 text-xs px-4 py-2.5 rounded-lg shadow-md flex items-center gap-2 max-w-md">
+              <span className="text-base">⚠️</span>
+              <span className="flex-1">{error}</span>
+              <button
+                onClick={() => setError(null)}
+                className="text-red-400 hover:text-red-700 leading-none text-base ml-2"
+                aria-label="닫기"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          <KakaoMap
+            rows={allRows}
+            colorFilter={colorFilter}
+            onMarkerClick={handleMarkerClick}
+            fitBoundsKey={fitBoundsKey}
+            onMapReady={setMapInstance}
+            measureMode={measureActive}
+            measureAddPointRef={measureAddPointRef}
+            selectedAddr={selectedVillage?.addr ?? null}
+            mapType={mapType}
+            onRenderingChange={(rendering) =>
+              setCenterMessage(rendering ? "지도 마커 준비 중..." : null)
+            }
+            visibleAddrs={mapFilteredAddrs}
+            roadviewActive={roadviewActive}
+            roadviewPosition={roadviewPosition}
+            onRoadviewClick={handleRoadviewClick}
+            cadastralActive={cadastralActive}
+            onParcelClick={handleParcelClick}
+            highlightedParcel={null}
+          />
+
+          {/* 지도 상태 바 */}
+          {allRows.length > 0 &&
+            (() => {
+              const isFiltered = mapFilteredAddrs != null;
+              const visibleCount = isFiltered
+                ? mapFilteredAddrs.size
+                : allRows.length;
+              const visibleJibun = isFiltered
+                ? allRows
+                    .filter((r) => mapFilteredAddrs.has(r.geocode_address))
+                    .reduce((s, r) => s + r.total, 0)
+                : allRows.reduce((s, r) => s + r.total, 0);
+              const sourceLabel =
+                mapFilterSource === "search"
+                  ? "주소검색"
+                  : mapFilterSource === "filter"
+                    ? "조건검색"
+                    : mapFilterSource === "compare"
+                      ? "변화추적"
+                      : "전체 보기";
+              const dotColor =
+                mapFilterSource === "compare"
+                  ? "bg-orange-500"
+                  : mapFilterSource === "search"
+                    ? "bg-green-500"
+                    : mapFilterSource === "filter"
+                      ? "bg-blue-500"
+                      : "bg-gray-400";
+              return (
+                <div className="absolute z-20 left-1/2 -translate-x-1/2 bottom-4 md:bottom-auto md:top-2">
+                  <div className="flex items-center gap-1.5 md:gap-2 bg-white/95 backdrop-blur border border-gray-200 shadow-lg rounded-full px-3 py-1.5 md:px-4 md:py-2 text-[11px] md:text-xs whitespace-nowrap">
+                    {isFiltered ? (
+                      <button
+                        type="button"
+                        onClick={clearMapFilter}
+                        className={`flex items-center gap-1 px-1.5 py-0.5 md:px-2 md:py-1 rounded-full text-[10px] md:text-[11px] font-bold text-white shrink-0 hover:opacity-80 active:opacity-60 transition-opacity ${dotColor}`}
+                      >
+                        {sourceLabel}
+                        <span className="text-white/70 text-[9px] ml-0.5">✕</span>
+                      </button>
+                    ) : (
+                      <span
+                        className={`px-1.5 py-0.5 md:px-2 md:py-1 rounded-full text-[10px] md:text-[11px] font-bold text-white shrink-0 ${dotColor}`}
+                      >
+                        {sourceLabel}
+                      </span>
+                    )}
+                    <span className="text-gray-800 font-bold tabular-nums">
+                      {visibleCount.toLocaleString()}
+                    </span>
+                    <span className="text-gray-400 text-[10px] md:text-[11px]">
+                      마을
+                    </span>
+                    <span className="text-gray-300">·</span>
+                    <span className="text-gray-800 font-bold tabular-nums">
+                      {visibleJibun.toLocaleString()}
+                    </span>
+                    <span className="text-gray-400 text-[10px] md:text-[11px]">
+                      지번
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+          {/* 우상단 도구 패널 */}
+          <MapToolbar
+            measureActive={measureActive}
+            onToggleMeasure={() => {
+              setMeasureActive((v) => {
+                if (!v) setSimpleToast("거리재기 모드 — 지도를 클릭하세요");
+                return !v;
+              });
+            }}
+            topListActive={topListOpen}
+            onToggleTopList={() => setTopListOpen((v) => !v)}
+            gpsActive={gpsActive}
+            gpsAutoFollow={gpsAutoFollow}
+            onToggleGps={() => {
+              if (gpsActive) {
+                setGpsActive(false);
+              } else {
+                setGpsActive(true);
+                setGpsAutoFollow(true);
+                setSimpleToast("GPS 추적 시작");
+              }
+            }}
+            onGpsRecenter={() => setGpsAutoFollow(true)}
+            zoomLevel={zoomLevel}
+            mapType={mapType}
+            onMapTypeChange={setMapType}
+            roadviewActive={roadviewActive}
+            onToggleRoadview={handleToggleRoadview}
+            cadastralActive={cadastralActive}
+            onToggleCadastral={handleToggleCadastral}
+            onZoomIn={() => mapInstance?.setLevel(mapInstance.getLevel() - 1)}
+            onZoomOut={() => mapInstance?.setLevel(mapInstance.getLevel() + 1)}
+            onShare={handleShare}
+          />
+
+          {topListOpen && (
+            <TopRemainingList
+              rows={allRows}
+              onPick={handleSidebarPick}
+              onClose={() => setTopListOpen(false)}
+              topN={10}
+            />
+          )}
+
+          <DistanceTool
+            map={mapInstance}
+            active={measureActive}
+            onClose={() => setMeasureActive(false)}
+            registerAddPoint={registerMeasureAddPoint}
+          />
+
+          <GpsTracker
+            map={mapInstance}
+            active={gpsActive}
+            autoFollow={gpsAutoFollow}
+            onAutoFollowChange={setGpsAutoFollow}
+            onError={(msg) => setError(msg)}
+          />
+
+          {toast && (
+            <Toast
+              message={toast.message}
+              actionLabel="되돌리기"
+              onAction={() => setFilters(toast.snapshot)}
+              onClose={() => setToast(null)}
+            />
+          )}
+
+          {simpleToast && (
+            <Toast
+              message={simpleToast}
+              onClose={() => setSimpleToast(null)}
+              duration={3000}
+            />
+          )}
+
+          {centerMessage && (
+            <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+              <div className="bg-white/90 rounded-xl px-5 py-4 shadow-lg flex items-center gap-3">
+                <div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm text-gray-600">{centerMessage}</span>
+              </div>
+            </div>
+          )}
+
+          {/* 마을 요약 카드 (마커 클릭) */}
+          {selectedVillage && !detailModalOpen && (
+            <LocationSummaryCard
+              key={selectedVillage.bjdCode}
+              rows={selectedVillage.rows}
+              loading={selectedVillage.loading}
+              onShowDetail={() => setDetailModalOpen(true)}
+              onClose={closeVillage}
+            />
+          )}
+
+          {/* 마을 상세 모달 ("상세 보기") */}
+          {detailModalOpen && selectedVillage && (
+            <LocationDetailModal
+              rows={selectedVillage.rows}
+              onClose={() => setDetailModalOpen(false)}
+              onJibunPin={handleJibunPin}
+              initialSearch=""
+            />
+          )}
+
+          {/* 빈 데이터 안내 */}
+          {!loading && allRows.length === 0 && !error && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="bg-white rounded-xl shadow-lg px-8 py-6 border border-gray-200 text-center pointer-events-auto max-w-md">
+                <div className="text-4xl mb-3">📭</div>
+                <div className="text-base font-semibold text-gray-900 mb-2">
+                  아직 보여드릴 데이터가 없어요
+                </div>
+                {isAdmin ? (
+                  <>
+                    <div className="text-xs text-gray-600 leading-relaxed mb-4">
+                      관리자 메뉴에서 크롤을 실행하시면<br />
+                      바로 지도에 표시됩니다.
+                    </div>
+                    <Link
+                      href="/admin/crawl"
+                      className="inline-block bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium px-4 py-2 rounded-md transition-colors"
+                    >
+                      📥 크롤 시작하기
+                    </Link>
+                  </>
+                ) : (
+                  <div className="text-xs text-gray-600 leading-relaxed">
+                    관리자가 데이터를 수집하면<br />
+                    이 화면에서 바로 확인하실 수 있어요.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 로드뷰 패널 — 데스크톱 분할 (우측 절반) */}
@@ -1237,7 +632,6 @@ export default function MapClient({ isAdmin, email }: Props) {
         />
       )}
 
-      {/* ⚠️ 특허 출원 중 워터마크 — 특허 등록 후 제거 (PatentWatermark.tsx 주석 참고) */}
       <PatentWatermark />
     </div>
   );

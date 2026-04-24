@@ -26,8 +26,10 @@ export function hasCapacity(
 /**
  * kepco_capa 테이블 한 행 (지번 단위 raw 용량 데이터)
  *
- * 주소·좌표는 포함하지 않음 — 마을 정보는 MapSummaryRow(MV) 에서 별도 조회.
- * (bjd_code 가 마을 식별 키. 모든 join 은 bjd_master 와 분리해 관리.)
+ * DB 컬럼은 bjd_code + 시설/용량만. 주소/좌표는 bjd_master(MV)에 분리.
+ * 단, UI 컴포넌트(LocationSummaryCard, LocationDetailModal, SearchResultList)는
+ * row.addr_do/li 같은 시멘틱으로 작성돼 있으므로, 클라이언트가 bjd_code → MapSummaryRow
+ * 로 enrich 해 optional 필드를 채워 넣는다 (DB 컬럼 아님).
  */
 export interface KepcoDataRow {
   id: number;
@@ -53,6 +55,15 @@ export interface KepcoDataRow {
   step3_cnt: number | null;
   step3_pwr: number | null;
   updated_at: string;
+  // ─── 클라이언트 enrichment (MapSummaryRow 에서 주입, optional) ───
+  addr_do?: string | null;
+  addr_si?: string | null;
+  addr_gu?: string | null;
+  addr_dong?: string | null;
+  addr_li?: string | null;
+  geocode_address?: string;
+  lat?: number;
+  lng?: number;
 }
 
 /** kepco_map_summary 한 행 (지도 마커용) */
@@ -91,14 +102,6 @@ export interface MapSummaryResponse {
   rows: MapSummaryRow[];
   total: number;
   generatedAt: string;
-}
-
-export interface LocationDetailResponse {
-  /** 행안부 법정동코드 10자리 */
-  bjd_code: string;
-  geocode_address: string;
-  rows: KepcoDataRow[];
-  total: number;
 }
 
 // ──────────────────────────────────────────
