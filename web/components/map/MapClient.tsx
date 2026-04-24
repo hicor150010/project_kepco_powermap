@@ -381,20 +381,23 @@ export default function MapClient({ isAdmin, email }: Props) {
       setFilters(restored);
     }
 
-    // 선택된 마커 복원
+    // 선택된 마커 복원 — addr (geocode_address) 로 들어와도 bjd_code 로 매핑해 호출
     const addr = params.get("addr");
     if (addr) {
-      setSelectedAddr(addr);
-      setDetailLoading(true);
-      fetch(`/api/location?addr=${encodeURIComponent(addr)}`)
-        .then((res) => res.json())
-        .then((data) => {
-          const rows = data.rows ?? [];
-          detailCache.set(addr, rows);
-          setSelectedRows(rows);
-        })
-        .catch(() => {})
-        .finally(() => setDetailLoading(false));
+      const bjdCode = allRows.find((r) => r.geocode_address === addr)?.bjd_code;
+      if (bjdCode) {
+        setSelectedAddr(addr);
+        setDetailLoading(true);
+        fetch(`/api/location?bjd_code=${encodeURIComponent(bjdCode)}`)
+          .then((res) => res.json())
+          .then((data) => {
+            const rows = data.rows ?? [];
+            detailCache.set(addr, rows);
+            setSelectedRows(rows);
+          })
+          .catch(() => {})
+          .finally(() => setDetailLoading(false));
+      }
     }
 
     // URL 정리 — 파라미터 제거해서 깔끔하게
@@ -439,7 +442,12 @@ export default function MapClient({ isAdmin, email }: Props) {
       setSelectedRows(null);
       setDetailLoading(true);
       try {
-        const res = await fetch(`/api/location?addr=${encodeURIComponent(addr)}`);
+        // addr (geocode_address) 로 받아서 allRows 에서 bjd_code 추출 — API/RPC 는 bjd_code 키.
+        const bjdCode = allRows.find((r) => r.geocode_address === addr)?.bjd_code;
+        if (!bjdCode) {
+          throw new Error("마을 식별 정보를 찾지 못했어요.");
+        }
+        const res = await fetch(`/api/location?bjd_code=${encodeURIComponent(bjdCode)}`);
         if (!res.ok) {
           throw new Error("마을 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
         }
@@ -455,7 +463,7 @@ export default function MapClient({ isAdmin, email }: Props) {
         setDetailLoading(false);
       }
     },
-    [detailCache, selectedAddr, mapInstance]
+    [detailCache, selectedAddr, mapInstance, allRows]
   );
 
   // 마커 클릭 (측정 모드일 때는 KakaoMap이 직접 처리하므로 여기로 안 옴)

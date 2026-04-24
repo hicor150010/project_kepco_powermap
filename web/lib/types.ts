@@ -23,18 +23,17 @@ export function hasCapacity(
 // DB 스키마와 1:1 매핑
 // ──────────────────────────────────────────
 
-/** kepco_data 테이블 한 행 (raw 데이터) */
+/**
+ * kepco_capa 테이블 한 행 (지번 단위 raw 용량 데이터)
+ *
+ * 주소·좌표는 포함하지 않음 — 마을 정보는 MapSummaryRow(MV) 에서 별도 조회.
+ * (bjd_code 가 마을 식별 키. 모든 join 은 bjd_master 와 분리해 관리.)
+ */
 export interface KepcoDataRow {
   id: number;
-  addr_do: string;
-  addr_si: string | null;
-  addr_gu: string | null;
-  addr_dong: string | null;
-  addr_li: string | null;
+  /** 행안부 법정동코드 10자리 — bjd_master 참조. 매칭 실패 시 '0000000000'. */
+  bjd_code: string;
   addr_jibun: string | null;
-  geocode_address: string;
-  lat: number | null;
-  lng: number | null;
   subst_nm: string | null;
   mtr_no: string | null;
   dl_nm: string | null;
@@ -58,6 +57,8 @@ export interface KepcoDataRow {
 
 /** kepco_map_summary 한 행 (지도 마커용) */
 export interface MapSummaryRow {
+  /** 행안부 법정동코드 10자리 — 마커 클릭 시 RPC 호출 키 */
+  bjd_code: string;
   geocode_address: string;
   lat: number;
   lng: number;
@@ -93,6 +94,8 @@ export interface MapSummaryResponse {
 }
 
 export interface LocationDetailResponse {
+  /** 행안부 법정동코드 10자리 */
+  bjd_code: string;
   geocode_address: string;
   rows: KepcoDataRow[];
   total: number;

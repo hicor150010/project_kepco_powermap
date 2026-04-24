@@ -28,7 +28,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from("kepco_map_summary")
       .select(
-        "geocode_address, lat, lng, total, subst_no_cap, mtr_no_cap, dl_no_cap, addr_do, addr_si, addr_gu, addr_dong, addr_li, subst_names, dl_names, subst_remaining_kw, mtr_remaining_kw, dl_remaining_kw, max_remaining_kw"
+        "bjd_code, geocode_address, lat, lng, total, subst_no_cap, mtr_no_cap, dl_no_cap, addr_do, addr_si, addr_gu, addr_dong, addr_li, subst_names, dl_names, subst_remaining_kw, mtr_remaining_kw, dl_remaining_kw, max_remaining_kw"
       )
       .range(from, from + PAGE - 1);
 
