@@ -27,7 +27,16 @@ import GpsTracker from "./GpsTracker";
 import RoadviewPanel from "./RoadviewPanel";
 import LocationSummaryCard from "./LocationSummaryCard";
 import LocationDetailModal from "./LocationDetailModal";
+import ParcelInfoPanel from "./ParcelInfoPanel";
 import PatentWatermark from "./PatentWatermark";
+import type { JibunInfo, ParcelGeometry } from "@/lib/vworld/parcel";
+import { buildPnuFromBjdAndJibun } from "@/lib/geo/pnu";
+import {
+  fetchKepcoCapaByBjdCode,
+  fetchKepcoCapaByJibun,
+} from "@/lib/api/kepco";
+import { fetchVworldParcelByPnu } from "@/lib/api/vworld";
+import { enrichKepcoCapaRowsWithVillageInfo } from "@/lib/api/enrich";
 import {
   emptyFilters,
   type ColumnFilters,
@@ -190,8 +199,7 @@ export default function MapClient({ isAdmin, email }: Props) {
   }, [sidebarOpen, mapInstance, desktopRoadviewSplit]);
 
   // ─────────────── 마을 클릭 → /api/capa/by-bjd ───────────────
-  // raw rows 는 bjd_code+시설/용량만 포함 → 화면 컴포넌트가 기대하는 주소 필드를
-  // MapSummaryRow 에서 enrich 해서 채움 (DB 에서 다시 join 하지 않고 클라이언트 합성).
+  // raw rows 는 bjd_code + 시설/용량만 → MapSummaryRow 에서 마을 정보 enrich
   interface SelectedVillage {
     bjdCode: string;
     addr: string;
@@ -205,23 +213,7 @@ export default function MapClient({ isAdmin, email }: Props) {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const villageReqSeqRef = useRef(0);
 
-  const enrichRowsWithVillage = useCallback(
-    (rows: KepcoDataRow[], v: MapSummaryRow): KepcoDataRow[] =>
-      rows.map((r) => ({
-        ...r,
-        addr_do: v.addr_do,
-        addr_si: v.addr_si,
-        addr_gu: v.addr_gu,
-        addr_dong: v.addr_dong,
-        addr_li: v.addr_li,
-        geocode_address: v.geocode_address,
-        lat: v.lat,
-        lng: v.lng,
-      })),
-    [],
-  );
-
-  const handleMarkerClick = useCallback(
+  const openVillagePanelOnMarkerClick = useCallback(
     async (row: MapSummaryRow) => {
       const seq = ++villageReqSeqRef.current;
       setSelectedVillage({
@@ -232,13 +224,9 @@ export default function MapClient({ isAdmin, email }: Props) {
         error: null,
       });
       try {
-        const res = await fetch(
-          `/api/capa/by-bjd?bjd_code=${encodeURIComponent(row.bjd_code)}`,
-        );
+        const rawRows = await fetchKepcoCapaByBjdCode(row.bjd_code);
         if (seq !== villageReqSeqRef.current) return;
-        const data = await res.json();
-        if (!data.ok) throw new Error(data.error || "조회 실패");
-        const enriched = enrichRowsWithVillage(data.rows ?? [], row);
+        const enriched = enrichKepcoCapaRowsWithVillageInfo(rawRows, [row]);
         setSelectedVillage({
           bjdCode: row.bjd_code,
           addr: row.geocode_address,
@@ -257,26 +245,155 @@ export default function MapClient({ isAdmin, email }: Props) {
         });
       }
     },
-    [enrichRowsWithVillage],
+    [],
   );
 
-  const closeVillage = useCallback(() => {
+  const closeVillagePanel = useCallback(() => {
     villageReqSeqRef.current++;
     setSelectedVillage(null);
     setDetailModalOpen(false);
   }, []);
-  const handleParcelClick = useCallback((_lat: number, _lng: number) => {
-    // TODO
+
+  // ─────────────── 지번 클릭 → /api/parcel/by-pnu + /api/capa/by-jibun ───────────────
+  // PNU 직접 구성 (lib/geo/pnu) → VWorld + KEPCO 병렬 조회. exact-only.
+  const [selectedJibun, setSelectedJibun] = useState<JibunInfo | null>(null);
+  const [selectedGeometry, setSelectedGeometry] = useState<ParcelGeometry | null>(
+    null,
+  );
+  const [parcelCapa, setParcelCapa] = useState<KepcoDataRow[]>([]);
+  const [parcelLoading, setParcelLoading] = useState(false);
+  const parcelReqSeqRef = useRef(0);
+
+  const openParcelPanelOnJibunClick = useCallback(
+    async (row: KepcoDataRow) => {
+      const pnu = buildPnuFromBjdAndJibun(row.bjd_code, row.addr_jibun);
+      if (!pnu) {
+        setSimpleToast("지번 정보가 부족해 PNU 를 만들 수 없어요.");
+        return;
+      }
+      // 마을 상세 모달이 열려 있으면 닫고 지번 패널로 전환 (UX: 가린 모달 위에 패널 띄우지 않음)
+      setDetailModalOpen(false);
+      const seq = ++parcelReqSeqRef.current;
+      setParcelLoading(true);
+      setSelectedJibun(null);
+      setSelectedGeometry(null);
+      setParcelCapa([]);
+      try {
+        const [parcelResult, capaRows] = await Promise.all([
+          fetchVworldParcelByPnu(pnu),
+          fetchKepcoCapaByJibun(row.bjd_code, row.addr_jibun ?? ""),
+        ]);
+        if (seq !== parcelReqSeqRef.current) return;
+        if (!parcelResult) {
+          setSimpleToast(`⚠️ ${row.addr_jibun} 필지 정보를 찾을 수 없어요`);
+          return;
+        }
+        setSelectedJibun(parcelResult.jibun);
+        setSelectedGeometry(parcelResult.geometry);
+        setParcelCapa(capaRows);
+        // 필지 중심으로 지도 이동 (moveMapTo 는 아래 정의)
+        const c = parcelResult.geometry.center;
+        if (c?.lat != null) moveMapToRef.current?.(c.lat, c.lng);
+      } catch {
+        if (seq === parcelReqSeqRef.current) {
+          setSimpleToast(`⚠️ ${row.addr_jibun} 조회 중 오류가 발생했어요`);
+        }
+      } finally {
+        if (seq === parcelReqSeqRef.current) setParcelLoading(false);
+      }
+    },
+    [],
+  );
+
+  const closeParcelPanel = useCallback(() => {
+    parcelReqSeqRef.current++;
+    setSelectedJibun(null);
+    setSelectedGeometry(null);
+    setParcelCapa([]);
+    setParcelLoading(false);
   }, []);
-  const handleSearchPick = useCallback((_pick: SearchPick) => {
-    // TODO
-  }, []);
-  const handleSidebarPick = useCallback((_row: MapSummaryRow) => {
-    // TODO
-  }, []);
-  const handleJibunPin = useCallback((_row: unknown) => {
-    // TODO
-  }, []);
+
+  // moveMapTo 가 아래에 정의되므로 ref 우회 (forward use)
+  const moveMapToRef = useRef<((lat: number, lng: number) => void) | null>(
+    null,
+  );
+  // 공통 지도 이동 — 줌은 사용자가 더 가까이 본 상태면 유지 (강제로 멀어지지 않음)
+  const DETAIL_ZOOM_LEVEL = 7;
+  const moveMapTo = useCallback(
+    (lat: number, lng: number, level: number = DETAIL_ZOOM_LEVEL) => {
+      if (!mapInstance) return;
+      const pos = new window.kakao.maps.LatLng(lat, lng);
+      const currentLevel = mapInstance.getLevel();
+      if (currentLevel > level) {
+        mapInstance.setLevel(level);
+        requestAnimationFrame(() => mapInstance.panTo(pos));
+      } else {
+        mapInstance.panTo(pos);
+      }
+    },
+    [mapInstance],
+  );
+  // 위에서 정의한 openParcelPanelOnJibunClick 가 useRef 로 참조 (forward use)
+  useEffect(() => {
+    moveMapToRef.current = moveMapTo;
+  }, [moveMapTo]);
+
+  // 검색 결과 클릭 — ri (마을) → 마을 흐름, ji (지번) → 지번 흐름 으로 분기
+  const handleSearchResultPick = useCallback(
+    async (pick: SearchPick) => {
+      if (pick.kind === "ri") {
+        // SearchRiResult 에 bjd_code 가 없어 allRows (MapSummaryRow) 에서 매칭
+        const village = allRows.find(
+          (v) => v.geocode_address === pick.row.geocode_address,
+        );
+        if (!village) {
+          setSimpleToast("이 마을 위치를 지도에서 찾을 수 없어요.");
+          return;
+        }
+        if (mapFilteredAddrs && !mapFilteredAddrs.has(village.geocode_address)) {
+          clearMapFilter();
+        }
+        if (gpsActive && gpsAutoFollow) setGpsAutoFollow(false);
+        if (village.lat != null && village.lng != null) {
+          moveMapTo(village.lat, village.lng);
+        }
+        await openVillagePanelOnMarkerClick(village);
+      } else {
+        // ji — KepcoDataRow (Sidebar 가 enrich 한 상태). 지번 흐름으로
+        if (pick.row.lat != null && pick.row.lng != null) {
+          moveMapTo(pick.row.lat, pick.row.lng);
+        }
+        await openParcelPanelOnJibunClick(pick.row);
+      }
+    },
+    [
+      allRows,
+      mapFilteredAddrs,
+      clearMapFilter,
+      gpsActive,
+      gpsAutoFollow,
+      moveMapTo,
+      openVillagePanelOnMarkerClick,
+      openParcelPanelOnJibunClick,
+    ],
+  );
+
+  // TOP 유망부지 클릭 — MapSummaryRow 이므로 마커 클릭과 동일
+  const handleTopRankingPick = useCallback(
+    async (row: MapSummaryRow) => {
+      if (row.lat != null && row.lng != null) moveMapTo(row.lat, row.lng);
+      await openVillagePanelOnMarkerClick(row);
+    },
+    [moveMapTo, openVillagePanelOnMarkerClick],
+  );
+
+  // 지도 좌표 클릭 (좌표 → 필지) — 다음 step (B) 에서 atomic 호출
+  const openParcelPanelOnMapClick = useCallback(
+    (_lat: number, _lng: number) => {
+      // TODO: fetchVworldParcelByLatLng → PNU 추출 → fetchKepcoCapaByJibun
+    },
+    [],
+  );
 
   // ─────────────────────── 공유 / 줌 ───────────────────────
   const handleShare = useCallback(() => {
@@ -319,8 +436,8 @@ export default function MapClient({ isAdmin, email }: Props) {
         onFiltersChange={setFilters}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen((v) => !v)}
-        onSearchPick={handleSearchPick}
-        onJibunPin={handleJibunPin}
+        onSearchPick={handleSearchResultPick}
+        onJibunPin={openParcelPanelOnJibunClick}
         onSearchFocus={() => {
           /* TODO: 검색 포커스 시 선택 마을 해제 */
         }}
@@ -386,7 +503,7 @@ export default function MapClient({ isAdmin, email }: Props) {
           <KakaoMap
             rows={allRows}
             colorFilter={colorFilter}
-            onMarkerClick={handleMarkerClick}
+            onMarkerClick={openVillagePanelOnMarkerClick}
             fitBoundsKey={fitBoundsKey}
             onMapReady={setMapInstance}
             measureMode={measureActive}
@@ -401,8 +518,8 @@ export default function MapClient({ isAdmin, email }: Props) {
             roadviewPosition={roadviewPosition}
             onRoadviewClick={handleRoadviewClick}
             cadastralActive={cadastralActive}
-            onParcelClick={handleParcelClick}
-            highlightedParcel={null}
+            onParcelClick={openParcelPanelOnMapClick}
+            highlightedParcel={selectedGeometry?.polygon ?? null}
           />
 
           {/* 지도 상태 바 */}
@@ -508,7 +625,7 @@ export default function MapClient({ isAdmin, email }: Props) {
           {topListOpen && (
             <TopRemainingList
               rows={allRows}
-              onPick={handleSidebarPick}
+              onPick={handleTopRankingPick}
               onClose={() => setTopListOpen(false)}
               topN={10}
             />
@@ -555,14 +672,14 @@ export default function MapClient({ isAdmin, email }: Props) {
             </div>
           )}
 
-          {/* 마을 요약 카드 (마커 클릭) */}
-          {selectedVillage && !detailModalOpen && (
+          {/* 마을 요약 카드 (마커 클릭, 단 지번 패널이 열려있으면 숨김) */}
+          {selectedVillage && !detailModalOpen && !selectedJibun && !parcelLoading && (
             <LocationSummaryCard
               key={selectedVillage.bjdCode}
               rows={selectedVillage.rows}
               loading={selectedVillage.loading}
               onShowDetail={() => setDetailModalOpen(true)}
-              onClose={closeVillage}
+              onClose={closeVillagePanel}
             />
           )}
 
@@ -571,8 +688,21 @@ export default function MapClient({ isAdmin, email }: Props) {
             <LocationDetailModal
               rows={selectedVillage.rows}
               onClose={() => setDetailModalOpen(false)}
-              onJibunPin={handleJibunPin}
+              onJibunPin={openParcelPanelOnJibunClick}
               initialSearch=""
+            />
+          )}
+
+          {/* 지번 클릭 — 필지 정보 패널 */}
+          {(parcelLoading || selectedJibun) && (
+            <ParcelInfoPanel
+              jibun={selectedJibun}
+              geometry={selectedGeometry}
+              capa={parcelCapa}
+              matchMode={parcelCapa.length > 0 ? "exact" : null}
+              nearestJibun={null}
+              loading={parcelLoading}
+              onClose={closeParcelPanel}
             />
           )}
 

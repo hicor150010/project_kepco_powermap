@@ -9,6 +9,7 @@ import RegionFilter, { applyRegionFilter, EMPTY_REGION, type RegionSelection } f
 import SearchResultList, { type SearchPick } from "./SearchResultList";
 import type { MapSummaryRow, ColumnFilters, KepcoDataRow } from "@/lib/types";
 import type { SearchRiResult } from "@/lib/search/searchKepco";
+import { enrichKepcoCapaRowsWithVillageInfo } from "@/lib/api/enrich";
 import UserGuide from "./UserGuide";
 
 type SidebarTab = "search" | "filter" | "compare";
@@ -129,21 +130,25 @@ export default function Sidebar({
       if (!res.ok) throw new Error("검색이 잘 안 돼요. 잠시 후 다시 시도해 주세요.");
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "검색이 잘 안 돼요.");
-      const ri = data.ri ?? [];
-      const ji = data.ji ?? [];
+      const ri = (data.ri ?? []) as SearchRiResult[];
+      // ji 응답 (KepcoDataRow[]) 은 주소 필드 없음 → 클라이언트 enrichment 로 합성.
+      // 검색 클릭 (handleSearchResultPick.ji) + RegionFilter + SearchResultList 가
+      // row.addr_do/li/geocode_address/lat/lng 시멘틱으로 작성돼 있어 필수.
+      const jiRaw = (data.ji ?? []) as KepcoDataRow[];
+      const ji = enrichKepcoCapaRowsWithVillageInfo(jiRaw, totalRows);
       setSearchState({ loading: false, error: null, ri, ji, jiFallback: data.jiFallback ?? false, parsed: data.parsed ?? null });
       setSearchTab(data.parsed?.lotNo != null ? "ji" : "ri");
       setSearchRegion(EMPTY_REGION);
 
       // 검색 결과 마을을 지도에 표시
       const addrs = new Set<string>();
-      ri.forEach((r: SearchRiResult) => r.geocode_address && addrs.add(r.geocode_address));
-      ji.forEach((r: KepcoDataRow) => r.geocode_address && addrs.add(r.geocode_address));
+      ri.forEach((r) => r.geocode_address && addrs.add(r.geocode_address));
+      ji.forEach((r) => r.geocode_address && addrs.add(r.geocode_address));
       if (addrs.size > 0) onMapFilter?.(addrs, "search");
     } catch (err: any) {
       setSearchState({ ...EMPTY_SEARCH, error: String(err?.message || err) });
     }
-  }, [onMapFilter]);
+  }, [onMapFilter, totalRows]);
 
   const handleClear = () => {
     setQuery("");

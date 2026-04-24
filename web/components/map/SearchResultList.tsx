@@ -36,11 +36,11 @@ interface Props {
 
 /** 행정구역 5개 컬럼을 한 줄 주소 텍스트로 합친다 */
 function joinAddress(parts: {
-  addr_do: string | null;
-  addr_si: string | null;
-  addr_gu: string | null;
-  addr_dong: string | null;
-  addr_li: string | null;
+  addr_do?: string | null;
+  addr_si?: string | null;
+  addr_gu?: string | null;
+  addr_dong?: string | null;
+  addr_li?: string | null;
 }): string {
   return [parts.addr_do, parts.addr_si, parts.addr_gu, parts.addr_dong,
     parts.addr_li && !parts.addr_li.includes("기타지역") ? parts.addr_li : null]

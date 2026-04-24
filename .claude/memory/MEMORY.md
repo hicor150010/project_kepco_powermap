@@ -26,3 +26,5 @@
 - [도메인 sunlap.kr](project_domain_sunlap.md) — 가비아 구매. Vercel 등록 완료, 가비아 DNS 입력 대기 (2026-04-21)
 - [1차 리팩토링 체크리스트](project_refactor_checklist.md) 🔧 — 비교 기능 엑셀 업로드 개편 + 리 테두리 오버레이. 비용 청구 X, 카톡 노출 X
 - [전기용량 데이터 신선도 표시](project_data_freshness.md) ⏰ — 용량 정보에 "언제 수집됐는지" 타임스탬프 배지 추가 (한전온 실값 불일치 대응)
+- 🧭 [함수 네이밍 컨벤션](feedback_naming_convention.md) — `[verb][Source][Entity][By+Input]`. 30+ 함수 추가 대비 충돌 0
+- ⚛️ [Atomic API + 클라이언트 enrichment](project_atomic_api_pattern.md) ⭐ — 5종 endpoint + lib/api source별 분리 + KepcoCapaRow enrichment (2026-04-24)

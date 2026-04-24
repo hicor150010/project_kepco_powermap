@@ -4,10 +4,12 @@ import { useMemo } from "react";
 
 /** 지역 필터에 필요한 최소 필드 */
 export interface RegionRow {
-  addr_do: string | null;
-  addr_si: string | null;
-  addr_gu: string | null;
-  addr_dong: string | null;
+  // optional — KepcoDataRow 의 enrichment 필드(string|null|undefined)와도 호환되도록.
+  // RegionFilter 내부는 `!= null` 비교라 undefined 도 안전 처리.
+  addr_do?: string | null;
+  addr_si?: string | null;
+  addr_gu?: string | null;
+  addr_dong?: string | null;
 }
 
 export interface RegionSelection {
