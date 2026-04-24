@@ -69,5 +69,5 @@ jobs:
           GH_PAT: ${{ secrets.GH_PAT }}
           GITHUB_REPO: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-          BJD_CACHE_FILE: ${{ github.workspace }}/.cache/bjd_master.json
+          BJD_MASTER_CACHE_FILE: ${{ github.workspace }}/.cache/bjd_master.json
         run: cd crawler && python run_crawl.py --job-id=${{ inputs.job_id }} --thread=${{ matrix.thread }}
