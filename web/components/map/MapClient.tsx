@@ -142,6 +142,17 @@ export default function MapClient({ isAdmin, email }: Props) {
   const [fitBoundsKey] = useState(0);
   const [centerMessage, setCenterMessage] = useState<string | null>(null);
 
+  // 카카오맵 줌 변경 → MapToolbar 의 줌 레벨 숫자 표시 동기화
+  useEffect(() => {
+    if (!mapInstance) return;
+    setZoomLevel(mapInstance.getLevel());
+    const handler = () => setZoomLevel(mapInstance.getLevel());
+    window.kakao.maps.event.addListener(mapInstance, "zoom_changed", handler);
+    return () => {
+      window.kakao.maps.event.removeListener(mapInstance, "zoom_changed", handler);
+    };
+  }, [mapInstance]);
+
   // ─────────────────────────── UI / 모바일 ───────────────────────────
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(true);

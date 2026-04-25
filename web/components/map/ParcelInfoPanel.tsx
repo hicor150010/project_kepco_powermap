@@ -57,7 +57,7 @@ export default function ParcelInfoPanel({
       className="absolute left-4 right-4 bottom-4 md:left-auto md:right-4 md:bottom-4
                  md:w-[400px] max-w-[calc(100%-32px)] bg-white rounded-xl shadow-2xl
                  border border-gray-200 overflow-hidden z-10 flex flex-col
-                 max-h-[70dvh] md:max-h-[calc(100dvh-80px)] kepco-slide-up"
+                 h-[55dvh] md:h-[min(440px,calc(100dvh-120px))] kepco-slide-up"
     >
       {/* 헤더 */}
       <div className="px-3 py-2.5 md:px-4 md:py-3 border-b bg-gray-50 flex items-start justify-between gap-2 flex-shrink-0">
