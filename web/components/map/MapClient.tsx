@@ -391,6 +391,9 @@ export default function MapClient({ isAdmin, email }: Props) {
       setParcelCapa([]);
       setParcelMeta(null);
       setParcelClickedJibun(row.addr_jibun ?? "");
+      // 이전 카드의 새로고침 잔재 정리 (영구 disabled 방지)
+      setRefreshingCapa(false);
+      setRefreshCapaError(null);
       try {
         const [parcelResult, capaResult] = await Promise.all([
           fetchVworldParcelByPnu(pnu, { signal: controller.signal }),
@@ -459,6 +462,7 @@ export default function MapClient({ isAdmin, email }: Props) {
       clearTimeout(refreshErrorTimerRef.current);
       refreshErrorTimerRef.current = null;
     }
+    const mySeq = parcelReqSeqRef.current;
     setRefreshingCapa(true);
     setRefreshCapaError(null);
 
@@ -467,6 +471,9 @@ export default function MapClient({ isAdmin, email }: Props) {
       bjd_code: bjdCode ?? undefined,
       jibun,
     });
+
+    // 카드가 닫혔거나 다른 지번으로 바뀌었으면 응답 폐기 (state 변경 X)
+    if (mySeq !== parcelReqSeqRef.current) return;
 
     setRefreshingCapa(false);
     if (r.ok) {

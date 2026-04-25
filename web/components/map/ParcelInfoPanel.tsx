@@ -202,6 +202,31 @@ function ParcelTab({
   );
 }
 
+function RefreshArrowIcon({
+  spinning,
+  className,
+}: {
+  spinning?: boolean;
+  className?: string;
+}) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={2}
+      stroke="currentColor"
+      className={`${className ?? ""} ${spinning ? "animate-spin" : ""}`}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M16.023 9.348h4.992V4.356M2.985 19.644v-4.992h4.992m0 0l-3.181-3.183a8.25 8.25 0 0113.803-3.7L19.5 7.5m-15 7.5l4.5-4.5m11.336 1.5a8.25 8.25 0 01-13.803 3.7L4.5 16.5m4.5-4.5h-5"
+      />
+    </svg>
+  );
+}
+
 function ElectricTab({
   capa,
   matchMode,
@@ -221,8 +246,26 @@ function ElectricTab({
 }) {
   if (capa.length === 0) {
     return (
-      <div className="text-sm text-gray-500 py-6 text-center">
-        이 지번/주변에 여유선로 데이터가 없습니다.
+      <div className="py-6 text-center space-y-3">
+        <div className="text-sm text-gray-500">
+          수집되지 않았거나 KEPCO 미보유 지번일 수 있어요.
+        </div>
+        {onRefresh && (
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs
+                       bg-blue-50 text-blue-700 rounded border border-blue-200
+                       hover:bg-blue-100 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <RefreshArrowIcon spinning={refreshing} className="w-3 h-3" />
+            {refreshing ? "KEPCO 조회 중..." : "KEPCO 에서 지금 확인"}
+          </button>
+        )}
+        {refreshError && (
+          <div className="text-[11px] text-red-500">{refreshError}</div>
+        )}
       </div>
     );
   }
@@ -300,20 +343,7 @@ function ElectricTab({
               title="KEPCO 에서 최신 데이터 가져오기"
               aria-label="새로고침"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M16.023 9.348h4.992V4.356M2.985 19.644v-4.992h4.992m0 0l-3.181-3.183a8.25 8.25 0 0113.803-3.7L19.5 7.5m-15 7.5l4.5-4.5m11.336 1.5a8.25 8.25 0 01-13.803 3.7L4.5 16.5m4.5-4.5h-5"
-                />
-              </svg>
+              <RefreshArrowIcon spinning={refreshing} className="w-3 h-3" />
             </button>
           )}
         </div>
