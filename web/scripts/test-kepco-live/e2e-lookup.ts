@@ -83,6 +83,80 @@ async function runScenario(s: Scenario, i: number) {
   }
 }
 
+/**
+ * STEP 보존 검증 — refresh=true 로 새로고침해도 step1~3 컬럼이 유지되는지.
+ *
+ * 흐름:
+ *   1. 양평 갈운리 24-1 row 의 step1_cnt 를 임의값 (99999) 으로 UPDATE
+ *   2. lookupCapacity refresh=true → KEPCO live + UPSERT
+ *   3. 다시 SELECT → step1_cnt 가 99999 그대로인지 확인
+ */
+async function verifyStepPreservation() {
+  console.log(`\n${"━".repeat(72)}`);
+  console.log("[STEP 보존 검증] 양평 갈운리 24-1 row 의 step1_cnt 를 99999 로 set 후 refresh");
+
+  const { createAdminClient } = await import("@/lib/supabase/admin");
+  const supabase = createAdminClient();
+  const BJD = "4183037025";
+  const JIBUN = "24-1";
+  const SENTINEL = 99999;
+
+  const { data: before } = await supabase
+    .from("kepco_capa")
+    .select("subst_nm,mtr_no,dl_nm,step1_cnt,step1_pwr")
+    .eq("bjd_code", BJD)
+    .eq("addr_jibun", JIBUN);
+  if (!before || before.length === 0) {
+    console.log("  ⚠️ 대상 row 없음 — 양평 갈운리 24-1 가 DB 에 없음");
+    return false;
+  }
+  const target = before[0];
+  console.log(`  대상: SUBST=${target.subst_nm} MTR=${target.mtr_no} DL=${target.dl_nm}`);
+  console.log(`  변경 전 step1_cnt = ${target.step1_cnt}`);
+
+  // 1. step1_cnt 를 SENTINEL 로 UPDATE
+  await supabase
+    .from("kepco_capa")
+    .update({ step1_cnt: SENTINEL, step1_pwr: SENTINEL })
+    .eq("bjd_code", BJD)
+    .eq("addr_jibun", JIBUN)
+    .eq("subst_nm", target.subst_nm!)
+    .eq("mtr_no", target.mtr_no!)
+    .eq("dl_nm", target.dl_nm!);
+  console.log(`  set step1_cnt=${SENTINEL}`);
+
+  // 2. refresh=true 로 새로고침 (KEPCO live + UPSERT)
+  await lookupCapacity({
+    addr: "경기도 양평군 청운면 갈운리 24-1",
+    jibun: JIBUN,
+    refresh: true,
+  });
+
+  // 3. 다시 SELECT
+  const { data: after } = await supabase
+    .from("kepco_capa")
+    .select("step1_cnt,step1_pwr,updated_at")
+    .eq("bjd_code", BJD)
+    .eq("addr_jibun", JIBUN)
+    .eq("subst_nm", target.subst_nm!);
+  const result = after?.[0];
+  console.log(`  refresh 후: step1_cnt=${result?.step1_cnt} step1_pwr=${result?.step1_pwr}`);
+  console.log(`  updated_at: ${result?.updated_at}`);
+
+  const preserved = result?.step1_cnt === SENTINEL && result?.step1_pwr === SENTINEL;
+  console.log(`  ${preserved ? "✅ STEP 보존됨" : "❌ STEP 손실"}`);
+
+  // 정리: SENTINEL 원복 (원래 값으로)
+  await supabase
+    .from("kepco_capa")
+    .update({ step1_cnt: target.step1_cnt, step1_pwr: target.step1_cnt })
+    .eq("bjd_code", BJD)
+    .eq("addr_jibun", JIBUN)
+    .eq("subst_nm", target.subst_nm!);
+
+  return preserved;
+}
+
 async function main() {
   console.log("e2e: lookup-capacity 통합 흐름 검증");
   console.log("환경변수:");
@@ -99,6 +173,8 @@ async function main() {
     results.push(await runScenario(SCENARIOS[i], i));
   }
 
+  const stepOk = await verifyStepPreservation();
+
   console.log(`\n${"═".repeat(72)}`);
   console.log("요약:");
   results.forEach((r, i) => {
@@ -106,6 +182,7 @@ async function main() {
     const detail = r.ok ? `source=${r.source}` : `error=${r.error}`;
     console.log(`  [${i + 1}] ${mark} ${detail}`);
   });
+  console.log(`  [STEP 보존] ${stepOk ? "✅" : "❌"}`);
 }
 
 main().catch((e) => {

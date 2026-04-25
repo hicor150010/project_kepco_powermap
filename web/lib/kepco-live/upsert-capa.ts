@@ -7,8 +7,9 @@
  *   - UPSERT 키: (bjd_code, addr_jibun, subst_nm, mtr_no, dl_nm)
  *   - updated_at: DB DEFAULT NOW() — upsert 시 자동 갱신
  *
- * STEP 데이터 (step1_cnt 등) 는 KEPCO get_detail 별도 호출이 필요해서
- * 단건 lookup 에서는 NULL 로 둔다 (대량 크롤러만 STEP 수집).
+ * STEP 보존 (step1~step3): toCapaRow 가 step 컬럼을 채우지 않으므로
+ * UPSERT body 에도 step 키가 없다 → PostgREST 가 ON CONFLICT DO UPDATE SET 시
+ * step 컬럼은 건드리지 않아 기존값 자동 보존 (대량 크롤러 값 유지).
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";

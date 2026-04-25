@@ -120,4 +120,12 @@ describe("toCapaRow — KEPCO 응답 → DB row 변환", () => {
     expect(row.subst_nm).toBeNull();
     expect(row.dl_pwr).toBeNull();
   });
+
+  it("STEP 컬럼은 row 에 포함되지 않음 — UPSERT 시 PostgREST 가 자동 보존", () => {
+    const row = toCapaRow("X", "1", sample) as unknown as Record<string, unknown>;
+    expect("step1_cnt" in row).toBe(false);
+    expect("step1_pwr" in row).toBe(false);
+    expect("step2_cnt" in row).toBe(false);
+    expect("step3_pwr" in row).toBe(false);
+  });
 });

@@ -43,6 +43,7 @@ import {
   fetchVworldAdminPolygonByBjdCode,
 } from "@/lib/api/vworld";
 import { enrichKepcoCapaRowsWithVillageInfo } from "@/lib/api/enrich";
+import { refreshKepcoCapaByJibun } from "@/lib/kepco-live/refresh-by-jibun";
 import {
   emptyFilters,
   type ColumnFilters,
@@ -366,6 +367,10 @@ export default function MapClient({ isAdmin, email }: Props) {
   const [parcelLoading, setParcelLoading] = useState(false);
   const parcelReqSeqRef = useRef(0);
   const parcelAbortRef = useRef<AbortController | null>(null);
+  // 새로고침 상태 — 사용자가 ElectricTab 의 새로고침 아이콘 클릭 시
+  const [refreshingCapa, setRefreshingCapa] = useState(false);
+  const [refreshCapaError, setRefreshCapaError] = useState<string | null>(null);
+  const refreshErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const openParcelPanelOnJibunClick = useCallback(
     async (row: KepcoDataRow) => {
@@ -425,7 +430,68 @@ export default function MapClient({ isAdmin, email }: Props) {
     setParcelMeta(null);
     setParcelClickedJibun("");
     setParcelLoading(false);
+    if (refreshErrorTimerRef.current) {
+      clearTimeout(refreshErrorTimerRef.current);
+      refreshErrorTimerRef.current = null;
+    }
+    setRefreshCapaError(null);
+    setRefreshingCapa(false);
   }, []);
+
+  /** 새로고침 — 현재 카드의 bjd_code+jibun 으로 KEPCO live 호출 + kepco_capa upsert. */
+  const refreshParcelCapa = useCallback(async () => {
+    if (refreshingCapa) return;
+    const bjdCode =
+      parcelCapa[0]?.bjd_code ??
+      (selectedJibun?.pnu ? selectedJibun.pnu.slice(0, 10) : null);
+    const jibun = parcelClickedJibun;
+    const addr = parcelMeta
+      ? [parcelMeta.sep_1, parcelMeta.sep_2, parcelMeta.sep_3, parcelMeta.sep_4, parcelMeta.sep_5, jibun]
+          .filter(Boolean)
+          .join(" ")
+      : undefined;
+    if (!jibun || (!bjdCode && !addr)) {
+      setRefreshCapaError("새로고침 정보 부족");
+      return;
+    }
+
+    if (refreshErrorTimerRef.current) {
+      clearTimeout(refreshErrorTimerRef.current);
+      refreshErrorTimerRef.current = null;
+    }
+    setRefreshingCapa(true);
+    setRefreshCapaError(null);
+
+    const r = await refreshKepcoCapaByJibun({
+      addr,
+      bjd_code: bjdCode ?? undefined,
+      jibun,
+    });
+
+    setRefreshingCapa(false);
+    if (r.ok) {
+      setParcelCapa(r.rows ?? []);
+      if (r.source === "not_found") {
+        setRefreshCapaError("KEPCO 에 데이터 없음");
+        refreshErrorTimerRef.current = setTimeout(
+          () => setRefreshCapaError(null),
+          3000,
+        );
+      }
+    } else {
+      setRefreshCapaError(r.error ?? "조회 실패");
+      refreshErrorTimerRef.current = setTimeout(
+        () => setRefreshCapaError(null),
+        3000,
+      );
+    }
+  }, [
+    refreshingCapa,
+    parcelCapa,
+    parcelMeta,
+    parcelClickedJibun,
+    selectedJibun,
+  ]);
 
   useEffect(() => {
     closeParcelPanelRef.current = closeParcelPanel;
@@ -697,7 +763,7 @@ export default function MapClient({ isAdmin, email }: Props) {
                 mapFilterSource === "search"
                   ? "주소검색"
                   : mapFilterSource === "filter"
-                    ? "조건검색"
+                    ? "마을검색"
                     : mapFilterSource === "compare"
                       ? "변화추적"
                       : "전체 보기";
@@ -867,6 +933,9 @@ export default function MapClient({ isAdmin, email }: Props) {
               nearestJibun={null}
               loading={parcelLoading}
               onClose={closeParcelPanel}
+              onRefreshCapa={refreshParcelCapa}
+              refreshingCapa={refreshingCapa}
+              refreshCapaError={refreshCapaError}
             />
           )}
 

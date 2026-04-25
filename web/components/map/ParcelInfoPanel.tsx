@@ -35,6 +35,10 @@ interface Props {
   nearestJibun: string | null;
   loading: boolean;
   onClose: () => void;
+  /** 전기 탭 새로고침 — undefined 면 버튼 숨김 */
+  onRefreshCapa?: () => void;
+  refreshingCapa?: boolean;
+  refreshCapaError?: string | null;
 }
 
 const M2_TO_PYEONG = 0.3025;
@@ -57,6 +61,9 @@ export default function ParcelInfoPanel({
   nearestJibun,
   loading,
   onClose,
+  onRefreshCapa,
+  refreshingCapa,
+  refreshCapaError,
 }: Props) {
   const [tab, setTab] = useState<TabKey>("electric");
 
@@ -135,6 +142,9 @@ export default function ParcelInfoPanel({
               matchMode={matchMode}
               nearestJibun={nearestJibun}
               clickedJibun={clickedJibun || jibun.jibun}
+              onRefresh={onRefreshCapa}
+              refreshing={refreshingCapa}
+              refreshError={refreshCapaError}
             />
           )}
           {tab === "price" && <PriceTab geometry={geometry} />}
@@ -197,11 +207,17 @@ function ElectricTab({
   matchMode,
   nearestJibun,
   clickedJibun,
+  onRefresh,
+  refreshing,
+  refreshError,
 }: {
   capa: KepcoDataRow[];
   matchMode: "exact" | "nearest_jibun" | null;
   nearestJibun: string | null;
   clickedJibun: string;
+  onRefresh?: () => void;
+  refreshing?: boolean;
+  refreshError?: string | null;
 }) {
   if (capa.length === 0) {
     return (
@@ -271,11 +287,39 @@ function ElectricTab({
       ))}
       {relative && (
         <div
-          className="pt-1.5 text-right text-[10px] text-gray-400"
+          className="pt-1.5 text-right text-[10px] text-gray-400 flex items-center justify-end gap-1.5"
           title={absolute || undefined}
         >
-          KEPCO 마지막 확인: {relative}
+          <span>KEPCO 마지막 확인: {relative}</span>
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={refreshing}
+              className="text-gray-400 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="KEPCO 에서 최신 데이터 가져오기"
+              aria-label="새로고침"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+                className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16.023 9.348h4.992V4.356M2.985 19.644v-4.992h4.992m0 0l-3.181-3.183a8.25 8.25 0 0113.803-3.7L19.5 7.5m-15 7.5l4.5-4.5m11.336 1.5a8.25 8.25 0 01-13.803 3.7L4.5 16.5m4.5-4.5h-5"
+                />
+              </svg>
+            </button>
+          )}
         </div>
+      )}
+      {refreshError && (
+        <div className="text-[10px] text-red-500 text-right">{refreshError}</div>
       )}
     </div>
   );
