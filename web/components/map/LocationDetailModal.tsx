@@ -16,6 +16,10 @@ type ViewMode = "table" | "group";
 
 interface Props {
   rows: KepcoDataRow[];
+  /** raw rows lazy fetch 중 — 본문 자리에 spinner 표시 (헤더는 그대로) */
+  loading?: boolean;
+  /** lazy fetch 실패 시 메시지 — 본문 자리에 표시 */
+  error?: string | null;
   onClose: () => void;
   onJibunPin?: (row: KepcoDataRow) => void;
   initialSearch?: string;
@@ -29,7 +33,7 @@ type SortKey =
 type SortDir = "asc" | "desc";
 const PAGE_SIZE = 50;
 
-export default function LocationDetailModal({ rows, onClose, onJibunPin, initialSearch = "" }: Props) {
+export default function LocationDetailModal({ rows, loading = false, error = null, onClose, onJibunPin, initialSearch = "" }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [search, setSearch] = useState(initialSearch);
   const [sortKey, setSortKey] = useState<SortKey>("addr_jibun");
@@ -140,9 +144,11 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin, initial
               <div className="md:hidden">
                 <div className="text-sm font-bold text-gray-900 truncate">{locationName}</div>
                 <div className="text-[11px] text-gray-500 mt-0.5">
-                  {viewMode === "table"
-                    ? `${filtered.length.toLocaleString()}건${search ? ` (전체 ${rows.length.toLocaleString()}건)` : ""}`
-                    : `전체 ${rows.length.toLocaleString()}건`}
+                  {loading
+                    ? "불러오는 중..."
+                    : viewMode === "table"
+                      ? `${filtered.length.toLocaleString()}건${search ? ` (전체 ${rows.length.toLocaleString()}건)` : ""}`
+                      : `전체 ${rows.length.toLocaleString()}건`}
                 </div>
               </div>
               {/* 데스크톱: 필드별 표시 */}
@@ -165,9 +171,11 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin, initial
                     ))}
                 </div>
                 <div className="text-xs text-gray-500 mt-0.5">
-                  {viewMode === "table"
-                    ? `${filtered.length.toLocaleString()}건${search ? ` (전체 ${rows.length.toLocaleString()}건 중 검색)` : ""}`
-                    : `전체 ${rows.length.toLocaleString()}건`}
+                  {loading
+                    ? "불러오는 중..."
+                    : viewMode === "table"
+                      ? `${filtered.length.toLocaleString()}건${search ? ` (전체 ${rows.length.toLocaleString()}건 중 검색)` : ""}`
+                      : `전체 ${rows.length.toLocaleString()}건`}
                 </div>
               </div>
             </div>
@@ -210,15 +218,32 @@ export default function LocationDetailModal({ rows, onClose, onJibunPin, initial
           </div>
         </div>
 
+        {/* lazy fetch 중 — 본문 영역에 spinner */}
+        {loading && (
+          <div className="flex flex-col flex-1 min-h-0 items-center justify-center py-16 gap-3">
+            <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <div className="text-sm text-gray-600">상세 목록 불러오는 중...</div>
+          </div>
+        )}
+
+        {/* lazy fetch 실패 — 에러 메시지 + 닫기 안내 */}
+        {!loading && error && (
+          <div className="flex flex-col flex-1 min-h-0 items-center justify-center py-16 gap-2 px-6 text-center">
+            <div className="text-3xl">⚠️</div>
+            <div className="text-sm font-semibold text-gray-800">상세 목록을 불러오지 못했어요</div>
+            <div className="text-xs text-gray-500 max-w-md break-words">{error}</div>
+          </div>
+        )}
+
         {/* 그룹 보기 모드 — flex 영역 안에 넣어 overflow가 부모 경계를 넘지 않도록 */}
-        {viewMode === "group" && (
+        {!loading && !error && viewMode === "group" && (
           <div className="flex flex-col flex-1 min-h-0">
             <LocationDetailGrouped rows={rows} onJibunPin={onJibunPin} initialSearch={initialSearch} />
           </div>
         )}
 
         {/* 일반 표 보기 모드 — flex 컨테이너로 감싸 페이지네이션이 밀려나지 않도록 */}
-        {viewMode === "table" && (
+        {!loading && !error && viewMode === "table" && (
           <div className="flex flex-col flex-1 min-h-0">
             <div className="px-5 py-3 border-b bg-gray-50 flex items-center gap-3 flex-shrink-0">
               <input

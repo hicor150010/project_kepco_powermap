@@ -33,6 +33,7 @@ import type { JibunInfo, ParcelGeometry } from "@/lib/vworld/parcel";
 import { buildPnuFromBjdAndJibun } from "@/lib/geo/pnu";
 import {
   fetchKepcoSummaryByBjdCode,
+  fetchKepcoCapaByBjdCode,
   fetchKepcoCapaByJibun,
   clearKepcoCapaCache,
 } from "@/lib/api/kepco";
@@ -41,6 +42,7 @@ import {
   fetchVworldParcelByLatLng,
   fetchVworldAdminPolygonByBjdCode,
 } from "@/lib/api/vworld";
+import { enrichKepcoCapaRowsWithVillageInfo } from "@/lib/api/enrich";
 import {
   emptyFilters,
   type ColumnFilters,
@@ -218,14 +220,17 @@ export default function MapClient({ isAdmin, email }: Props) {
 
   // ─────────────── 마을 클릭 → /api/capa/summary-by-bjd ───────────────
   // 카드는 시설별 여유/부족 집계만 필요 → summary 만 받음 (~80B, raw rows 30KB 대비 99% 절감).
-  // 모달용 raw rows 는 "상세 목록 보기" 클릭 시 lazy fetch (다음 단계 작업).
+  // 모달용 raw rows 는 "상세 목록 보기" 클릭 시 lazy fetch (rows / rowsLoading / rowsError).
   // 주소/좌표는 MapSummaryRow (markerRow) 에 이미 있으므로 그것을 통째로 보관.
   interface SelectedVillage {
     bjdCode: string;
     markerRow: MapSummaryRow;          // 카드 헤더 주소 (addr_do/si/.../li) + 좌표
     summary: KepcoCapaSummary | null;  // 시설별 여유/부족 집계
-    loading: boolean;
+    loading: boolean;                  // summary 로딩 상태
     error: string | null;
+    rows: KepcoDataRow[] | null;       // 모달 raw rows (null = 아직 fetch 안 함)
+    rowsLoading: boolean;
+    rowsError: string | null;
   }
   const [selectedVillage, setSelectedVillage] = useState<SelectedVillage | null>(
     null,
@@ -248,6 +253,9 @@ export default function MapClient({ isAdmin, email }: Props) {
         summary: null,
         loading: true,
         error: null,
+        rows: null,
+        rowsLoading: false,
+        rowsError: null,
       });
       // KEPCO 카드 집계 + VWorld 행정구역 폴리곤 병렬. allSettled — 폴리곤 실패해도 카드는 표시.
       const [summaryResult, polygonResult] = await Promise.allSettled([
@@ -266,6 +274,9 @@ export default function MapClient({ isAdmin, email }: Props) {
           summary: summaryResult.value,
           loading: false,
           error: null,
+          rows: null,
+          rowsLoading: false,
+          rowsError: null,
         });
       } else {
         const err = summaryResult.reason as Error;
@@ -276,6 +287,9 @@ export default function MapClient({ isAdmin, email }: Props) {
           summary: null,
           loading: false,
           error: String(err.message ?? err),
+          rows: null,
+          rowsLoading: false,
+          rowsError: null,
         });
       }
 
@@ -290,6 +304,42 @@ export default function MapClient({ isAdmin, email }: Props) {
     },
     [],
   );
+
+  // "상세 목록 보기" 클릭 — 모달 즉시 열고 raw rows lazy fetch.
+  // 같은 마을 재오픈 시 lib/api/kepco 모듈 캐시 hit → 네트워크 0회.
+  const openVillageDetailModal = useCallback(async () => {
+    setDetailModalOpen(true);
+    // 현재 selectedVillage 스냅샷 — 비동기 중 다른 마을로 바뀌면 stale 결과 반영 X
+    const target = selectedVillage;
+    if (!target || target.rows !== null || target.rowsLoading) return;
+
+    setSelectedVillage((prev) =>
+      prev && prev.bjdCode === target.bjdCode
+        ? { ...prev, rowsLoading: true, rowsError: null }
+        : prev,
+    );
+
+    try {
+      const raw = await fetchKepcoCapaByBjdCode(target.bjdCode);
+      const enriched = enrichKepcoCapaRowsWithVillageInfo(raw, [target.markerRow]);
+      setSelectedVillage((prev) =>
+        prev && prev.bjdCode === target.bjdCode
+          ? { ...prev, rows: enriched, rowsLoading: false }
+          : prev,
+      );
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return;
+      setSelectedVillage((prev) =>
+        prev && prev.bjdCode === target.bjdCode
+          ? {
+              ...prev,
+              rowsLoading: false,
+              rowsError: String((err as Error).message ?? err),
+            }
+          : prev,
+      );
+    }
+  }, [selectedVillage]);
 
   const closeVillagePanel = useCallback(() => {
     villageReqSeqRef.current++;
@@ -767,15 +817,17 @@ export default function MapClient({ isAdmin, email }: Props) {
               markerRow={selectedVillage.markerRow}
               summary={selectedVillage.summary}
               loading={selectedVillage.loading}
-              onShowDetail={() => setDetailModalOpen(true)}
+              onShowDetail={openVillageDetailModal}
               onClose={closeVillagePanel}
             />
           )}
 
-          {/* 마을 상세 모달 — 다음 단계에서 raw rows lazy fetch 추가 예정 */}
+          {/* 마을 상세 모달 — raw rows lazy fetch (rowsLoading 시 spinner) */}
           {detailModalOpen && selectedVillage && (
             <LocationDetailModal
-              rows={[]}
+              rows={selectedVillage.rows ?? []}
+              loading={selectedVillage.rowsLoading}
+              error={selectedVillage.rowsError}
               onClose={() => setDetailModalOpen(false)}
               onJibunPin={openParcelPanelOnJibunClick}
               initialSearch=""
