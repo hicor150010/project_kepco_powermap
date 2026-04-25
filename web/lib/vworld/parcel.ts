@@ -26,6 +26,9 @@ const WFS_URL = "https://api.vworld.kr/req/wfs";
 const SEARCH_URL = "https://api.vworld.kr/req/search";
 const LAYER = "lp_pa_cbnd_bubun";
 
+/** VWorld 등록 도메인. 서버 호출 시 Referer + URL `domain` 둘 다 필수. */
+export const VWORLD_DOMAIN = "sunlap.kr";
+
 /**
  * BBOX 반경 (도 단위). 10m ≈ 0.0001° @ 한국 위도.
  *
@@ -262,6 +265,7 @@ export async function getParcelByPoint(
 
   const params = new URLSearchParams({
     key: VWORLD_KEY,
+    domain: VWORLD_DOMAIN,
     service: "WFS",
     version: "2.0.0",
     request: "GetFeature",
@@ -278,7 +282,7 @@ export async function getParcelByPoint(
   try {
     const res = await fetch(`${WFS_URL}?${params.toString()}`, {
       signal: controller.signal,
-      headers: { Referer: "https://sublab.kr" },
+      headers: { Referer: `https://${VWORLD_DOMAIN}` },
     });
     clearTimeout(timer);
 
@@ -387,6 +391,7 @@ export async function getParcelByPnu(
 
   const params = new URLSearchParams({
     key: VWORLD_KEY,
+    domain: VWORLD_DOMAIN,
     service: "WFS",
     version: "2.0.0",
     request: "GetFeature",
@@ -401,7 +406,7 @@ export async function getParcelByPnu(
   try {
     const res = await fetch(`${WFS_URL}?${params.toString()}`, {
       signal: controller.signal,
-      headers: { Referer: "https://sublab.kr" },
+      headers: { Referer: `https://${VWORLD_DOMAIN}` },
     });
     clearTimeout(timer);
     if (!res.ok) {
@@ -476,6 +481,7 @@ export async function getParcelByAddress(
     format: "json",
     errorformat: "json",
     key: VWORLD_KEY,
+    domain: VWORLD_DOMAIN,
   });
 
   const controller = new AbortController();
@@ -483,7 +489,7 @@ export async function getParcelByAddress(
   try {
     const res = await fetch(`${SEARCH_URL}?${params.toString()}`, {
       signal: controller.signal,
-      headers: { Referer: "https://sublab.kr" },
+      headers: { Referer: `https://${VWORLD_DOMAIN}` },
     });
     clearTimeout(timer);
     if (!res.ok) {

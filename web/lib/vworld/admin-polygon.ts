@@ -17,6 +17,8 @@ import area from "@turf/area";
 import centroid from "@turf/centroid";
 import type { Feature, MultiPolygon, Polygon, Position } from "geojson";
 
+import { VWORLD_DOMAIN } from "./parcel";
+
 const VWORLD_KEY = process.env.VWORLD_KEY || "";
 const WFS_URL = "https://api.vworld.kr/req/wfs";
 const TIMEOUT_MS = 5000;
@@ -68,6 +70,7 @@ export async function getAdminPolygonByBjd(
 
   const params = new URLSearchParams({
     key: VWORLD_KEY,
+    domain: VWORLD_DOMAIN,
     service: "WFS",
     version: "2.0.0",
     request: "GetFeature",
@@ -82,7 +85,7 @@ export async function getAdminPolygonByBjd(
   try {
     const res = await fetch(`${WFS_URL}?${params.toString()}`, {
       signal: controller.signal,
-      headers: { Referer: "https://sublab.kr" },
+      headers: { Referer: `https://${VWORLD_DOMAIN}` },
     });
     clearTimeout(timer);
     if (!res.ok) {
