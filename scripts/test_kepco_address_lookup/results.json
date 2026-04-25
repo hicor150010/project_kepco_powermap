@@ -1,0 +1,206 @@
+[
+  {
+    "label": "A1 도-군-면-리 (사용자 예시)",
+    "input": "경기도 양평군 청운면 갈운리 24-1",
+    "fields": {
+      "addr_do": "경기도",
+      "addr_si": "양평군",
+      "addr_gu": "",
+      "addr_lidong": "청운면",
+      "addr_li": "갈운리",
+      "addr_jibun": "24-1"
+    },
+    "attempt": 0,
+    "result_count": 0,
+    "elapsed_ms": 782.0,
+    "error": null,
+    "first_result": null
+  },
+  {
+    "label": "A2 광역시-구-동",
+    "input": "서울특별시 강남구 역삼동 736",
+    "fields": {
+      "addr_do": "서울특별시",
+      "addr_si": "강남구",
+      "addr_gu": "",
+      "addr_lidong": "역삼동",
+      "addr_li": "",
+      "addr_jibun": "736"
+    },
+    "attempt": 0,
+    "result_count": 0,
+    "elapsed_ms": 1944.0,
+    "error": null,
+    "first_result": null
+  },
+  {
+    "label": "A3 광역시-군-읍-리",
+    "input": "부산광역시 기장군 일광읍 청광리 1",
+    "fields": {
+      "addr_do": "부산광역시",
+      "addr_si": "기장군",
+      "addr_gu": "",
+      "addr_lidong": "일광읍",
+      "addr_li": "청광리",
+      "addr_jibun": "1"
+    },
+    "attempt": 0,
+    "result_count": 0,
+    "elapsed_ms": 1915.5,
+    "error": null,
+    "first_result": null
+  },
+  {
+    "label": "A4 도-시-구-동",
+    "input": "충청북도 청주시 흥덕구 가경동 1502",
+    "fields": {
+      "addr_do": "충청북도",
+      "addr_si": "청주시",
+      "addr_gu": "흥덕구",
+      "addr_lidong": "가경동",
+      "addr_li": "",
+      "addr_jibun": "1502"
+    },
+    "attempt": 0,
+    "result_count": 0,
+    "elapsed_ms": 1768.0,
+    "error": null,
+    "first_result": null
+  },
+  {
+    "label": "A5 세종 (시도=시 통합)",
+    "input": "세종특별자치시 조치원읍 신흥리 1",
+    "fields": {
+      "addr_do": "세종특별자치시",
+      "addr_si": "",
+      "addr_gu": "",
+      "addr_lidong": "조치원읍",
+      "addr_li": "신흥리",
+      "addr_jibun": "1"
+    },
+    "attempt": 0,
+    "result_count": 0,
+    "elapsed_ms": 1931.0,
+    "error": null,
+    "first_result": null
+  },
+  {
+    "label": "A6 제주 (도-시-동)",
+    "input": "제주특별자치도 제주시 노형동 925",
+    "fields": {
+      "addr_do": "제주특별자치도",
+      "addr_si": "제주시",
+      "addr_gu": "",
+      "addr_lidong": "노형동",
+      "addr_li": "",
+      "addr_jibun": "925"
+    },
+    "attempt": 0,
+    "result_count": 0,
+    "elapsed_ms": 2014.4,
+    "error": null,
+    "first_result": null
+  },
+  {
+    "label": "A7 강원 (도-시-동, 구 없음)",
+    "input": "강원특별자치도 춘천시 효자동 100",
+    "fields": {
+      "addr_do": "강원특별자치도",
+      "addr_si": "춘천시",
+      "addr_gu": "",
+      "addr_lidong": "효자동",
+      "addr_li": "",
+      "addr_jibun": "100"
+    },
+    "attempt": 0,
+    "result_count": 0,
+    "elapsed_ms": 1783.0,
+    "error": null,
+    "first_result": null
+  },
+  {
+    "label": "B1 산 번지",
+    "input": "경기도 양평군 청운면 갈운리 산 1",
+    "fields": {
+      "addr_do": "경기도",
+      "addr_si": "양평군",
+      "addr_gu": "",
+      "addr_lidong": "청운면",
+      "addr_li": "갈운리",
+      "addr_jibun": "산 1"
+    },
+    "attempt": 0,
+    "result_count": 0,
+    "elapsed_ms": 1704.0,
+    "error": null,
+    "first_result": null
+  },
+  {
+    "label": "B2 본번만 (부번 없음)",
+    "input": "경기도 양평군 청운면 갈운리 24",
+    "fields": {
+      "addr_do": "경기도",
+      "addr_si": "양평군",
+      "addr_gu": "",
+      "addr_lidong": "청운면",
+      "addr_li": "갈운리",
+      "addr_jibun": "24"
+    },
+    "attempt": 0,
+    "result_count": 0,
+    "elapsed_ms": 1607.1,
+    "error": null,
+    "first_result": null
+  },
+  {
+    "label": "B3 존재하지 않을 가능성 큰 지번",
+    "input": "경기도 양평군 청운면 갈운리 9999",
+    "fields": {
+      "addr_do": "경기도",
+      "addr_si": "양평군",
+      "addr_gu": "",
+      "addr_lidong": "청운면",
+      "addr_li": "갈운리",
+      "addr_jibun": "9999"
+    },
+    "attempt": 0,
+    "result_count": 0,
+    "elapsed_ms": 1731.3,
+    "error": null,
+    "first_result": null
+  },
+  {
+    "label": "C1 면 누락 (도-군-리-지번)",
+    "input": "경기도 양평군 갈운리 24-1",
+    "fields": {
+      "addr_do": "경기도",
+      "addr_si": "양평군",
+      "addr_gu": "",
+      "addr_lidong": "",
+      "addr_li": "갈운리",
+      "addr_jibun": "24-1"
+    },
+    "attempt": 0,
+    "result_count": 0,
+    "elapsed_ms": 1623.0,
+    "error": null,
+    "first_result": null
+  },
+  {
+    "label": "C2 군→시 오타 (양평시)",
+    "input": "경기도 양평시 청운면 갈운리 24-1",
+    "fields": {
+      "addr_do": "경기도",
+      "addr_si": "양평시",
+      "addr_gu": "",
+      "addr_lidong": "청운면",
+      "addr_li": "갈운리",
+      "addr_jibun": "24-1"
+    },
+    "attempt": 0,
+    "result_count": 0,
+    "elapsed_ms": 1396.1,
+    "error": null,
+    "first_result": null
+  }
+]
