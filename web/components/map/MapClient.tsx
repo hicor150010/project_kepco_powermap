@@ -59,6 +59,10 @@ interface Props {
   email: string;
 }
 
+// 새로고침 (refreshParcelCapa) 관련 — 같은 지번 연속 갱신 / 토스트 표시 시간
+const REFRESH_COOLDOWN_SEC = 60;
+const REFRESH_ERROR_TOAST_MS = 3000;
+
 export default function MapClient({ isAdmin, email }: Props) {
   // ───────────────────────────── 데이터 ─────────────────────────────
   const [allRows, setAllRows] = useState<MapSummaryRow[]>([]);
@@ -441,6 +445,16 @@ export default function MapClient({ isAdmin, email }: Props) {
     setRefreshingCapa(false);
   }, []);
 
+  /** 빨간 inline 메시지 3초 페이드 (cooldown / not_found / error 공용). */
+  const flashRefreshError = useCallback((msg: string) => {
+    if (refreshErrorTimerRef.current) clearTimeout(refreshErrorTimerRef.current);
+    setRefreshCapaError(msg);
+    refreshErrorTimerRef.current = setTimeout(
+      () => setRefreshCapaError(null),
+      REFRESH_ERROR_TOAST_MS,
+    );
+  }, []);
+
   /** 새로고침 — 현재 카드의 bjd_code+jibun 으로 KEPCO live 호출 + kepco_capa upsert. */
   const refreshParcelCapa = useCallback(async () => {
     if (refreshingCapa) return;
@@ -454,8 +468,19 @@ export default function MapClient({ isAdmin, email }: Props) {
           .join(" ")
       : undefined;
     if (!jibun || (!bjdCode && !addr)) {
-      setRefreshCapaError("새로고침 정보 부족");
+      flashRefreshError("새로고침 정보 부족");
       return;
+    }
+
+    // 쿨다운 — 최근 갱신된 데이터면 KEPCO 호출 무시 (불필요 부하 방지)
+    const lastUpdated = parcelCapa[0]?.updated_at;
+    if (lastUpdated) {
+      const ageSec = (Date.now() - new Date(lastUpdated).getTime()) / 1000;
+      if (ageSec < REFRESH_COOLDOWN_SEC) {
+        const remain = Math.max(1, Math.ceil(REFRESH_COOLDOWN_SEC - ageSec));
+        flashRefreshError(`방금 갱신됨 — ${remain}초 후 다시 시도`);
+        return;
+      }
     }
 
     if (refreshErrorTimerRef.current) {
@@ -478,19 +503,9 @@ export default function MapClient({ isAdmin, email }: Props) {
     setRefreshingCapa(false);
     if (r.ok) {
       setParcelCapa(r.rows ?? []);
-      if (r.source === "not_found") {
-        setRefreshCapaError("KEPCO 에 데이터 없음");
-        refreshErrorTimerRef.current = setTimeout(
-          () => setRefreshCapaError(null),
-          3000,
-        );
-      }
+      if (r.source === "not_found") flashRefreshError("KEPCO 에 데이터 없음");
     } else {
-      setRefreshCapaError(r.error ?? "조회 실패");
-      refreshErrorTimerRef.current = setTimeout(
-        () => setRefreshCapaError(null),
-        3000,
-      );
+      flashRefreshError(r.error ?? "조회 실패");
     }
   }, [
     refreshingCapa,
@@ -498,6 +513,7 @@ export default function MapClient({ isAdmin, email }: Props) {
     parcelMeta,
     parcelClickedJibun,
     selectedJibun,
+    flashRefreshError,
   ]);
 
   useEffect(() => {
