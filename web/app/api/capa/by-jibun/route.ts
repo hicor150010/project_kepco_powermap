@@ -1,20 +1,18 @@
 /**
  * GET /api/capa/by-jibun?bjd_code=...&jibun=...
  *
- * Atomic endpoint — 지번 단위 KEPCO 용량 정확 매칭 (exact only).
- * 가까운 본번 폴백은 별도 endpoint (/api/capa/nearest-by-jibun) 에서 제공.
- *
- * 사용처:
- *   - 지번 클릭 (사이드바) — bjd_code + jibun 직접 보유
- *   - 지도 클릭 — /api/parcel/by-latlng 응답에서 PNU → bjd_code + jibun 추출 후
+ * Atomic endpoint — 지번 단위 KEPCO 용량 + 행정구역 메타.
  *
  * 응답 (성공):
- *   { ok: true, bjd_code, jibun, rows: KepcoDataRow[], total }
+ *   { ok, bjd_code, jibun, rows: KepcoDataRow[], total, meta: AddrMeta | null }
+ *
+ * meta = bjd_master 의 sep_1~5 (헤더 주소 표시용). bjd_code 가 sentinel 이거나
+ *        매칭 실패 시 null — 호출처가 parcel 응답으로 fallback.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { KepcoDataRow } from "@/lib/types";
+import type { AddrMeta, KepcoDataRow } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
@@ -35,21 +33,39 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from("kepco_capa")
-    .select("*")
-    .eq("bjd_code", bjdCode)
-    .eq("addr_jibun", jibun);
+  const [capaRes, metaRes] = await Promise.all([
+    supabase
+      .from("kepco_capa")
+      .select("*")
+      .eq("bjd_code", bjdCode)
+      .eq("addr_jibun", jibun),
+    supabase
+      .from("bjd_master")
+      .select("sep_1,sep_2,sep_3,sep_4,sep_5")
+      .eq("bjd_code", bjdCode)
+      .maybeSingle(),
+  ]);
 
-  if (error) {
-    console.error("[capa/by-jibun] 조회 실패", error);
+  if (capaRes.error) {
+    console.error("[capa/by-jibun] 조회 실패", capaRes.error);
     return NextResponse.json(
-      { ok: false, error: error.message },
+      { ok: false, error: capaRes.error.message },
       { status: 500 }
     );
   }
 
-  const rows = (data ?? []) as KepcoDataRow[];
+  const rows = (capaRes.data ?? []) as KepcoDataRow[];
+  const m = metaRes.data;
+  const meta: AddrMeta | null = m
+    ? {
+        sep_1: m.sep_1 || null,
+        sep_2: m.sep_2 || null,
+        sep_3: m.sep_3 || null,
+        sep_4: m.sep_4 || null,
+        sep_5: m.sep_5 || null,
+      }
+    : null;
+
   return NextResponse.json(
     {
       ok: true,
@@ -57,9 +73,10 @@ export async function GET(request: NextRequest) {
       jibun,
       rows,
       total: rows.length,
+      meta,
     },
     {
-      headers: { "Cache-Control": "no-store" },   // 크롤이 갱신 — 캐시 X
+      headers: { "Cache-Control": "no-store" },
     }
   );
 }

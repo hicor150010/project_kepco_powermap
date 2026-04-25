@@ -15,7 +15,7 @@
  *   /api/capa/by-bjd         ↔ fetchKepcoCapaByBjdCode     (모달용 raw rows)
  *   /api/capa/by-jibun       ↔ fetchKepcoCapaByJibun       (지번 단위)
  */
-import type { KepcoCapaSummary, KepcoDataRow } from "@/lib/types";
+import type { AddrMeta, KepcoCapaSummary, KepcoDataRow } from "@/lib/types";
 
 interface CapaApiResponse {
   ok: boolean;
@@ -23,7 +23,14 @@ interface CapaApiResponse {
   jibun?: string;
   rows?: KepcoDataRow[];
   total?: number;
+  meta?: AddrMeta | null;
   error?: string;
+}
+
+/** by-jibun 응답 — capa rows + 행정구역 메타 (헤더 표시용). */
+export interface CapaByJibunResult {
+  rows: KepcoDataRow[];
+  meta: AddrMeta | null;
 }
 
 interface SummaryApiResponse {
@@ -39,7 +46,7 @@ interface FetchOptions {
 
 const capaSummaryByBjdCache = new Map<string, KepcoCapaSummary>();
 const capaByBjdCache = new Map<string, KepcoDataRow[]>();
-const capaByJibunCache = new Map<string, KepcoDataRow[]>();
+const capaByJibunCache = new Map<string, CapaByJibunResult>();
 
 /**
  * /api/capa/summary-by-bjd — 마을 카드용 시설별 여유·부족 집계. 캐시 키 = bjd_code.
@@ -83,12 +90,12 @@ export async function fetchKepcoCapaByBjdCode(
   return rows;
 }
 
-/** /api/capa/by-jibun — 지번 단위 (exact only). 캐시 키 = `${bjd}:${jibun}`. */
+/** /api/capa/by-jibun — 지번 단위 (exact only) + 행정구역 메타. 캐시 키 = `${bjd}:${jibun}`. */
 export async function fetchKepcoCapaByJibun(
   bjdCode: string,
   jibun: string,
   options?: FetchOptions,
-): Promise<KepcoDataRow[]> {
+): Promise<CapaByJibunResult> {
   const key = `${bjdCode}:${jibun}`;
   const cached = capaByJibunCache.get(key);
   if (cached) return cached;
@@ -99,9 +106,12 @@ export async function fetchKepcoCapaByJibun(
   );
   const data = (await res.json()) as CapaApiResponse;
   if (!data.ok) throw new Error(data.error || "지번 용량 조회 실패");
-  const rows = data.rows ?? [];
-  capaByJibunCache.set(key, rows);
-  return rows;
+  const result: CapaByJibunResult = {
+    rows: data.rows ?? [],
+    meta: data.meta ?? null,
+  };
+  capaByJibunCache.set(key, result);
+  return result;
 }
 
 /** 새로고침 시 호출 — KEPCO 데이터는 크롤이 갱신하므로 새 데이터 받기 위해 비움 */

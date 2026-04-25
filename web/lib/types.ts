@@ -20,6 +20,19 @@ export function hasCapacity(
 }
 
 // ──────────────────────────────────────────
+// 행정구역 메타 (bjd_master sep_1~5 그대로)
+//   sep_1 = 시도 / sep_2 = 시(광역도 안의) / sep_3 = 시군구 / sep_4 = 읍면동 / sep_5 = 리
+//   광역시·세종 등은 일부 빈값. 표시 시 filter(Boolean) 으로 자연 처리.
+// ──────────────────────────────────────────
+export interface AddrMeta {
+  sep_1: string | null;
+  sep_2: string | null;
+  sep_3: string | null;
+  sep_4: string | null;
+  sep_5: string | null;
+}
+
+// ──────────────────────────────────────────
 // DB 스키마와 1:1 매핑
 // ──────────────────────────────────────────
 

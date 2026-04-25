@@ -50,6 +50,7 @@ import {
   type MarkerColor,
   type KepcoDataRow,
   type KepcoCapaSummary,
+  type AddrMeta,
 } from "@/lib/types";
 
 interface Props {
@@ -239,9 +240,13 @@ export default function MapClient({ isAdmin, email }: Props) {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const villageReqSeqRef = useRef(0);
   const villageAbortRef = useRef<AbortController | null>(null);
+  // 지번 상세 패널 close 핸들러 — 마을 클릭 시 우선 닫기 위해 ref 로 forward.
+  const closeParcelPanelRef = useRef<(() => void) | null>(null);
 
   const openVillagePanelOnMarkerClick = useCallback(
     async (row: MapSummaryRow) => {
+      // 지번 상세 패널이 떠있으면 닫고 마을 카드로 전환 (UI 액션 우선순위: 새 마을 > 기존 지번)
+      closeParcelPanelRef.current?.();
       // 이전 in-flight fetch 취소 (연타 시 네트워크 비용 절약)
       villageAbortRef.current?.abort();
       const controller = new AbortController();
@@ -356,6 +361,8 @@ export default function MapClient({ isAdmin, email }: Props) {
     null,
   );
   const [parcelCapa, setParcelCapa] = useState<KepcoDataRow[]>([]);
+  const [parcelMeta, setParcelMeta] = useState<AddrMeta | null>(null);
+  const [parcelClickedJibun, setParcelClickedJibun] = useState<string>("");
   const [parcelLoading, setParcelLoading] = useState(false);
   const parcelReqSeqRef = useRef(0);
   const parcelAbortRef = useRef<AbortController | null>(null);
@@ -377,8 +384,10 @@ export default function MapClient({ isAdmin, email }: Props) {
       setSelectedJibun(null);
       setSelectedGeometry(null);
       setParcelCapa([]);
+      setParcelMeta(null);
+      setParcelClickedJibun(row.addr_jibun ?? "");
       try {
-        const [parcelResult, capaRows] = await Promise.all([
+        const [parcelResult, capaResult] = await Promise.all([
           fetchVworldParcelByPnu(pnu, { signal: controller.signal }),
           fetchKepcoCapaByJibun(row.bjd_code, row.addr_jibun ?? "", {
             signal: controller.signal,
@@ -391,7 +400,8 @@ export default function MapClient({ isAdmin, email }: Props) {
         }
         setSelectedJibun(parcelResult.jibun);
         setSelectedGeometry(parcelResult.geometry);
-        setParcelCapa(capaRows);
+        setParcelCapa(capaResult.rows);
+        setParcelMeta(capaResult.meta);
         const c = parcelResult.geometry.center;
         if (c?.lat != null) moveMapToRef.current?.(c.lat, c.lng);
       } catch (err) {
@@ -408,11 +418,18 @@ export default function MapClient({ isAdmin, email }: Props) {
 
   const closeParcelPanel = useCallback(() => {
     parcelReqSeqRef.current++;
+    parcelAbortRef.current?.abort();
     setSelectedJibun(null);
     setSelectedGeometry(null);
     setParcelCapa([]);
+    setParcelMeta(null);
+    setParcelClickedJibun("");
     setParcelLoading(false);
   }, []);
+
+  useEffect(() => {
+    closeParcelPanelRef.current = closeParcelPanel;
+  }, [closeParcelPanel]);
 
   // moveMapTo 가 아래에 정의되므로 ref 우회 (forward use)
   const moveMapToRef = useRef<((lat: number, lng: number) => void) | null>(
@@ -501,6 +518,8 @@ export default function MapClient({ isAdmin, email }: Props) {
       setSelectedJibun(null);
       setSelectedGeometry(null);
       setParcelCapa([]);
+      setParcelMeta(null);
+      setParcelClickedJibun("");
       try {
         const parcel = await fetchVworldParcelByLatLng(lat, lng, {
           signal: controller.signal,
@@ -511,7 +530,8 @@ export default function MapClient({ isAdmin, email }: Props) {
           return;
         }
         const bjdCode = parcel.jibun.pnu.slice(0, 10);
-        const capaRows = await fetchKepcoCapaByJibun(
+        setParcelClickedJibun(parcel.jibun.jibun);
+        const capaResult = await fetchKepcoCapaByJibun(
           bjdCode,
           parcel.jibun.jibun,
           { signal: controller.signal },
@@ -519,7 +539,8 @@ export default function MapClient({ isAdmin, email }: Props) {
         if (seq !== parcelReqSeqRef.current) return;
         setSelectedJibun(parcel.jibun);
         setSelectedGeometry(parcel.geometry);
-        setParcelCapa(capaRows);
+        setParcelCapa(capaResult.rows);
+        setParcelMeta(capaResult.meta);
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
         if (seq === parcelReqSeqRef.current) {
@@ -840,6 +861,8 @@ export default function MapClient({ isAdmin, email }: Props) {
               jibun={selectedJibun}
               geometry={selectedGeometry}
               capa={parcelCapa}
+              meta={parcelMeta}
+              clickedJibun={parcelClickedJibun}
               matchMode={parcelCapa.length > 0 ? "exact" : null}
               nearestJibun={null}
               loading={parcelLoading}

@@ -14,7 +14,7 @@
  */
 
 import { useState } from "react";
-import type { KepcoDataRow } from "@/lib/types";
+import type { AddrMeta, KepcoDataRow } from "@/lib/types";
 import { hasCapacity } from "@/lib/types";
 import type { JibunInfo, ParcelGeometry } from "@/lib/vworld/parcel";
 import { formatRelativeKst, formatAbsoluteKst } from "@/lib/dateFormat";
@@ -27,6 +27,10 @@ interface Props {
   jibun: JibunInfo | null;
   geometry: ParcelGeometry | null;
   capa: KepcoDataRow[];
+  /** by-jibun 응답의 행정구역 메타 (헤더 표시용, DB 기준). null 이면 jibun fallback. */
+  meta: AddrMeta | null;
+  /** 사용자가 클릭한 지번 번호 (헤더 표시용, parcel 응답 전에도 즉시 표시). */
+  clickedJibun: string;
   matchMode: "exact" | "nearest_jibun" | null;
   nearestJibun: string | null;
   loading: boolean;
@@ -46,12 +50,27 @@ export default function ParcelInfoPanel({
   jibun,
   geometry,
   capa,
+  meta,
+  clickedJibun,
   matchMode,
   nearestJibun,
   loading,
   onClose,
 }: Props) {
-  const [tab, setTab] = useState<TabKey>("parcel");
+  const [tab, setTab] = useState<TabKey>("electric");
+
+  // 헤더 주소 출처 우선순위:
+  //   1. meta (by-jibun, DB) — 가장 빠르고 권위 있음 (행안부 표준)
+  //   2. jibun (parcel API, VWorld) — meta 없을 때 fallback (sentinel 케이스 등)
+  const headerParts: string[] = meta
+    ? ([meta.sep_1, meta.sep_2, meta.sep_3, meta.sep_4, meta.sep_5, clickedJibun].filter(
+        Boolean,
+      ) as string[])
+    : jibun
+      ? ([jibun.ctp_nm, jibun.sig_nm, jibun.emd_nm, jibun.li_nm || null, jibun.jibun].filter(
+          Boolean,
+        ) as string[])
+      : [];
 
   return (
     <div
@@ -63,21 +82,15 @@ export default function ParcelInfoPanel({
       {/* 헤더 */}
       <div className="px-3 py-2.5 md:px-4 md:py-3 border-b bg-gray-50 flex items-start justify-between gap-2 flex-shrink-0">
         <div className="flex-1 min-w-0">
-          {loading ? (
-            <div className="text-sm text-gray-500 py-1">필지 정보 불러오는 중...</div>
-          ) : !jibun ? (
-            <div className="text-sm text-gray-600 py-1">이 위치에 필지 없음</div>
+          {headerParts.length === 0 ? (
+            loading ? (
+              <div className="text-sm text-gray-500 py-1">필지 정보 불러오는 중...</div>
+            ) : (
+              <div className="text-sm text-gray-600 py-1">이 위치에 필지 없음</div>
+            )
           ) : (
             <div className="font-semibold text-xs md:text-sm text-gray-900 truncate">
-              <AddrLine
-                parts={[
-                  jibun.ctp_nm,
-                  jibun.sig_nm,
-                  jibun.emd_nm,
-                  jibun.li_nm || null,
-                  jibun.jibun,
-                ].filter(Boolean) as string[]}
-              />
+              <AddrLine parts={headerParts} />
             </div>
           )}
         </div>
@@ -120,7 +133,7 @@ export default function ParcelInfoPanel({
               capa={capa}
               matchMode={matchMode}
               nearestJibun={nearestJibun}
-              clickedJibun={jibun.jibun}
+              clickedJibun={clickedJibun || jibun.jibun}
             />
           )}
           {tab === "price" && <PriceTab geometry={geometry} />}
