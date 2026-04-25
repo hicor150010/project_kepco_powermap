@@ -27,7 +27,7 @@
 
 ## 1. 전체 목차
 
-### 데이터 조회 (사용자 호출, 10개)
+### 데이터 조회 (사용자 호출, 11개)
 
 | Endpoint | Method | 출처 | 외부호출 | 캐시 | 사용처 |
 |---|---|---|---|---|---|
@@ -41,6 +41,7 @@
 | [`/api/parcel/by-latlng`](#get-apiparcelby-latlng) | GET | VWorld WFS (BBOX) | 1 | `s-maxage=86400` | 지도 직접 클릭 |
 | [`/api/polygon/by-bjd`](#get-apipolygonby-bjd) | GET | VWorld lt_c_adri/ademd | 1 | `s-maxage=604800` | 마을 음영 폴리곤 |
 | [`/api/buildings/by-pnu`](#get-apibuildingsby-pnu) | GET | 건축HUB (getBrTitleInfo) | 1 | `s-maxage=86400` | 필지 탭 (lazy) |
+| [`/api/transactions/by-bjd`](#get-apitransactionsby-bjd) | GET | 국토부 RTMS 토지매매 | N (월별 fan-out) | `s-maxage=21600` | 가격 탭 (lazy) |
 
 ### 운영 (관리자/시스템, 6개)
 
@@ -57,7 +58,6 @@
 
 | Endpoint | 출처 | 사용 탭 | 상태 |
 |---|---|---|---|
-| `/api/transactions/by-bjd` | 국토부 토지매매 | 가격 | 🚧 |
 | `/api/auctions/by-pnu` | 캠코 온비드 | 가격 | 🚧 |
 | `/api/auctions/list-by-region` | 캠코 온비드 | 지도 마커 | 🚧 |
 | `/api/solar-permits/near-point` | 산자부 태양광허가 | 전기 | 🚧 |
@@ -159,6 +159,8 @@
 ### 2-6. 외부 API 표준 (Phase 2 신규 작성 시)
 
 - **1 atomic = 1 외부 호출** 원칙
+  - **예외**: 외부 API 가 페이지네이션·기간 분할을 강제할 때만 서버 fan-out 허용 (`Promise.all`, 부분 실패 catch). 사용자→서버는 1회 유지.
+  - 사례: `/api/transactions/by-bjd` — 국토부 RTMS 가 월 단위 호출만 지원 → 12회 fan-out
 - **KV 캐시 의무** (`getOrSet(key, ttl, fetcher)`)
 - 응답 변환: 외부 raw 필드 그대로 노출하지 말고 우리 도메인 타입으로 정리
 - 인증 정보 (Referer, OC, serviceKey 등) 는 **서버사이드에서만 주입** — 클라이언트 노출 X
@@ -531,6 +533,68 @@
 
 ---
 
+### `GET /api/transactions/by-bjd`
+
+> 시군구 단위 토지 실거래가 + 영업담당자용 통계 (중앙값/추세/지목별/sparkline)
+
+| 항목 | 값 |
+|---|---|
+| **출처** | 국토부 RTMS `getRTMSDataSvcLandTrade` |
+| **외부 호출** | N회 (월별 fan-out, 기본 12회 — `Promise.all`, 부분 실패 catch) |
+| **캐시** | `private, s-maxage=21600, max-age=3600` (6h CDN — 이번 달 분 매일 갱신) |
+| **인증** | 사용자 |
+| **사용처** | ParcelInfoPanel "가격" 탭 활성화 시 lazy fetch |
+| **env** | `DATA_GO_KR_KEY` (공공데이터포털 통합 키, 건축HUB 와 동일) |
+| **route** | [route.ts](../web/app/api/transactions/by-bjd/route.ts) · 라이브러리 [land-trade.ts](../web/lib/rtms/land-trade.ts) · 통계 [trade-stats.ts](../web/lib/rtms/trade-stats.ts) · wrapper [transactions.ts](../web/lib/api/transactions.ts) |
+
+**입력 (Query)**
+| 이름 | 타입 | 필수 | 기본값 | 설명 |
+|---|---|---|---|---|
+| `bjd_code` | string(10) | ✅ | — | 행안부 법정동 코드. 앞 5자리 = `LAWD_CD` 변환 |
+| `months` | number | - | 12 | 1~24 (UI 0건 시 24로 확장 토글) |
+
+**출력 (200)**
+```ts
+{
+  ok: true,
+  bjd_code: string,
+  months: number,
+  rows: LandTransaction[],   // 날짜 내림차순. 0건 정상.
+  stats: {
+    total: number,
+    medianPricePerPyeong: number | null,        // 0건 시 null
+    trend: { pct: number; direction: 'up'|'down'|'flat' } | null,
+    byJimok: Array<{ jimok, count, medianPricePerPyeong }>,
+    monthly: Array<{ ym: string; count: number }>,  // sparkline (0 채움 보장)
+  }
+}
+
+// LandTransaction (RTMS raw → 영업가치 정규화)
+{
+  dealYmd: string,         // "2025-10"
+  dealDate: string | null, // "2025-10-15"
+  jibun: string,           // "178-3"
+  jimok: string,           // "답"
+  area_m2: number,         // 980
+  price_won: number,       // 14_200_000 (raw 만원 → 원 변환)
+  pricePerPyeong: number,  // 145_000 (계산값)
+  zoning: string | null,   // "계획관리지역"
+  dealType: string | null, // "직거래"/"중개" (UI 미노출)
+  umdNm: string,           // "개진면"
+}
+```
+
+**에러**: 400(`bjd_code` 형식) / 401 / 502(외부 API 장애)
+
+**구현 노트**:
+- "1 atomic = 1 외부 호출" 원칙 예외 (§2-6) — RTMS 가 시군구+월 단위만 지원
+- 부분 실패 허용: 12회 중 일부 월 실패 시 해당 월만 빈 배열 (전체 실패 X)
+- `resultCode "03"` (NO_DATA) = 거래 0건 정상 처리
+- 추세는 후반 6개월 vs 전반 6개월 평당가 중앙값 비교 (양쪽 모두 ≥1건일 때만)
+- 통계 계산은 [trade-stats.ts](../web/lib/rtms/trade-stats.ts) 1곳에서 관리
+
+---
+
 ## 4. Spec 카드 (운영 6개 — 간략)
 
 ### `GET /api/health`
@@ -616,6 +680,7 @@
 | 일자 | 내용 |
 |---|---|
 | 2026-04-25 | 초기 작성 — 기존 15개 endpoint 정리 + 컨벤션 명문화 |
+| 2026-04-25 | `transactions/by-bjd` 추가 (국토부 토지 실거래가, 월별 fan-out). §2-6 fan-out 예외 단서 추가 |
 
 ---
 
@@ -630,6 +695,8 @@
 | 다건 페이지네이션 | `map-summary` (PostgREST 1000행 우회) |
 | 외부 + Referer 헤더 필수 | `admin/crawl/regions` (KEPCO 프록시 패턴) |
 | DB raw + 메타 JOIN | `capa/by-jibun` (병렬 Promise.all 패턴) |
+| 외부 API 월/페이지 분할 fan-out | `transactions/by-bjd` (Promise.all 12회 + 부분 실패 catch) |
+| raw + 통계 묶음 응답 | `transactions/by-bjd` (rows + stats 한 응답) |
 
 ### 6-2. KV 캐시 도입 시점 (Phase 2~)
 
