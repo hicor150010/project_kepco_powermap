@@ -755,6 +755,11 @@ export default function KakaoMap({
   // ─────────────────────────────────────────────
   // 지적편집도 오버레이 (카카오 MapTypeId.USE_DISTRICT)
   // 전국 필지 경계를 배경 이미지 타일로 표시. 필지 개별 선택은 별도(VWorld) 필요.
+  //
+  // 2026-04-25: VWorld LX 편집지적도(lt_c_landinfobasemap) WMS 오버레이 시도했으나
+  // 카카오 SDK = EPSG:5181, VWorld = EPSG:3857 본질적 좌표계 비호환으로 포기.
+  // 카카오 z/x/y → EPSG:5181 BBOX 변환 룰이 공개되지 않아 매핑 불가능.
+  // 폴리곤(parcel.ts) 만 LX 로 정확. 배경 라벨은 카카오 USE_DISTRICT 그대로 유지.
   // ─────────────────────────────────────────────
   useEffect(() => {
     const map = mapInstanceRef.current;

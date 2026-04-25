@@ -30,3 +30,4 @@
 - 🙏 [존댓말 사용](feedback_polite_tone.md) — 의뢰자와 대화 시 항상 공손한 존댓말
 - ⚛️ [Atomic API + 클라이언트 enrichment](project_atomic_api_pattern.md) ⭐ — 5종 endpoint + lib/api source별 분리 + KepcoCapaRow enrichment (2026-04-24)
 - 🏷 [표준코드 번들 — 보류](project_stdcode_bundle.md) — xlsx 7종 보유. DB X / 정적 JSON O 결정. UI 개발 시점에 구현
+- 🗺 [지적도 데이터 출처 + 카카오 SDK 한계](reference_cadastral_data_sources.md) — VWorld LX 편집지적도 사용. 카카오 외부 타일 오버레이 비호환 (재시도 금지)

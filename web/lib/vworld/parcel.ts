@@ -4,16 +4,18 @@
  * 좌표 → 해당 필지의 폴리곤 + 지번/지목/주소/면적 반환.
  *
  * 엔드포인트: https://api.vworld.kr/req/wfs
- * 레이어: lp_pa_cbnd_bubun (연속지적 필지 경계)
+ * 레이어: lt_c_landinfobasemap (LX 한국국토정보공사 편집지적도)
+ *
+ * 2026-04-25: lp_pa_cbnd_bubun(VWorld 자체 연속지적도) → lt_c_landinfobasemap(LX)
+ * 으로 교체. 시골에서 lp_pa_cbnd_bubun 이 토지이음/일사편리 위치와 67m 일관 어긋남
+ * 확인됨. LX 는 정부 공식 지적측량 기관 데이터로 토지이음과 동일.
  *
  * 설계 원칙:
  *  - "지번" 이 모든 정보의 출발점. 진입이 좌표든 직접 지번이든 동일 구조로 수렴.
- *  - VWorld 응답의 `bonbun`/`bubun`/`bchk` 필드를 직접 사용 (문자열 파싱 금지).
- *    `jibun` 필드("159-2대")는 지목 추출용으로만 사용.
- *  - 면적은 응답에 없어 Turf.js 로 폴리곤에서 계산.
- *
- * 미래 확장: 지번 직접 입력으로 필지 조회하는 경우 → `getParcelByPoint` 대신
- *            좌표 변환 후 재호출 (지오코더 재활용).
+ *  - LX 응답의 `jibun`("179장"), `gbn_cd`("1"=일반/"2"=산), `jimok`(풀명칭) 직접 사용.
+ *    본번/부번은 `mnnm`/`slno` (zero-pad 4자리, PNU 와 같은 형식).
+ *  - 면적은 LX 가 `parea` 제공하지만 일관성 위해 Turf.js 계산값 사용.
+ *  - 주소는 sido_nm + sgg_nm + emd_nm + ri_nm + jibun 조합 (LX 가 통합 addr 필드 미제공).
  */
 
 import area from "@turf/area";
@@ -24,19 +26,13 @@ import type { Feature, MultiPolygon, Polygon, Position } from "geojson";
 const VWORLD_KEY = process.env.VWORLD_KEY || "";
 const WFS_URL = "https://api.vworld.kr/req/wfs";
 const SEARCH_URL = "https://api.vworld.kr/req/search";
-const LAYER = "lp_pa_cbnd_bubun";
+const LAYER = "lt_c_landinfobasemap";
 
 /** VWorld 등록 도메인. 서버 호출 시 Referer + URL `domain` 둘 다 필수. */
 export const VWORLD_DOMAIN = "sunlap.kr";
 
-/**
- * BBOX 반경 (도 단위). 10m ≈ 0.0001° @ 한국 위도.
- *
- * 5m → 10m 확대 (2026-04-25): 후보 폴리곤 더 받아서 `pickBestParcelMatch` 가
- * 면적 작은 것 우선 선택. 깔때기형 큰 부지가 좁은 끝부분으로 라벨 위까지 뻗어
- * 사용자 의도와 다른 필지 잡히는 케이스(직리 116-2 등) 완화.
- */
-const BBOX_DELTA = 0.0001;
+/** BBOX 반경 (도 단위). 5m ≈ 0.00005° @ 한국 위도 */
+const BBOX_DELTA = 0.00005;
 
 /** WFS fetch timeout (ms) */
 const TIMEOUT_MS = 3000;
@@ -95,22 +91,38 @@ export interface ParcelResult {
 // WFS 응답 스키마
 // ───────────────────────────────────────────
 
+/**
+ * LX 편집지적도(`lt_c_landinfobasemap`) 응답 properties.
+ *
+ * 응답 예시 (직리 179):
+ *   pnu="4783035035101790000"  jibun="179장"  jimok="공장용지"
+ *   mnnm="0179" (본번 4자리)   slno="0000" (부번 4자리, 0=부번없음)
+ *   gbn_cd="1" (1=일반, 2=산)  gbn_nm="토지대장"
+ *   sido_nm="경상북도"  sgg_nm="고령군"  emd_nm="개진면"  ri_nm="직리"|null
+ *   jiga_ilp="110900"  parea="1810"
+ */
 interface WfsProperties {
   pnu: string;
-  /** "148-11 대" 형태 — 지목 추출용으로만 사용 */
+  /** "179장", "산129-2임", "148-11대" 형태 — 끝 한글 = 지목 약자 */
   jibun: string;
-  /** 본번 (숫자 문자열, 예: "148") */
-  bonbun: string;
-  /** 부번 (숫자 문자열, "0" = 부번 없음) */
-  bubun: string;
-  /** 대지구분 ("1"=일반, "2"=산) */
-  bchk: string;
-  addr: string;
-  ctp_nm: string;
-  sig_nm: string;
+  /** 지목 풀명칭 ("공장용지", "임야", "대", "도로" 등) */
+  jimok: string;
+  /** 본번 4자리 zero-pad (예: "0179") */
+  mnnm: string;
+  /** 부번 4자리 zero-pad (예: "0011", "0000"=부번없음) */
+  slno: string;
+  /** 대장구분: "1"=토지대장(일반), "2"=임야대장(산) */
+  gbn_cd: string;
+  gbn_nm: string;
+  sido_nm: string;
+  sgg_nm: string;
   emd_nm: string;
-  li_nm: string;
-  jiga: string;
+  /** 리 — 도시는 null */
+  ri_nm: string | null;
+  /** 개별공시지가 (원/㎡, 문자열) */
+  jiga_ilp: string;
+  /** 공부상 면적 (㎡, 문자열) */
+  parea: string;
 }
 
 interface WfsFeature {
@@ -129,30 +141,6 @@ interface WfsResponse {
 // ───────────────────────────────────────────
 
 /**
- * bonbun/bubun/bchk 필드에서 지번 번호 조립.
- *
- * 규칙:
- *  - bubun="0" 이면 부번 생략 → "본번"
- *  - 그 외 → "본번-부번"
- *  - bchk="2" (산 지번) → "산 " 접두어
- */
-export function buildJibunNumber(
-  bonbun: string,
-  bubun: string,
-  bchk: string,
-): string {
-  // VWorld 가 부번에 지목을 섞어 보내는 케이스 있음 (예: bubun="5도" — 지목=도로 필지).
-  // 숫자만 추출해서 안전하게 조합.
-  const b = (bonbun || "").match(/\d+/)?.[0] ?? "";
-  const s = (bubun || "").match(/\d+/)?.[0] ?? "";
-  const num = !s || s === "0" ? b : `${b}-${s}`;
-  // KEPCO DB 는 산 지번을 공백 없이 저장 (예: "산1-1", "산23"). 포맷 일치 필수.
-  const isSan = bchk === "2";
-  const raw = isSan ? `산${num}` : num;
-  return normalizeJibun(raw);
-}
-
-/**
  * 지번 canonical form — DB 매칭 키로 쓰기 위한 정규화.
  *
  * 규칙:
@@ -160,8 +148,7 @@ export function buildJibunNumber(
  *   2. 끝에 붙은 한글(지목/번지 접미사) 제거 ("189-5도" → "189-5", "42번지" → "42")
  *
  * KEPCO 전수 검증 결과 (2026-04-21): 저장 포맷이 `^(산)?\d+(-\d+)?$` 로 단일.
- * 이 정규화를 통과하면 KEPCO 포맷과 항상 일치. 미래 VWorld 포맷 변경에도
- * 이 함수만 유지하면 방어 가능.
+ * 이 정규화를 통과하면 KEPCO 포맷과 항상 일치.
  */
 export function normalizeJibun(value: string): string {
   return (value || "")
@@ -170,69 +157,17 @@ export function normalizeJibun(value: string): string {
 }
 
 /**
- * jibun 문자열에서 지목만 추출 (끝에 붙은 한글).
+ * jibun 문자열 끝의 지목 약자 추출 (LX `jimok` 필드가 빈값일 때 fallback).
  *
  * "148-11 대"   → "대"
  * "159-2대"    → "대"
- * "산 23-4 임" → "임"
- * "42잡종지"    → "잡종지"
+ * "100전"      → "전"
  * "159"        → ""  (지목 없음)
  */
 export function parseJimok(jibunStr: string): string {
   if (!jibunStr) return "";
   const m = jibunStr.match(/([가-힣]{1,4})\s*$/);
   return m ? m[1] : "";
-}
-
-/** 지번 번호에서 산 지번 판별 (fallback) */
-function isSanJibun(bchk: string): boolean {
-  return bchk === "2";
-}
-
-/**
- * BBOX 응답의 여러 후보 중 클릭 점에 맞는 1개 선택 (테스트 가능 헬퍼).
- *
- * 룰:
- *   1. point-in-polygon 으로 클릭 점이 진짜 들어가는 후보만 필터
- *   2. 통과한 게 여러 개면 면적 작은 것 우선
- *
- * 면적 우선 이유: 큰 깔때기/도로 부지가 좁은 끝부분으로 라벨 위까지 뻗어
- * 사용자 의도와 다른 필지 잡히는 케이스(직리 116-2 등) 완화. 일반 필지가
- * 보통 더 작아서 사용자 의도와 일치.
- */
-export function pickBestParcelMatch(
-  features: WfsFeature[],
-  lat: number,
-  lng: number,
-): WfsFeature | null {
-  if (!features.length) return null;
-
-  const clickPoint: Feature<Point> = {
-    type: "Feature",
-    properties: {},
-    geometry: { type: "Point", coordinates: [lng, lat] },
-  };
-
-  const containing = features.filter((f) => {
-    try {
-      return booleanPointInPolygon(
-        clickPoint,
-        f as unknown as Feature<Polygon | MultiPolygon>,
-      );
-    } catch {
-      return false;
-    }
-  });
-
-  if (containing.length === 0) return null;
-  if (containing.length === 1) return containing[0];
-
-  return containing
-    .map((f) => ({
-      feature: f,
-      area: area(f as unknown as Feature<Polygon | MultiPolygon>),
-    }))
-    .sort((a, b) => a.area - b.area)[0].feature;
 }
 
 // ───────────────────────────────────────────
@@ -294,7 +229,23 @@ export async function getParcelByPoint(
     const data = (await res.json()) as WfsResponse;
     if (!data.features?.length) return null;
 
-    const match = pickBestParcelMatch(data.features, lat, lng);
+    // 해당 좌표가 실제로 포함되는 필지 선별 (BBOX 는 느슨, 정확 매칭은 클라이언트)
+    const clickPoint: Feature<Point> = {
+      type: "Feature",
+      properties: {},
+      geometry: { type: "Point", coordinates: [lng, lat] },
+    };
+    const match = data.features.find((f) => {
+      try {
+        return booleanPointInPolygon(
+          clickPoint,
+          f as unknown as Feature<Polygon | MultiPolygon>,
+        );
+      } catch {
+        return false;
+      }
+    });
+
     if (!match) return null;
 
     return splitParcelFeature(match);
@@ -312,16 +263,22 @@ export async function getParcelByPoint(
 
 /**
  * WFS Feature → JibunInfo + ParcelGeometry 로 분리.
- * 모든 파싱/계산 로직은 순수 함수(`buildJibunNumber`, `parseJimok`) 에 위임.
+ *
+ * LX 매핑:
+ *   - jibun: jibun 필드("179장") 끝 한글 제거 → "179"
+ *   - isSan: gbn_cd="2" (임야대장)
+ *   - jimok: jimok 필드 풀명칭("공장용지") 그대로. 빈 값이면 jibun 끝 한글 fallback.
+ *   - jiga: jiga_ilp 정수화
+ *   - addr: sido_nm + sgg_nm + emd_nm + ri_nm + jibun 조합 (LX 통합 addr 미제공)
  */
 export function splitParcelFeature(feature: WfsFeature): ParcelResult {
   const p = feature.properties;
 
-  const jibunNumber = buildJibunNumber(p.bonbun, p.bubun, p.bchk);
-  const jimok = parseJimok(p.jibun);
-  const isSan = isSanJibun(p.bchk);
+  const jibunNumber = normalizeJibun(p.jibun);
+  const jimok = p.jimok || parseJimok(p.jibun);
+  const isSan = p.gbn_cd === "2";
 
-  const jiga = p.jiga ? parseInt(p.jiga, 10) : null;
+  const jiga = p.jiga_ilp ? parseInt(p.jiga_ilp, 10) : null;
   const area_m2 = Math.round(
     area(feature as unknown as Feature<Polygon | MultiPolygon>),
   );
@@ -331,15 +288,20 @@ export function splitParcelFeature(feature: WfsFeature): ParcelResult {
   );
   const [cLng, cLat] = centerFeature.geometry.coordinates;
 
+  const li_nm = p.ri_nm ?? "";
+  const addr = [p.sido_nm, p.sgg_nm, p.emd_nm, li_nm, jibunNumber]
+    .filter(Boolean)
+    .join(" ");
+
   const jibun: JibunInfo = {
     pnu: p.pnu,
     jibun: jibunNumber,
     isSan,
-    ctp_nm: p.ctp_nm,
-    sig_nm: p.sig_nm,
+    ctp_nm: p.sido_nm,
+    sig_nm: p.sgg_nm,
     emd_nm: p.emd_nm,
-    li_nm: p.li_nm || "",
-    addr: p.addr,
+    li_nm,
+    addr,
   };
   const geometry: ParcelGeometry = {
     jimok,
