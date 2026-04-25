@@ -3,9 +3,11 @@
  *
  * 컴포넌트는 이 파일의 함수만 호출 (vendor 추상화 — RTMS 모름).
  *
- * 캐시:
- *   - 모듈 scope Map (페이지 라이프타임)
- *   - 키 = `${bjd_code}:${months}:${kind}` — 종류별로 독립
+ * 캐시 + URL 정규화:
+ *   - RTMS 는 LAWD_CD(시군구 5자리) 단위 응답이라 같은 시군구는 결과 동일.
+ *   - 호출 시 bjd_code 앞 5자리만 남기고 뒤 5자리는 "00000" 으로 정규화
+ *     → 같은 시군구의 다른 지번 클릭 시 URL 동일 → CDN/client 캐시 hit.
+ *   - 키 = `${LAWD_CD}00000:${months}:${kind}` — 종류별로 독립
  *   - 0건 결과도 캐시 (재호출 방지)
  *
  * Endpoint ↔ 함수:
@@ -56,8 +58,13 @@ export interface NrgTransactionsResult {
 
 const cache = new Map<string, LandTransactionsResult | NrgTransactionsResult>();
 
+/** RTMS 는 시군구 단위 응답 → bjd_code 앞 5자리만 의미 있음. */
+function toSggBjd(bjd: string): string {
+  return bjd.slice(0, 5) + "00000";
+}
+
 function key(bjd: string, months: number, kind: TransactionKind): string {
-  return `${bjd}:${months}:${kind}`;
+  return `${toSggBjd(bjd)}:${months}:${kind}`;
 }
 
 async function fetchByKind(
@@ -66,9 +73,7 @@ async function fetchByKind(
   kind: TransactionKind,
   options?: FetchOptions,
 ): Promise<unknown> {
-  const url = `/api/transactions/by-bjd?bjd_code=${encodeURIComponent(
-    bjdCode,
-  )}&months=${months}&kind=${kind}`;
+  const url = `/api/transactions/by-bjd?bjd_code=${toSggBjd(bjdCode)}&months=${months}&kind=${kind}`;
   const res = await fetch(url, { signal: options?.signal });
   return res.json();
 }

@@ -542,9 +542,9 @@
 | **출처** | RTMS `getRTMSDataSvcLandTrade` (kind=land) / `getRTMSDataSvcNrgTrade` (kind=nrg) |
 | **외부 호출** | N회 (월별 fan-out, 기본 12회 — `Promise.all`, 부분 실패 catch) |
 | **트래픽 한도** | land 1,000/일 · nrg 10,000/일 (각각 별도 활용신청) |
-| **캐시** | `private, s-maxage=21600, max-age=3600` (6h CDN — 이번 달 분 매일 갱신) |
+| **캐시** | `private, s-maxage=21600, max-age=3600` (6h CDN). **wrapper 가 `bjd_code` 를 시군구 단위로 정규화** (앞 5자리 + `00000`) → 같은 시군구 다른 지번 클릭 시 URL/cache key 동일 → CDN/client cache hit (RTMS 호출 0회) |
 | **인증** | 사용자 |
-| **사용처** | ParcelInfoPanel "가격" 탭 → 토지/건물 sub-tab (각각 lazy fetch) |
+| **사용처** | ParcelInfoPanel "가격" 탭 → 토지/건물 sub-tab (각각 lazy fetch). 필터 박스(시군구/읍면동/리/카테고리)는 클라이언트 사이드, 통계·차트·카드 모두 filtered rows 기준 재계산 |
 | **env** | `DATA_GO_KR_KEY` (공공데이터포털 통합 키, 건축HUB 와 동일) |
 | **route** | [route.ts](../web/app/api/transactions/by-bjd/route.ts) · 라이브러리 [land-trade.ts](../web/lib/rtms/land-trade.ts) · [nrg-trade.ts](../web/lib/rtms/nrg-trade.ts) · 통계 [trade-stats.ts](../web/lib/rtms/trade-stats.ts) · wrapper [transactions.ts](../web/lib/api/transactions.ts) |
 
@@ -701,6 +701,7 @@
 | 2026-04-25 | 초기 작성 — 기존 15개 endpoint 정리 + 컨벤션 명문화 |
 | 2026-04-25 | `transactions/by-bjd` 추가 (국토부 토지 실거래가, 월별 fan-out). §2-6 fan-out 예외 단서 추가 |
 | 2026-04-25 | `transactions/by-bjd` 에 `kind=nrg` 추가 (상업·업무용 부동산매매). XML 파서 + User-Agent 헤더. 마스킹 정책 명시 |
+| 2026-04-25 | `transactions/by-bjd` 가격탭 UI 재설계 — 토지/건물 sub-tab + 시군구/읍면동/리/카테고리 필터 박스 (클라이언트 사이드, 통계·차트 동기화). wrapper bjd_code 시군구 정규화로 같은 시군구 cache hit 보장 |
 
 ---
 
@@ -717,6 +718,7 @@
 | DB raw + 메타 JOIN | `capa/by-jibun` (병렬 Promise.all 패턴) |
 | 외부 API 월/페이지 분할 fan-out | `transactions/by-bjd` (Promise.all 12회 + 부분 실패 catch) |
 | raw + 통계 묶음 응답 | `transactions/by-bjd` (rows + stats 한 응답) |
+| 시군구 단위 응답 cache 정규화 | `transactions/by-bjd` (wrapper 가 bjd_code 앞 5자리만 사용해 URL/cache key 정규화) |
 
 ### 6-2. KV 캐시 도입 시점 (Phase 2~)
 

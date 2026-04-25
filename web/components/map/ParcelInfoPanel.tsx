@@ -13,7 +13,7 @@
  *   - 모바일: 하단 바텀시트 (화면 하단부)
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AddrMeta, KepcoDataRow } from "@/lib/types";
 import { hasCapacity } from "@/lib/types";
 import type { JibunInfo, ParcelGeometry } from "@/lib/vworld/parcel";
@@ -31,7 +31,12 @@ import {
   type LandTransactionsResult,
   type NrgTransactionsResult,
 } from "@/lib/api/transactions";
-import type { CategoryStats, MonthlyCount } from "@/lib/rtms/trade-stats";
+import {
+  computeLandStats,
+  computeNrgStats,
+  type CategoryStats,
+  type MonthlyCount,
+} from "@/lib/rtms/trade-stats";
 import {
   classifyPurpose,
   classifyRoof,
@@ -142,9 +147,9 @@ export default function ParcelInfoPanel({
   return (
     <div
       className="absolute left-4 right-4 bottom-4 md:left-auto md:right-4 md:bottom-4
-                 md:w-[460px] max-w-[calc(100%-32px)] bg-white rounded-xl shadow-2xl
+                 md:w-[520px] max-w-[calc(100%-32px)] bg-white rounded-xl shadow-2xl
                  border border-gray-200 overflow-hidden z-10 flex flex-col
-                 h-[62dvh] md:h-[min(540px,calc(100dvh-120px))] kepco-slide-up"
+                 h-[62dvh] md:h-[min(560px,calc(100dvh-120px))] kepco-slide-up"
     >
       {/* 헤더 */}
       <div className="px-3 py-2.5 md:px-4 md:py-3 border-b bg-gray-50 flex items-start justify-between gap-2 flex-shrink-0">
@@ -832,12 +837,36 @@ function PriceTab({
   const bjdCode = jibun.pnu.slice(0, 10);
   const [kind, setKind] = useState<"land" | "nrg">("land");
 
-  // 클릭한 지번의 읍면동(sep_3), 리(sep_4) — 드롭다운 자동 선택용
-  // meta(DB) 우선, 없으면 jibun(VWorld) fallback
-  const myEmd =
-    (meta?.sep_3 ?? jibun.emd_nm)?.trim() || null;
-  const myRi =
-    (meta?.sep_4 ?? jibun.li_nm)?.trim() || null;
+  // 클릭한 지번의 읍면동/리 — 드롭다운 자동 선택용.
+  // VWorld jibun 우선 (parcel API 가 가장 정확), KEPCO meta 는 보조.
+  // 시군구 이름과 같으면 무효 처리 (KEPCO bjd_master 일부 노이즈 방어).
+  const rawEmd = (jibun.emd_nm || meta?.sep_3 || "").trim();
+  const rawRi = (jibun.li_nm || meta?.sep_4 || "").trim();
+  const myEmd = rawEmd && rawEmd !== jibun.sig_nm ? rawEmd : null;
+  const myRi = rawRi || null;
+
+  // 지역 필터는 토지/건물 sub-tab 공유 (영업담당자 시점에 같은 개념).
+  // 카테고리(지목/용도)는 의미 달라 자식에서 각자 관리.
+  const [emdOverride, setEmdOverride] = useState<string | null | undefined>(
+    undefined,
+  );
+  const [riOverride, setRiOverride] = useState<string | null | undefined>(
+    undefined,
+  );
+  const selectedEmd = emdOverride === undefined ? myEmd : emdOverride;
+  const selectedRi = riOverride === undefined ? myRi : riOverride;
+
+  const sharedFilter = {
+    myEmd,
+    myRi,
+    selectedEmd,
+    selectedRi,
+    onEmdChange: (v: string | null) => {
+      setEmdOverride(v);
+      setRiOverride(null);
+    },
+    onRiChange: (v: string | null) => setRiOverride(v),
+  };
 
   return (
     <div className="space-y-3">
@@ -855,25 +884,34 @@ function PriceTab({
 
         {kind === "land" ? (
           <LandSection
+            key={`land:${bjdCode}`}
             bjdCode={bjdCode}
             jibun={jibun}
             geometry={geometry}
             clickedJibun={clickedJibun}
-            myEmd={myEmd}
-            myRi={myRi}
+            shared={sharedFilter}
           />
         ) : (
           <NrgSection
+            key={`nrg:${bjdCode}`}
             bjdCode={bjdCode}
             jibun={jibun}
             clickedJibun={clickedJibun}
-            myEmd={myEmd}
-            myRi={myRi}
+            shared={sharedFilter}
           />
         )}
       </div>
     </div>
   );
+}
+
+interface SharedRegionFilter {
+  myEmd: string | null;
+  myRi: string | null;
+  selectedEmd: string | null;
+  selectedRi: string | null;
+  onEmdChange: (v: string | null) => void;
+  onRiChange: (v: string | null) => void;
 }
 
 function SectionHeader({
@@ -931,34 +969,32 @@ function LandSection({
   jibun,
   geometry,
   clickedJibun,
-  myEmd,
-  myRi,
+  shared,
 }: {
   bjdCode: string;
   jibun: JibunInfo;
   geometry: ParcelGeometry | null;
   clickedJibun: string;
-  myEmd: string | null;
-  myRi: string | null;
+  shared: SharedRegionFilter;
 }) {
+  const { myEmd, myRi, selectedEmd, selectedRi, onEmdChange, onRiChange } =
+    shared;
   const [data, setData] = useState<LandTransactionsResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [months, setMonths] = useState(12);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [selectedEmd, setSelectedEmd] = useState<string | null>(null);
-  const [selectedRi, setSelectedRi] = useState<string | null>(null);
+  const [categoryOverride, setCategoryOverride] = useState<
+    string | null | undefined
+  >(undefined);
   const [visibleCount, setVisibleCount] = useState(5);
-  const initialized = useRef(false);
+  const selectedCategory =
+    categoryOverride === undefined ? null : categoryOverride;
 
   useEffect(() => {
     if (!/^\d{10}$/.test(bjdCode)) return;
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    setData(null);
-    setVisibleCount(5);
-    initialized.current = false;
     fetchLandTransactionsByBjd(bjdCode, months, { signal: controller.signal })
       .then((result) => {
         if (controller.signal.aborted) return;
@@ -974,40 +1010,39 @@ function LandSection({
     return () => controller.abort();
   }, [bjdCode, months]);
 
-  useEffect(() => {
-    if (!data || !geometry?.jimok) return;
-    const found = data.stats.byCategory.find(
-      (c) => c.category === geometry.jimok,
-    );
-    setSelectedCategory(found ? geometry.jimok : null);
-  }, [data, geometry?.jimok]);
-
-  // 데이터 로드 첫 시점에 클릭 지번 읍면/리 자동 선택 (옵션에 있을 때만)
-  useEffect(() => {
-    if (!data || initialized.current) return;
-    initialized.current = true;
-    const emds = new Set<string>();
-    const risByEmd = new Map<string, Set<string>>();
-    for (const r of data.rows) {
-      const { emd, ri } = splitUmdNm(r.umdNm);
-      if (emd) emds.add(emd);
-      if (emd && ri) {
-        if (!risByEmd.has(emd)) risByEmd.set(emd, new Set());
-        risByEmd.get(emd)!.add(ri);
-      }
-    }
-    if (myEmd && emds.has(myEmd)) {
-      setSelectedEmd(myEmd);
-      if (myRi && risByEmd.get(myEmd)?.has(myRi)) {
-        setSelectedRi(myRi);
-      }
-    }
-  }, [data, myEmd, myRi]);
-
   const myJibun = clickedJibun || jibun.jibun;
   const myArea = geometry?.area_m2 ?? 0;
   const isSimilarArea = (a: number) =>
     myArea > 0 && a >= myArea * 0.5 && a <= myArea * 1.5;
+  const sggLabel = `${jibun.ctp_nm} ${jibun.sig_nm}`;
+
+  // 지역만 적용 — 지목 칩 옵션 노출용 (칩 클릭은 자체적으로 더 좁히기)
+  const regionFilteredRows = useMemo(() => {
+    if (!data) return [];
+    return data.rows.filter((r) => {
+      const { emd, ri } = splitUmdNm(r.umdNm);
+      if (selectedEmd && emd !== selectedEmd) return false;
+      if (selectedRi && ri !== selectedRi) return false;
+      return true;
+    });
+  }, [data, selectedEmd, selectedRi]);
+
+  // 모든 필터 적용 — 통계·차트·카드 모두 동기화
+  const fullyFilteredRows = useMemo(() => {
+    if (selectedCategory == null) return regionFilteredRows;
+    return regionFilteredRows.filter(
+      (r) => (r.jimok || "(미상)") === selectedCategory,
+    );
+  }, [regionFilteredRows, selectedCategory]);
+
+  const regionStats = useMemo(
+    () => computeLandStats(regionFilteredRows, months),
+    [regionFilteredRows, months],
+  );
+  const displayStats = useMemo(
+    () => computeLandStats(fullyFilteredRows, months),
+    [fullyFilteredRows, months],
+  );
 
   if (loading && !data) {
     return (
@@ -1021,20 +1056,12 @@ function LandSection({
   }
   if (!data) return null;
 
-  const { rows, stats } = data;
-  const directMatches = rows.filter((r) => r.jibun === myJibun);
-  const { emdOptions, riOptions } = collectUmdRiOptions(rows, selectedEmd);
-  const filtered = rows.filter((r) => {
-    if (
-      selectedCategory &&
-      (r.jimok || "(미상)") !== selectedCategory
-    ) return false;
-    const { emd, ri } = splitUmdNm(r.umdNm);
-    if (selectedEmd && emd !== selectedEmd) return false;
-    if (selectedRi && ri !== selectedRi) return false;
-    return true;
-  });
-  const visible = filtered.slice(0, visibleCount);
+  const directMatches = data.rows.filter((r) => r.jibun === myJibun);
+  const { emdOptions, riOptions } = collectUmdRiOptions(
+    data.rows,
+    selectedEmd,
+  );
+  const visible = fullyFilteredRows.slice(0, visibleCount);
   const filterLabelParts: string[] = [];
   if (selectedEmd) filterLabelParts.push(selectedEmd);
   if (selectedRi) filterLabelParts.push(selectedRi);
@@ -1044,79 +1071,75 @@ function LandSection({
 
   return (
     <div className="space-y-3">
+      <FilterPanel
+        sggLabel={sggLabel}
+        emdOptions={emdOptions}
+        riOptions={riOptions}
+        selectedEmd={selectedEmd}
+        selectedRi={selectedRi}
+        myEmd={myEmd}
+        myRi={myRi}
+        onEmdChange={(v) => {
+          onEmdChange(v);
+          setVisibleCount(5);
+        }}
+        onRiChange={(v) => {
+          onRiChange(v);
+          setVisibleCount(5);
+        }}
+        categoryItems={regionStats.byCategory}
+        selectedCategory={selectedCategory}
+        myCategory={geometry?.jimok ?? ""}
+        onCategoryChange={(v) => {
+          setCategoryOverride(v);
+          setVisibleCount(5);
+        }}
+        categoryLabel="지목"
+      />
+
       <PriceTLDR
-        region={jibun.sig_nm}
+        region={filterLabel ?? jibun.sig_nm}
         months={months}
-        stats={stats}
+        stats={displayStats}
         kindLabel="토지 거래"
       />
-      {stats.total === 0 ? (
+
+      {displayStats.total === 0 ? (
         <EmptyTrades
           months={months}
-          kindLabel="토지"
+          kindLabel={filterLabel ? `${filterLabel} 토지` : "토지"}
           canExpand={months < 24}
           onExpand={() => setMonths(24)}
         />
       ) : (
         <>
-          <Sparkline data={stats.monthly} />
+          <Sparkline data={displayStats.monthly} />
           {directMatches.length > 0 && (
             <DirectMatchCardLand rows={directMatches} />
           )}
-          {stats.byCategory.length > 1 && (
-            <CategoryChips
-              items={stats.byCategory}
-              selected={selectedCategory}
-              mine={geometry?.jimok ?? ""}
-              onSelect={setSelectedCategory}
-            />
-          )}
-          <UmdRiFilter
-            emdOptions={emdOptions}
-            riOptions={riOptions}
-            selectedEmd={selectedEmd}
-            selectedRi={selectedRi}
-            myEmd={myEmd}
-            myRi={myRi}
-            onEmdChange={(v) => {
-              setSelectedEmd(v);
-              setSelectedRi(null);
-              setVisibleCount(5);
-            }}
-            onRiChange={(v) => {
-              setSelectedRi(v);
-              setVisibleCount(5);
-            }}
-          />
           <TradeListHeader
             label="최근 거래"
             filterLabel={filterLabel}
             visibleCount={visible.length}
-            totalCount={filtered.length}
+            totalCount={fullyFilteredRows.length}
           />
-          {filtered.length === 0 ? (
-            <div className="text-[11px] text-gray-500 py-2 text-center">
-              선택한 필터에 해당하는 거래 없음
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              {visible.map((row, i) => (
-                <LandTradeRow
-                  key={`${row.dealYmd}-${row.jibun}-${i}`}
-                  row={row}
-                  isMyJibun={row.jibun === myJibun}
-                  isSimilarArea={isSimilarArea(row.area_m2)}
-                />
-              ))}
-            </div>
-          )}
-          {filtered.length > visibleCount && (
+          <div className="space-y-1.5">
+            {visible.map((row, i) => (
+              <LandTradeRow
+                key={`${row.dealYmd}-${row.jibun}-${i}`}
+                row={row}
+                isMyJibun={row.jibun === myJibun}
+                isSimilarArea={isSimilarArea(row.area_m2)}
+              />
+            ))}
+          </div>
+          {fullyFilteredRows.length > visibleCount && (
             <button
               onClick={() => setVisibleCount((v) => v + 5)}
               className="w-full py-1.5 text-[11px] text-blue-600 hover:bg-blue-50 rounded border border-blue-200"
             >
               더보기 (+
-              {Math.min(5, filtered.length - visibleCount)}건)
+              {Math.min(5, fullyFilteredRows.length - visibleCount)}건)
             </button>
           )}
           {months < 24 && (
@@ -1130,8 +1153,7 @@ function LandSection({
         </>
       )}
       <div className="text-[10px] text-gray-400 leading-snug">
-        출처: 국토부 토지 매매 실거래가 · 시군구 단위 집계 · 평당가 = 거래금액
-        ÷ (면적×0.3025)
+        출처: 국토부 토지 매매 실거래가 · 평당가 = 거래금액 ÷ (면적×0.3025)
         <br />※ 지번 끝자리는 개인정보 보호로 마스킹(예: <code>3*</code>) —
         시군구 시세 비교 용도
       </div>
@@ -1143,33 +1165,27 @@ function NrgSection({
   bjdCode,
   jibun,
   clickedJibun,
-  myEmd,
-  myRi,
+  shared,
 }: {
   bjdCode: string;
   jibun: JibunInfo;
   clickedJibun: string;
-  myEmd: string | null;
-  myRi: string | null;
+  shared: SharedRegionFilter;
 }) {
+  const { myEmd, myRi, selectedEmd, selectedRi, onEmdChange, onRiChange } =
+    shared;
   const [data, setData] = useState<NrgTransactionsResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [months, setMonths] = useState(12);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [selectedEmd, setSelectedEmd] = useState<string | null>(null);
-  const [selectedRi, setSelectedRi] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(5);
-  const initialized = useRef(false);
 
   useEffect(() => {
     if (!/^\d{10}$/.test(bjdCode)) return;
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    setData(null);
-    setVisibleCount(5);
-    initialized.current = false;
     fetchNrgTransactionsByBjd(bjdCode, months, { signal: controller.signal })
       .then((result) => {
         if (controller.signal.aborted) return;
@@ -1185,28 +1201,34 @@ function NrgSection({
     return () => controller.abort();
   }, [bjdCode, months]);
 
-  useEffect(() => {
-    if (!data || initialized.current) return;
-    initialized.current = true;
-    const emds = new Set<string>();
-    const risByEmd = new Map<string, Set<string>>();
-    for (const r of data.rows) {
-      const { emd, ri } = splitUmdNm(r.umdNm);
-      if (emd) emds.add(emd);
-      if (emd && ri) {
-        if (!risByEmd.has(emd)) risByEmd.set(emd, new Set());
-        risByEmd.get(emd)!.add(ri);
-      }
-    }
-    if (myEmd && emds.has(myEmd)) {
-      setSelectedEmd(myEmd);
-      if (myRi && risByEmd.get(myEmd)?.has(myRi)) {
-        setSelectedRi(myRi);
-      }
-    }
-  }, [data, myEmd, myRi]);
-
   const myJibun = clickedJibun || jibun.jibun;
+  const sggLabel = `${jibun.ctp_nm} ${jibun.sig_nm}`;
+
+  const regionFilteredRows = useMemo(() => {
+    if (!data) return [];
+    return data.rows.filter((r) => {
+      const { emd, ri } = splitUmdNm(r.umdNm);
+      if (selectedEmd && emd !== selectedEmd) return false;
+      if (selectedRi && ri !== selectedRi) return false;
+      return true;
+    });
+  }, [data, selectedEmd, selectedRi]);
+
+  const fullyFilteredRows = useMemo(() => {
+    if (selectedCategory == null) return regionFilteredRows;
+    return regionFilteredRows.filter(
+      (r) => (r.buildingUse || "(미상)") === selectedCategory,
+    );
+  }, [regionFilteredRows, selectedCategory]);
+
+  const regionStats = useMemo(
+    () => computeNrgStats(regionFilteredRows, months),
+    [regionFilteredRows, months],
+  );
+  const displayStats = useMemo(
+    () => computeNrgStats(fullyFilteredRows, months),
+    [fullyFilteredRows, months],
+  );
 
   if (loading && !data) {
     return (
@@ -1220,22 +1242,14 @@ function NrgSection({
   }
   if (!data) return null;
 
-  const { rows, stats } = data;
-  const directMatches = rows.filter(
+  const directMatches = data.rows.filter(
     (r) => r.buildingType === "집합" && r.jibun === myJibun,
   );
-  const { emdOptions, riOptions } = collectUmdRiOptions(rows, selectedEmd);
-  const filtered = rows.filter((r) => {
-    if (
-      selectedCategory &&
-      (r.buildingUse || "(미상)") !== selectedCategory
-    ) return false;
-    const { emd, ri } = splitUmdNm(r.umdNm);
-    if (selectedEmd && emd !== selectedEmd) return false;
-    if (selectedRi && ri !== selectedRi) return false;
-    return true;
-  });
-  const visible = filtered.slice(0, visibleCount);
+  const { emdOptions, riOptions } = collectUmdRiOptions(
+    data.rows,
+    selectedEmd,
+  );
+  const visible = fullyFilteredRows.slice(0, visibleCount);
   const filterLabelParts: string[] = [];
   if (selectedEmd) filterLabelParts.push(selectedEmd);
   if (selectedRi) filterLabelParts.push(selectedRi);
@@ -1245,80 +1259,76 @@ function NrgSection({
 
   return (
     <div className="space-y-3">
+      <FilterPanel
+        sggLabel={sggLabel}
+        emdOptions={emdOptions}
+        riOptions={riOptions}
+        selectedEmd={selectedEmd}
+        selectedRi={selectedRi}
+        myEmd={myEmd}
+        myRi={myRi}
+        onEmdChange={(v) => {
+          onEmdChange(v);
+          setVisibleCount(5);
+        }}
+        onRiChange={(v) => {
+          onRiChange(v);
+          setVisibleCount(5);
+        }}
+        categoryItems={regionStats.byCategory}
+        selectedCategory={selectedCategory}
+        myCategory=""
+        onCategoryChange={(v) => {
+          setSelectedCategory(v);
+          setVisibleCount(5);
+        }}
+        categoryLabel="용도"
+      />
+
       <PriceTLDR
-        region={jibun.sig_nm}
+        region={filterLabel ?? jibun.sig_nm}
         months={months}
-        stats={stats}
+        stats={displayStats}
         kindLabel="건물 거래"
       />
-      {stats.total === 0 ? (
+
+      {displayStats.total === 0 ? (
         <EmptyTrades
           months={months}
-          kindLabel="건물"
+          kindLabel={filterLabel ? `${filterLabel} 건물` : "건물"}
           canExpand={months < 24}
           onExpand={() => setMonths(24)}
         />
       ) : (
         <>
-          <Sparkline data={stats.monthly} />
+          <Sparkline data={displayStats.monthly} />
           {directMatches.length > 0 && (
             <DirectMatchCardNrg rows={directMatches} />
           )}
-          {stats.byCategory.length > 1 && (
-            <CategoryChips
-              items={stats.byCategory}
-              selected={selectedCategory}
-              mine=""
-              onSelect={setSelectedCategory}
-            />
-          )}
-          <UmdRiFilter
-            emdOptions={emdOptions}
-            riOptions={riOptions}
-            selectedEmd={selectedEmd}
-            selectedRi={selectedRi}
-            myEmd={myEmd}
-            myRi={myRi}
-            onEmdChange={(v) => {
-              setSelectedEmd(v);
-              setSelectedRi(null);
-              setVisibleCount(5);
-            }}
-            onRiChange={(v) => {
-              setSelectedRi(v);
-              setVisibleCount(5);
-            }}
-          />
           <TradeListHeader
             label="최근 거래"
             filterLabel={filterLabel}
             visibleCount={visible.length}
-            totalCount={filtered.length}
+            totalCount={fullyFilteredRows.length}
           />
-          {filtered.length === 0 ? (
-            <div className="text-[11px] text-gray-500 py-2 text-center">
-              선택한 필터에 해당하는 거래 없음
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              {visible.map((row, i) => (
-                <NrgTradeRow
-                  key={`${row.dealYmd}-${row.jibun}-${i}`}
-                  row={row}
-                  isMyJibun={
-                    row.buildingType === "집합" && row.jibun === myJibun
-                  }
-                />
-              ))}
-            </div>
-          )}
-          {filtered.length > visibleCount && (
+          <div className="space-y-1.5">
+            {visible.map((row, i) => (
+              <NrgTradeRow
+                key={`${row.dealYmd}-${row.jibun}-${i}`}
+                row={row}
+                isMyJibun={
+                  row.buildingType === "집합" && row.jibun === myJibun
+                }
+              />
+            ))}
+          </div>
+          {fullyFilteredRows.length > visibleCount && (
             <button
               onClick={() => setVisibleCount((v) => v + 5)}
               className="w-full py-1.5 text-[11px] text-blue-600 hover:bg-blue-50 rounded border border-blue-200"
             >
               더보기 (+
-              {Math.min(5, filtered.length - visibleCount)}건)
+              {Math.min(5, fullyFilteredRows.length - visibleCount)}건)
             </button>
           )}
           {months < 24 && (
@@ -1332,8 +1342,8 @@ function NrgSection({
         </>
       )}
       <div className="text-[10px] text-gray-400 leading-snug">
-        출처: 국토부 상업·업무용 부동산 매매 · 시군구 단위 · 평당가 = 거래금액
-        ÷ (건물면적×0.3025)
+        출처: 국토부 상업·업무용 부동산 매매 · 평당가 = 거래금액 ÷
+        (건물면적×0.3025)
         <br />※ <b>집합건축물</b>(빌딩/오피스) = 지번 정확 ·{" "}
         <b>일반건축물</b>(단독상가) = 끝자리 마스킹
         <br />※ 공장/창고는 이 데이터에 미포함 — 토지매매 "공장용지" 지목 참조
@@ -1922,7 +1932,12 @@ function collectUmdRiOptions(
  * 도시(공백 0) 시군구는 riOptions 가 자동 0 → 리 드롭다운 자동 숨김.
  * 클릭 지번 sep_3/sep_4 가 옵션에 있으면 ⭐ 표시.
  */
-function UmdRiFilter({
+/**
+ * 필터 박스 — 시군구(고정) / 읍면동 / 리 드롭다운 3개 한 줄 + 지목·용도 칩.
+ * 모든 통계·차트·카드가 이 필터 결과에 동기화.
+ */
+function FilterPanel({
+  sggLabel,
   emdOptions,
   riOptions,
   selectedEmd,
@@ -1931,7 +1946,13 @@ function UmdRiFilter({
   myRi,
   onEmdChange,
   onRiChange,
+  categoryItems,
+  selectedCategory,
+  myCategory,
+  onCategoryChange,
+  categoryLabel,
 }: {
+  sggLabel: string;
   emdOptions: string[];
   riOptions: string[];
   selectedEmd: string | null;
@@ -1940,43 +1961,93 @@ function UmdRiFilter({
   myRi: string | null;
   onEmdChange: (v: string | null) => void;
   onRiChange: (v: string | null) => void;
+  categoryItems: CategoryStats[];
+  selectedCategory: string | null;
+  myCategory: string;
+  onCategoryChange: (v: string | null) => void;
+  categoryLabel: string;
 }) {
-  if (emdOptions.length <= 1 && riOptions.length === 0) return null;
+  // 응답에 없어도 자동 기본값/사용자 선택값을 옵션에 강제 포함 (select 매칭 보장)
+  const emdOptionsDisplay = ensureOption(emdOptions, [myEmd, selectedEmd]);
+  const riOptionsDisplay = ensureOption(riOptions, [myRi, selectedRi]);
+  const selectCls =
+    "text-[11px] px-1.5 py-1 border border-gray-300 rounded bg-white text-gray-700 tabular-nums flex-1 min-w-0";
+
   return (
-    <div className="flex gap-1.5 items-center flex-wrap">
-      <span className="text-[10px] text-gray-500 shrink-0">지역</span>
-      <select
-        value={selectedEmd ?? ""}
-        onChange={(e) => onEmdChange(e.target.value || null)}
-        className="text-[11px] px-1.5 py-1 border border-gray-300 rounded bg-white tabular-nums max-w-[45%]"
-      >
-        <option value="">전체 읍면동</option>
-        {emdOptions.map((emd) => (
-          <option key={emd} value={emd}>
-            {emd === myEmd ? "⭐ " : ""}
-            {emd}
-          </option>
-        ))}
-      </select>
-      {riOptions.length > 0 && (
+    <div className="rounded-lg border border-gray-200 bg-gray-50/60 p-2 space-y-2">
+      <div className="flex items-baseline gap-1">
+        <span className="text-[10px] font-bold text-gray-600">필터</span>
+        <span className="text-[9px] text-gray-400">
+          좁힐수록 통계·차트·카드 모두 갱신
+        </span>
+      </div>
+      {/* 드롭다운 3개 — 한 줄 가로 배치 */}
+      <div className="flex gap-1.5 items-center">
+        <select
+          value={sggLabel}
+          disabled
+          title="시군구는 RTMS API 호출 단위 — 변경 불가"
+          className={`${selectCls} disabled:opacity-100 disabled:cursor-not-allowed disabled:text-gray-700 disabled:bg-gray-100`}
+        >
+          <option value={sggLabel}>{sggLabel}</option>
+        </select>
+        <select
+          value={selectedEmd ?? ""}
+          onChange={(e) => onEmdChange(e.target.value || null)}
+          className={selectCls}
+          title="읍면동"
+        >
+          <option value="">전체 읍면동</option>
+          {emdOptionsDisplay.map((emd) => (
+            <option key={emd} value={emd}>
+              {emd === myEmd ? "⭐ " : ""}
+              {emd}
+            </option>
+          ))}
+        </select>
         <select
           value={selectedRi ?? ""}
           onChange={(e) => onRiChange(e.target.value || null)}
           disabled={!selectedEmd}
-          className="text-[11px] px-1.5 py-1 border border-gray-300 rounded bg-white tabular-nums disabled:opacity-50 disabled:cursor-not-allowed max-w-[45%]"
-          title={!selectedEmd ? "읍면동을 먼저 선택" : undefined}
+          className={`${selectCls} disabled:opacity-50 disabled:cursor-not-allowed disabled:text-gray-400`}
+          title={!selectedEmd ? "읍면동을 먼저 선택" : "리"}
         >
           <option value="">전체 리</option>
-          {riOptions.map((ri) => (
+          {riOptionsDisplay.map((ri) => (
             <option key={ri} value={ri}>
               {ri === myRi ? "⭐ " : ""}
               {ri}
             </option>
           ))}
         </select>
+      </div>
+      {categoryItems.length > 0 && (
+        <div className="flex gap-1.5 items-start">
+          <span className="text-[10px] text-gray-500 shrink-0 w-12 mt-1">
+            {categoryLabel}
+          </span>
+          <div className="flex-1 min-w-0">
+            <CategoryChips
+              items={categoryItems}
+              selected={selectedCategory}
+              mine={myCategory}
+              onSelect={onCategoryChange}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
+}
+
+/** 옵션 배열에 강제 포함시킬 값 (자동 기본값/사용자 선택값) 추가 */
+function ensureOption(
+  base: string[],
+  extras: (string | null)[],
+): string[] {
+  const set = new Set(base);
+  for (const v of extras) if (v) set.add(v);
+  return Array.from(set).sort();
 }
 
 function LocationTab() {
