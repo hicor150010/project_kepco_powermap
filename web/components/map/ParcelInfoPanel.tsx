@@ -21,7 +21,7 @@ import { formatRelativeKst, formatAbsoluteKst } from "@/lib/dateFormat";
 import AddrLine from "./AddrLine";
 import { FacilityCard } from "./FacilityCard";
 
-type TabKey = "parcel" | "electric" | "price" | "location";
+type TabKey = "parcel" | "electric" | "price" | "location" | "regulation";
 
 interface Props {
   jibun: JibunInfo | null;
@@ -44,6 +44,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "electric", label: "전기" },
   { key: "price", label: "가격" },
   { key: "location", label: "입지" },
+  { key: "regulation", label: "규제" },
 ];
 
 export default function ParcelInfoPanel({
@@ -138,6 +139,7 @@ export default function ParcelInfoPanel({
           )}
           {tab === "price" && <PriceTab geometry={geometry} />}
           {tab === "location" && <LocationTab />}
+          {tab === "regulation" && <RegulationTab />}
         </div>
       )}
     </div>
@@ -321,14 +323,29 @@ function PriceTab({ geometry }: { geometry: ParcelGeometry | null }) {
 }
 
 function LocationTab() {
+  // 입지 = 지리적 / 주변 정보 (참고용). 인허가 가능성 자체는 RegulationTab.
   return (
     <div className="py-2">
-      <div className="text-[11px] text-gray-400 mb-1.5">2·3차 개발 예정</div>
+      <div className="text-[11px] text-gray-400 mb-1.5">2차 개발 예정</div>
       <ul className="text-[11px] text-gray-500 space-y-0.5 pl-3 list-disc">
         <li>취락지구 포함 여부</li>
         <li>건축물대장 (용도/층수/건축면적)</li>
-        <li>주택 밀집도 이격거리 판정</li>
-        <li>도로 접근성</li>
+        <li>주변 시설 분포</li>
+      </ul>
+    </div>
+  );
+}
+
+function RegulationTab() {
+  // 규제 = 인허가 가능성 deal-breaker. 3차 핵심 차별화 (이격거리·조례).
+  return (
+    <div className="py-2">
+      <div className="text-[11px] text-gray-400 mb-1.5">3차 개발 예정</div>
+      <ul className="text-[11px] text-gray-500 space-y-0.5 pl-3 list-disc">
+        <li>주택 5가구 500m 이격 판정</li>
+        <li>도로 200m 이격 판정</li>
+        <li>시도별 조례 적용 결과</li>
+        <li>보호구역 (보전산지/농업진흥지역)</li>
       </ul>
     </div>
   );
