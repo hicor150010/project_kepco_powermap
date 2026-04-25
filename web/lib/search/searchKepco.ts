@@ -26,6 +26,8 @@ export interface SearchKepcoResult {
   ji: KepcoDataRow[];
   /** 지번 정확 매칭 실패 → 근접으로 폴백한 경우 true */
   jiFallback: boolean;
+  /** 검색 범위가 너무 광범위해서 폴백 차단된 경우 (시/군 추가 필요 안내용) */
+  tooBroad: boolean;
 }
 
 interface SearchOptions {
@@ -39,11 +41,11 @@ export async function searchKepco({
   keywords,
   lotNo,
   riLimit = 20,
-  jiLimit = 30,
+  jiLimit = 10,
 }: SearchOptions): Promise<SearchKepcoResult> {
   // 키워드 없으면 즉시 빈 결과
   if (keywords.length === 0) {
-    return { ri: [], ji: [], jiFallback: false };
+    return { ri: [], ji: [], jiFallback: false, tooBroad: false };
   }
 
   const supabase = createAdminClient();
@@ -58,16 +60,18 @@ export async function searchKepco({
     throw new Error(`검색 실패: ${error.message}`);
   }
 
-  // RPC가 JSONB로 반환 → { ri, ji, ji_fallback }
+  // RPC가 JSONB로 반환 → { ri, ji, ji_fallback, too_broad }
   const payload = (data ?? {}) as {
     ri?: SearchRiResult[];
     ji?: KepcoDataRow[];
     ji_fallback?: boolean;
+    too_broad?: boolean;
   };
 
   return {
     ri: payload.ri ?? [],
     ji: payload.ji ?? [],
     jiFallback: payload.ji_fallback ?? false,
+    tooBroad: payload.too_broad ?? false,
   };
 }

@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
       ri: result.ri,
       ji: result.ji,
       jiFallback: result.jiFallback,
+      tooBroad: result.tooBroad,
       parsed,
     });
   } catch (err: any) {
