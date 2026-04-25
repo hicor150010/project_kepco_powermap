@@ -34,8 +34,12 @@ import { buildPnuFromBjdAndJibun } from "@/lib/geo/pnu";
 import {
   fetchKepcoCapaByBjdCode,
   fetchKepcoCapaByJibun,
+  clearKepcoCapaCache,
 } from "@/lib/api/kepco";
-import { fetchVworldParcelByPnu } from "@/lib/api/vworld";
+import {
+  fetchVworldParcelByPnu,
+  fetchVworldParcelByLatLng,
+} from "@/lib/api/vworld";
 import { enrichKepcoCapaRowsWithVillageInfo } from "@/lib/api/enrich";
 import {
   emptyFilters,
@@ -83,6 +87,8 @@ export default function MapClient({ isAdmin, email }: Props) {
       if (!r.ok) throw new Error("새로고침 실패");
       const data = await r.json();
       setAllRows(data.rows ?? []);
+      // KEPCO 용량 캐시 비움 (크롤이 갱신했으므로). VWorld 필지/폴리곤은 그대로 유지.
+      clearKepcoCapaCache();
       setSimpleToast(
         mvJson.skipped
           ? "최근에 갱신된 데이터를 불러왔습니다."
@@ -212,9 +218,14 @@ export default function MapClient({ isAdmin, email }: Props) {
   );
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const villageReqSeqRef = useRef(0);
+  const villageAbortRef = useRef<AbortController | null>(null);
 
   const openVillagePanelOnMarkerClick = useCallback(
     async (row: MapSummaryRow) => {
+      // 이전 in-flight fetch 취소 (연타 시 네트워크 비용 절약)
+      villageAbortRef.current?.abort();
+      const controller = new AbortController();
+      villageAbortRef.current = controller;
       const seq = ++villageReqSeqRef.current;
       setSelectedVillage({
         bjdCode: row.bjd_code,
@@ -224,7 +235,9 @@ export default function MapClient({ isAdmin, email }: Props) {
         error: null,
       });
       try {
-        const rawRows = await fetchKepcoCapaByBjdCode(row.bjd_code);
+        const rawRows = await fetchKepcoCapaByBjdCode(row.bjd_code, {
+          signal: controller.signal,
+        });
         if (seq !== villageReqSeqRef.current) return;
         const enriched = enrichKepcoCapaRowsWithVillageInfo(rawRows, [row]);
         setSelectedVillage({
@@ -235,6 +248,7 @@ export default function MapClient({ isAdmin, email }: Props) {
           error: null,
         });
       } catch (err) {
+        if ((err as Error).name === "AbortError") return; // 새 클릭으로 취소됨 — 조용히 무시
         if (seq !== villageReqSeqRef.current) return;
         setSelectedVillage({
           bjdCode: row.bjd_code,
@@ -263,6 +277,7 @@ export default function MapClient({ isAdmin, email }: Props) {
   const [parcelCapa, setParcelCapa] = useState<KepcoDataRow[]>([]);
   const [parcelLoading, setParcelLoading] = useState(false);
   const parcelReqSeqRef = useRef(0);
+  const parcelAbortRef = useRef<AbortController | null>(null);
 
   const openParcelPanelOnJibunClick = useCallback(
     async (row: KepcoDataRow) => {
@@ -271,8 +286,11 @@ export default function MapClient({ isAdmin, email }: Props) {
         setSimpleToast("지번 정보가 부족해 PNU 를 만들 수 없어요.");
         return;
       }
-      // 마을 상세 모달이 열려 있으면 닫고 지번 패널로 전환 (UX: 가린 모달 위에 패널 띄우지 않음)
       setDetailModalOpen(false);
+      // 이전 in-flight fetch 취소 (연타 시 절약)
+      parcelAbortRef.current?.abort();
+      const controller = new AbortController();
+      parcelAbortRef.current = controller;
       const seq = ++parcelReqSeqRef.current;
       setParcelLoading(true);
       setSelectedJibun(null);
@@ -280,8 +298,10 @@ export default function MapClient({ isAdmin, email }: Props) {
       setParcelCapa([]);
       try {
         const [parcelResult, capaRows] = await Promise.all([
-          fetchVworldParcelByPnu(pnu),
-          fetchKepcoCapaByJibun(row.bjd_code, row.addr_jibun ?? ""),
+          fetchVworldParcelByPnu(pnu, { signal: controller.signal }),
+          fetchKepcoCapaByJibun(row.bjd_code, row.addr_jibun ?? "", {
+            signal: controller.signal,
+          }),
         ]);
         if (seq !== parcelReqSeqRef.current) return;
         if (!parcelResult) {
@@ -291,10 +311,10 @@ export default function MapClient({ isAdmin, email }: Props) {
         setSelectedJibun(parcelResult.jibun);
         setSelectedGeometry(parcelResult.geometry);
         setParcelCapa(capaRows);
-        // 필지 중심으로 지도 이동 (moveMapTo 는 아래 정의)
         const c = parcelResult.geometry.center;
         if (c?.lat != null) moveMapToRef.current?.(c.lat, c.lng);
-      } catch {
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return;
         if (seq === parcelReqSeqRef.current) {
           setSimpleToast(`⚠️ ${row.addr_jibun} 조회 중 오류가 발생했어요`);
         }
@@ -387,10 +407,46 @@ export default function MapClient({ isAdmin, email }: Props) {
     [moveMapTo, openVillagePanelOnMarkerClick],
   );
 
-  // 지도 좌표 클릭 (좌표 → 필지) — 다음 step (B) 에서 atomic 호출
+  // 지도 좌표 클릭 (좌표 → 필지). VWorld 가 BBOX → point-in-polygon 으로 정확 1필지 선별.
+  // 응답 jibun.pnu 의 앞 10자리가 bjd_code → 그것으로 KEPCO 용량 추가 호출 (직렬, PNU dependency).
+  // 지번 클릭과 parcelAbortRef/parcelReqSeqRef 공유 (지번 패널이 한 개라 동일 race 가드).
   const openParcelPanelOnMapClick = useCallback(
-    (_lat: number, _lng: number) => {
-      // TODO: fetchVworldParcelByLatLng → PNU 추출 → fetchKepcoCapaByJibun
+    async (lat: number, lng: number) => {
+      parcelAbortRef.current?.abort();
+      const controller = new AbortController();
+      parcelAbortRef.current = controller;
+      const seq = ++parcelReqSeqRef.current;
+      setParcelLoading(true);
+      setSelectedJibun(null);
+      setSelectedGeometry(null);
+      setParcelCapa([]);
+      try {
+        const parcel = await fetchVworldParcelByLatLng(lat, lng, {
+          signal: controller.signal,
+        });
+        if (seq !== parcelReqSeqRef.current) return;
+        if (!parcel) {
+          setSimpleToast("이 위치에 필지가 없습니다 (바다/산 등)");
+          return;
+        }
+        const bjdCode = parcel.jibun.pnu.slice(0, 10);
+        const capaRows = await fetchKepcoCapaByJibun(
+          bjdCode,
+          parcel.jibun.jibun,
+          { signal: controller.signal },
+        );
+        if (seq !== parcelReqSeqRef.current) return;
+        setSelectedJibun(parcel.jibun);
+        setSelectedGeometry(parcel.geometry);
+        setParcelCapa(capaRows);
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return;
+        if (seq === parcelReqSeqRef.current) {
+          setSimpleToast("필지 조회 중 오류가 발생했어요");
+        }
+      } finally {
+        if (seq === parcelReqSeqRef.current) setParcelLoading(false);
+      }
     },
     [],
   );
