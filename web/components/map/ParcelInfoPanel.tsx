@@ -17,6 +17,7 @@ import { useState } from "react";
 import type { KepcoDataRow } from "@/lib/types";
 import { hasCapacity } from "@/lib/types";
 import type { JibunInfo, ParcelGeometry } from "@/lib/vworld/parcel";
+import { formatRelativeKst, formatAbsoluteKst } from "@/lib/dateFormat";
 import AddrLine from "./AddrLine";
 import { FacilityCard } from "./FacilityCard";
 
@@ -195,6 +196,23 @@ function ElectricTab({
     );
   }
 
+  // capa row 별로 updated_at 이 갈라질 수 있음 (분할 저장 경계).
+  // "이 데이터셋에서 가장 최근 확인 시각" 의미로 max 를 사용.
+  // ISO 사전식 비교 대신 Date 변환 비교 (offset 차이에도 안전).
+  let lastUpdatedIso: string | null = null;
+  let lastUpdatedMs = -Infinity;
+  for (const row of capa) {
+    if (!row.updated_at) continue;
+    const ms = new Date(row.updated_at).getTime();
+    if (Number.isNaN(ms)) continue;
+    if (ms > lastUpdatedMs) {
+      lastUpdatedMs = ms;
+      lastUpdatedIso = row.updated_at;
+    }
+  }
+  const relative = formatRelativeKst(lastUpdatedIso);
+  const absolute = formatAbsoluteKst(lastUpdatedIso);
+
   return (
     <div className="space-y-3">
       {matchMode === "nearest_jibun" && nearestJibun && (
@@ -236,6 +254,14 @@ function ElectricTab({
           />
         </div>
       ))}
+      {relative && (
+        <div
+          className="pt-1.5 text-right text-[10px] text-gray-400"
+          title={absolute || undefined}
+        >
+          KEPCO 마지막 확인: {relative}
+        </div>
+      )}
     </div>
   );
 }
