@@ -34,6 +34,7 @@ crawler/fill_coords_*.jsonl
 crawler/fill_coords_*.json
 crawler/fill_bjd_*.jsonl
 crawler/fill_bjd_*.json
+crawler/test_pnu_failures_*.jsonl
 
 # 로컬 전용 런처 (시크릿 하드코딩 포함)
 crawler/run_*_local.py
