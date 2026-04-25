@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import RegionFilter, { applyRegionFilter, EMPTY_REGION, type RegionSelection } from "./RegionFilter";
 import SearchResultList, { type SearchPick } from "./SearchResultList";
 import type { MapSummaryRow, ColumnFilters as Filters, KepcoDataRow } from "@/lib/types";
@@ -71,7 +71,6 @@ function VolumeToggle({
 }
 
 type RiSortKey = "remaining_desc" | "count_desc" | "name_asc";
-type JiSortKey = "remaining_desc" | "jibun_asc" | "name_asc";
 
 export default function FilterPanel({
   totalRows, filters, onChange,
@@ -81,10 +80,6 @@ export default function FilterPanel({
   const [step, setStep] = useState<"volume" | "results">("volume");
   const [step1Rows, setStep1Rows] = useState<MapSummaryRow[]>([]);
   const [riSortKey, setRiSortKey] = useState<RiSortKey>("remaining_desc");
-  const [jiSortKey, setJiSortKey] = useState<JiSortKey>("remaining_desc");
-  const [searchTab, setSearchTab] = useState<"ri" | "ji">("ri");
-  const [jiRows, setJiRows] = useState<KepcoDataRow[]>([]);
-  const [jiLoading, setJiLoading] = useState(false);
   const [region, setRegion] = useState<RegionSelection>(EMPTY_REGION);
 
   const update = (key: keyof Filters, value: Set<string>) =>
@@ -147,72 +142,6 @@ export default function FilterPanel({
     return mapped;
   }, [filteredRows, step, riSortKey]);
 
-  // ── 지번 데이터 fetch ──
-
-  const fetchJi = useCallback(async (addrs: string[]) => {
-    if (addrs.length === 0) { setJiRows([]); return; }
-    setJiLoading(true);
-    try {
-      const res = await fetch("/api/filter-ji", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ addrs, limit: 200 }),
-      });
-      if (!res.ok) throw new Error("조회 실패");
-      const data = await res.json();
-      setJiRows(data.rows ?? []);
-    } catch {
-      setJiRows([]);
-    } finally {
-      setJiLoading(false);
-    }
-  }, []);
-
-  // 지번 정렬 (클라이언트)
-  const sortedJi = useMemo(() => {
-    const arr = [...jiRows];
-    switch (jiSortKey) {
-      case "remaining_desc": {
-        // 3시설 중 최소 잔여 기준
-        const minRemaining = (r: KepcoDataRow) => Math.min(
-          (r.subst_capa ?? 0) - (r.subst_pwr ?? 0),
-          (r.mtr_capa ?? 0) - (r.mtr_pwr ?? 0),
-          (r.dl_capa ?? 0) - (r.dl_pwr ?? 0),
-        );
-        arr.sort((a, b) => minRemaining(b) - minRemaining(a));
-        break;
-      }
-      case "jibun_asc": {
-        const jibunNum = (j: string | null) => {
-          if (!j) return Number.MAX_SAFE_INTEGER;
-          const m = j.match(/\d+/);
-          return m ? parseInt(m[0], 10) : Number.MAX_SAFE_INTEGER;
-        };
-        arr.sort((a, b) => {
-          const addrCmp = (a.geocode_address ?? "").localeCompare(b.geocode_address ?? "", "ko");
-          if (addrCmp !== 0) return addrCmp;
-          return jibunNum(a.addr_jibun) - jibunNum(b.addr_jibun);
-        });
-        break;
-      }
-      case "name_asc":
-        arr.sort((a, b) => (a.geocode_address ?? "").localeCompare(b.geocode_address ?? "", "ko"));
-        break;
-    }
-    return arr;
-  }, [jiRows, jiSortKey]);
-
-  // 지역 필터 변경 시 지번 데이터도 갱신
-  const prevFilteredAddrsRef = useRef<string>("");
-  useEffect(() => {
-    if (step !== "results") return;
-    const addrs = filteredRows.map((r) => r.geocode_address);
-    const key = addrs.join(",");
-    if (key === prevFilteredAddrsRef.current) return;
-    prevFilteredAddrsRef.current = key;
-    fetchJi(addrs);
-  }, [step, filteredRows, fetchJi]);
-
   // ── 핸들러 ──
 
   const handleSearch = () => {
@@ -220,16 +149,12 @@ export default function FilterPanel({
     setStep1Rows(snapshot);
     setRegion(EMPTY_REGION);
     setStep("results");
-    setSearchTab("ri");
     onMapFilter?.(new Set(snapshot.map((r) => r.geocode_address)));
   };
 
   const handleBack = () => {
     setRegion(EMPTY_REGION);
     setStep1Rows([]);
-    setJiRows([]);
-    prevFilteredAddrsRef.current = "";
-    setSearchTab("ri");
     setStep("volume");
     onClearMapFilter?.();
   };
@@ -238,11 +163,7 @@ export default function FilterPanel({
     onChange(emptyFilters());
     setRegion(EMPTY_REGION);
     setRiSortKey("remaining_desc");
-    setJiSortKey("remaining_desc");
     setStep1Rows([]);
-    setJiRows([]);
-    prevFilteredAddrsRef.current = "";
-    setSearchTab("ri");
     setStep("volume");
     onClearMapFilter?.();
   };
@@ -354,89 +275,40 @@ export default function FilterPanel({
       {/* 결과 리스트 — 2단계에서만 표시 */}
       {step === "results" && (
         <div className="border-t border-gray-200">
-          {/* 리/지번 탭 */}
-          <div className="flex border-b border-gray-100 px-2">
-            {(["ri", "ji"] as const).map((t) => {
-              const count = t === "ri" ? conditionResults.length : sortedJi.length;
-              const label = t === "ri" ? "리 단위" : "지번 단위";
-              return (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setSearchTab(t)}
-                  className={`px-3 py-1.5 text-[11px] font-semibold border-b-2 transition-colors flex items-center gap-1 ${
-                    searchTab === t
-                      ? "border-blue-500 text-blue-600"
-                      : "border-transparent text-gray-400 hover:text-gray-600"
-                  }`}
-                >
-                  {label}
-                  <span className={`text-[10px] px-1 rounded-full ${
-                    count > 0
-                      ? searchTab === t ? "bg-blue-500 text-white" : "bg-blue-100 text-blue-700"
-                      : "bg-gray-200 text-gray-500"
-                  }`}>{jiLoading && t === "ji" ? "…" : count}</span>
-                </button>
-              );
-            })}
+          {/* 정렬 + 마을 카운트 (한 줄) */}
+          <div className="flex items-center gap-1 px-2 py-1.5 border-b border-gray-100">
+            {([
+              ["remaining_desc", "잔여용량"],
+              ["count_desc", "건수"],
+              ["name_asc", "가나다"],
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setRiSortKey(key)}
+                className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors ${
+                  riSortKey === key
+                    ? "bg-gray-700 border-gray-700 text-white font-medium"
+                    : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+            <span className="ml-auto text-[10px] text-gray-500">
+              <span className="font-semibold text-blue-600 tabular-nums">
+                {conditionResults.length.toLocaleString()}
+              </span>
+              곳
+            </span>
           </div>
-          {/* 정렬 */}
-          <div className="flex gap-1 px-2 py-1.5 border-b border-gray-100">
-            {searchTab === "ri"
-              ? ([
-                  ["remaining_desc", "잔여용량"],
-                  ["count_desc", "건수"],
-                  ["name_asc", "가나다"],
-                ] as const).map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => setRiSortKey(key)}
-                    className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors ${
-                      riSortKey === key
-                        ? "bg-gray-700 border-gray-700 text-white font-medium"
-                        : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))
-              : ([
-                  ["remaining_desc", "여유용량"],
-                  ["jibun_asc", "지번순"],
-                  ["name_asc", "가나다"],
-                ] as const).map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => setJiSortKey(key)}
-                    className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors ${
-                      jiSortKey === key
-                        ? "bg-gray-700 border-gray-700 text-white font-medium"
-                        : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))
-            }
-          </div>
-          {/* 지번 limit 안내 */}
-          {searchTab === "ji" && sortedJi.length >= 200 && (
-            <div className="bg-amber-50 border-b border-amber-200 px-3 py-1.5 text-[11px] text-amber-800">
-              최대 200건까지 표시됩니다. 지역 필터로 범위를 좁혀 보세요.
-            </div>
-          )}
-          {jiLoading && searchTab === "ji" ? (
-            <div className="px-4 py-8 text-center text-xs text-gray-500">지번 데이터 조회 중...</div>
-          ) : (
-            <SearchResultList
-              mode={searchTab}
-              ri={conditionResults}
-              ji={sortedJi}
-              selectedAddr={selectedAddr}
-              onPick={(pick) => onSearchPick?.(pick)}
-              onJibunPin={onJibunPin}
-            />
-          )}
+          <SearchResultList
+            mode="ri"
+            ri={conditionResults}
+            ji={[]}
+            selectedAddr={selectedAddr}
+            onPick={(pick) => onSearchPick?.(pick)}
+            onJibunPin={onJibunPin}
+          />
         </div>
       )}
     </div>

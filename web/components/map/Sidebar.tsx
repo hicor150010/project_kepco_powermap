@@ -281,7 +281,7 @@ export default function Sidebar({
                 : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
             }`}
           >
-            📋 조건검색
+            📋 마을검색
           </button>
           <button
             type="button"
@@ -460,7 +460,7 @@ export default function Sidebar({
                           </div>
                           <div className="flex items-start gap-1.5">
                             <span className="shrink-0">3.</span>
-                            <span><b>조건검색 탭</b> → 여유용량 있는 곳만 찾기</span>
+                            <span><b>마을검색 탭</b> → 여유용량 있는 마을만 찾기</span>
                           </div>
                         </div>
                       </div>
