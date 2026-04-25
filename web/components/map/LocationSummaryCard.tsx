@@ -3,6 +3,10 @@
 /**
  * 마을 요약 카드.
  *
+ * 데이터 소스:
+ *   - markerRow: MapSummaryRow — 카드 헤더 주소 + 좌표 (마커 데이터에서 즉시)
+ *   - summary: KepcoCapaSummary — 시설별 여유/부족 집계 (마커 클릭 시 RPC 1회)
+ *
  * 핵심 의도:
  *   원본 데이터는 "지번 단위" 1행 = 1지번이지만, 화면에서는 어쩔 수 없이
  *   "리(마을)" 단위로 묶어서 본다. 이때 사용자가 가장 알고 싶어하는 건
@@ -13,30 +17,57 @@
  *   - 시설명 나열 X
  *   - 기준/접수/계획 같은 세부 수치 X (상세 모달에서 확인)
  *   - 변전소/주변압기/배전선로 각각의 여유/부족 비율을 한눈에
+ *
+ * 페이로드:
+ *   raw rows (~30KB gzip) 이 아닌 summary (~80B) 만으로 그려진다.
+ *   summarizeLocation() 호출 제거 — 서버에서 이미 집계해 보냄.
  */
 
-import { useMemo } from "react";
-import type { KepcoDataRow } from "@/lib/types";
-import { hasCapacity } from "@/lib/types";
-import { summarizeLocation, type FacilityCounts } from "@/lib/summarize";
+import type { KepcoCapaSummary, MapSummaryRow } from "@/lib/types";
 import AddrLine from "./AddrLine";
 
 interface Props {
-  rows: KepcoDataRow[] | null;
+  markerRow: MapSummaryRow;
+  summary: KepcoCapaSummary | null;
   loading: boolean;
   onShowDetail: () => void;
   onClose: () => void;
 }
 
+/** 시설 1개의 카운트/비율 — FacilityRatio/MiniBar 입력 */
+interface FacilityRatioData {
+  total: number;
+  okCount: number;
+  noCount: number;
+  okPct: number;
+  noPct: number;
+}
+
+function toRatio(
+  total: number,
+  pair: { avail: number; short: number },
+): FacilityRatioData {
+  const okCount = pair.avail;
+  const noCount = pair.short;
+  return {
+    total,
+    okCount,
+    noCount,
+    okPct: total > 0 ? Math.round((okCount / total) * 100) : 0,
+    noPct: total > 0 ? Math.round((noCount / total) * 100) : 0,
+  };
+}
+
 export default function LocationSummaryCard({
-  rows,
+  markerRow,
+  summary,
   loading,
   onShowDetail,
   onClose,
 }: Props) {
   if (loading) return null;
 
-  if (!rows || rows.length === 0) {
+  if (!summary || summary.total === 0) {
     return (
       <div className="absolute left-4 right-4 bottom-4 md:left-auto md:right-4 md:bottom-4 md:w-[380px] max-w-[calc(100%-32px)] bg-white rounded-xl shadow-2xl border border-gray-200 p-6 z-10 kepco-slide-up">
         <div className="flex items-center justify-between">
@@ -52,14 +83,16 @@ export default function LocationSummaryCard({
     );
   }
 
-  const summary = useMemo(() => summarizeLocation(rows), [rows]);
-  const first = rows[0];
+  const substRatio = toRatio(summary.total, summary.subst);
+  const mtrRatio = toRatio(summary.total, summary.mtr);
+  const dlRatio = toRatio(summary.total, summary.dl);
+
   const locationParts = [
-    first.addr_do,
-    first.addr_si,
-    first.addr_gu,
-    first.addr_dong,
-    first.addr_li && !first.addr_li.includes("기타지역") ? first.addr_li : null,
+    markerRow.addr_do,
+    markerRow.addr_si,
+    markerRow.addr_gu,
+    markerRow.addr_dong,
+    markerRow.addr_li && !markerRow.addr_li.includes("기타지역") ? markerRow.addr_li : null,
   ].filter(Boolean) as string[];
 
   return (
@@ -72,9 +105,9 @@ export default function LocationSummaryCard({
           </div>
           <div className="text-[11px] text-gray-500 mt-0.5">
             {summary.total.toLocaleString()}건
-            {summary.substCounts.noCount > 0 && (
+            {substRatio.noCount > 0 && (
               <span className="text-red-500 ml-1.5">
-                부족 {summary.substCounts.noCount}
+                부족 {substRatio.noCount}
               </span>
             )}
           </div>
@@ -96,16 +129,16 @@ export default function LocationSummaryCard({
 
       {/* 본문 — 데스크톱에서만 시설 비율 표시 */}
       <div className="hidden md:block overflow-y-auto flex-1 px-4 py-4 space-y-4">
-        <FacilityRatio title="변전소" counts={summary.substCounts} />
-        <FacilityRatio title="주변압기" counts={summary.mtrCounts} />
-        <FacilityRatio title="배전선로" counts={summary.dlCounts} />
+        <FacilityRatio title="변전소" counts={substRatio} />
+        <FacilityRatio title="주변압기" counts={mtrRatio} />
+        <FacilityRatio title="배전선로" counts={dlRatio} />
       </div>
 
       {/* 모바일 — 간략 비율 바 */}
       <div className="md:hidden px-3 py-2 flex gap-1.5">
-        <MiniBar label="변전소" counts={summary.substCounts} />
-        <MiniBar label="주변압기" counts={summary.mtrCounts} />
-        <MiniBar label="배전선로" counts={summary.dlCounts} />
+        <MiniBar label="변전소" counts={substRatio} />
+        <MiniBar label="주변압기" counts={mtrRatio} />
+        <MiniBar label="배전선로" counts={dlRatio} />
       </div>
 
       {/* 푸터 — 데스크톱 상세 보기 버튼 */}
@@ -137,7 +170,7 @@ function FacilityRatio({
   counts,
 }: {
   title: string;
-  counts: FacilityCounts;
+  counts: FacilityRatioData;
 }) {
   const { total, okCount, noCount, okPct, noPct } = counts;
 
@@ -213,7 +246,7 @@ function FacilityRatio({
 }
 
 /** 모바일용 미니 비율 바 */
-function MiniBar({ label, counts }: { label: string; counts: FacilityCounts }) {
+function MiniBar({ label, counts }: { label: string; counts: FacilityRatioData }) {
   const { okPct, noPct, okCount, noCount } = counts;
   return (
     <div className="flex-1 min-w-0">
@@ -230,4 +263,3 @@ function MiniBar({ label, counts }: { label: string; counts: FacilityCounts }) {
     </div>
   );
 }
-

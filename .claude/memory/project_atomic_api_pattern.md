@@ -1,6 +1,6 @@
 ---
 name: Atomic API + 클라이언트 enrichment 패턴
-description: atomic endpoint 5종 + lib/api source별 분리 + KepcoCapaRow 클라이언트 enrichment. Phase 2 정규화 후 대응.
+description: atomic endpoint 6종 + lib/api source별 분리 + KepcoCapaRow 클라이언트 enrichment. Phase 2 정규화 후 대응.
 type: project
 ---
 
@@ -11,15 +11,18 @@ Phase 2 (2026-04-23~) 에서 `kepco_capa` 컬럼 정규화 — addr_do/si/gu/don
 
 UI 컴포넌트 (LocationSummaryCard, LocationDetailModal, SearchResultList) 는 `row.addr_do/li` 시멘틱 그대로 — UI 코드 0 변경 원칙. → **클라이언트 enrichment** 로 해결.
 
-## Atomic API 5종 (2026-04-24 작성/검증, 31케이스 통과, commit 2bbf1bb / 6f55577)
+## Atomic API 6종 (2026-04-24~25)
 
 | Endpoint | 입력 | 출력 | 데이터 소스 |
 |---|---|---|---|
+| `/api/capa/summary-by-bjd` | bjd_code | summary (시설별 avail/short) | RPC `get_location_summary` |
 | `/api/capa/by-bjd` | bjd_code | rows[] | RPC `get_location_detail` |
 | `/api/capa/by-jibun` | bjd_code, jibun | rows[] (exact only) | Supabase 직접 SELECT |
 | `/api/parcel/by-pnu` | pnu(19) | jibun, geometry | VWorld WFS fes:Filter (~40ms) |
 | `/api/parcel/by-latlng` | lat, lng | jibun, geometry | VWorld WFS BBOX + PIP |
 | `/api/polygon/by-bjd` | bjd_code | level, full_nm, polygon, center | VWorld lt_c_adri / lt_c_ademd |
+
+**summary vs by-bjd 분리 (2026-04-25)**: 마을 raw rows 가 평균 383행/P90 643/max 1524 → 마커 클릭당 gzip ~30KB. 카드는 시설별 비율 6숫자만 필요 → summary endpoint 신설로 ~80B (99% 절감). raw rows 는 "상세 목록 보기" 클릭 시 lazy fetch.
 
 `/api/polygon/by-bjd` 분기: bjd_code 끝 2자리 "00" → 읍면동 (lt_c_ademd, emd_cd=앞8) / 아니면 리 (lt_c_adri, li_cd=10자리 전체).
 
@@ -27,7 +30,7 @@ UI 컴포넌트 (LocationSummaryCard, LocationDetailModal, SearchResultList) 는
 
 ```
 web/lib/api/
-├── kepco.ts    — fetchKepcoCapa* (by-bjd, by-jibun)
+├── kepco.ts    — fetchKepcoSummaryByBjdCode + fetchKepcoCapa* (by-bjd, by-jibun)
 ├── vworld.ts   — fetchVworldParcel* + fetchVworldAdminPolygonByBjdCode
 └── enrich.ts   — enrichKepcoCapaRow*WithVillageInfo
 

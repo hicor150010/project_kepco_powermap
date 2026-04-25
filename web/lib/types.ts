@@ -104,6 +104,24 @@ export interface MapSummaryResponse {
   generatedAt: string;
 }
 
+/**
+ * 마을 카드용 집계 (get_location_summary RPC).
+ *
+ * raw rows 가 평균 383행/마을이라 카드만 보고 닫는 사용자에게 30KB 다운로드는 낭비.
+ * 카드는 시설별 비율 6개 숫자만 필요 → 이 타입으로 충분.
+ *
+ * DB 는 flat 7컬럼이지만 클라이언트는 시설별 중첩 객체 (UI 가 시설 단위로 순회).
+ * 변환은 /api/capa/summary-by-bjd route 에서 수행.
+ *
+ * 합 보장: avail + short = total (hasCapacity 가 NULL→0 처리해 중간값 없음).
+ */
+export interface KepcoCapaSummary {
+  total: number;
+  subst: { avail: number; short: number };
+  mtr:   { avail: number; short: number };
+  dl:    { avail: number; short: number };
+}
+
 // ──────────────────────────────────────────
 // UI/필터 상태
 // ──────────────────────────────────────────

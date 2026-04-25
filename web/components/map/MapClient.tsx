@@ -32,7 +32,7 @@ import PatentWatermark from "./PatentWatermark";
 import type { JibunInfo, ParcelGeometry } from "@/lib/vworld/parcel";
 import { buildPnuFromBjdAndJibun } from "@/lib/geo/pnu";
 import {
-  fetchKepcoCapaByBjdCode,
+  fetchKepcoSummaryByBjdCode,
   fetchKepcoCapaByJibun,
   clearKepcoCapaCache,
 } from "@/lib/api/kepco";
@@ -41,13 +41,13 @@ import {
   fetchVworldParcelByLatLng,
   fetchVworldAdminPolygonByBjdCode,
 } from "@/lib/api/vworld";
-import { enrichKepcoCapaRowsWithVillageInfo } from "@/lib/api/enrich";
 import {
   emptyFilters,
   type ColumnFilters,
   type MapSummaryRow,
   type MarkerColor,
   type KepcoDataRow,
+  type KepcoCapaSummary,
 } from "@/lib/types";
 
 interface Props {
@@ -216,12 +216,14 @@ export default function MapClient({ isAdmin, email }: Props) {
     return () => clearTimeout(t);
   }, [sidebarOpen, mapInstance, desktopRoadviewSplit]);
 
-  // ─────────────── 마을 클릭 → /api/capa/by-bjd ───────────────
-  // raw rows 는 bjd_code + 시설/용량만 → MapSummaryRow 에서 마을 정보 enrich
+  // ─────────────── 마을 클릭 → /api/capa/summary-by-bjd ───────────────
+  // 카드는 시설별 여유/부족 집계만 필요 → summary 만 받음 (~80B, raw rows 30KB 대비 99% 절감).
+  // 모달용 raw rows 는 "상세 목록 보기" 클릭 시 lazy fetch (다음 단계 작업).
+  // 주소/좌표는 MapSummaryRow (markerRow) 에 이미 있으므로 그것을 통째로 보관.
   interface SelectedVillage {
     bjdCode: string;
-    addr: string;
-    rows: KepcoDataRow[];
+    markerRow: MapSummaryRow;          // 카드 헤더 주소 (addr_do/si/.../li) + 좌표
+    summary: KepcoCapaSummary | null;  // 시설별 여유/부족 집계
     loading: boolean;
     error: string | null;
   }
@@ -242,39 +244,36 @@ export default function MapClient({ isAdmin, email }: Props) {
       const seq = ++villageReqSeqRef.current;
       setSelectedVillage({
         bjdCode: row.bjd_code,
-        addr: row.geocode_address,
-        rows: [],
+        markerRow: row,
+        summary: null,
         loading: true,
         error: null,
       });
-      // KEPCO 용량 + VWorld 행정구역 폴리곤 병렬. allSettled — 폴리곤 실패해도 용량은 표시.
-      const [capaResult, polygonResult] = await Promise.allSettled([
-        fetchKepcoCapaByBjdCode(row.bjd_code, { signal: controller.signal }),
+      // KEPCO 카드 집계 + VWorld 행정구역 폴리곤 병렬. allSettled — 폴리곤 실패해도 카드는 표시.
+      const [summaryResult, polygonResult] = await Promise.allSettled([
+        fetchKepcoSummaryByBjdCode(row.bjd_code, { signal: controller.signal }),
         fetchVworldAdminPolygonByBjdCode(row.bjd_code, {
           signal: controller.signal,
         }),
       ]);
       if (seq !== villageReqSeqRef.current) return;
 
-      // capa 처리
-      if (capaResult.status === "fulfilled") {
-        const enriched = enrichKepcoCapaRowsWithVillageInfo(capaResult.value, [
-          row,
-        ]);
+      // summary 처리
+      if (summaryResult.status === "fulfilled") {
         setSelectedVillage({
           bjdCode: row.bjd_code,
-          addr: row.geocode_address,
-          rows: enriched,
+          markerRow: row,
+          summary: summaryResult.value,
           loading: false,
           error: null,
         });
       } else {
-        const err = capaResult.reason as Error;
+        const err = summaryResult.reason as Error;
         if (err.name === "AbortError") return; // 새 클릭으로 취소
         setSelectedVillage({
           bjdCode: row.bjd_code,
-          addr: row.geocode_address,
-          rows: [],
+          markerRow: row,
+          summary: null,
           loading: false,
           error: String(err.message ?? err),
         });
@@ -596,7 +595,7 @@ export default function MapClient({ isAdmin, email }: Props) {
             onMapReady={setMapInstance}
             measureMode={measureActive}
             measureAddPointRef={measureAddPointRef}
-            selectedAddr={selectedVillage?.addr ?? null}
+            selectedAddr={selectedVillage?.markerRow.geocode_address ?? null}
             mapType={mapType}
             onRenderingChange={(rendering) =>
               setCenterMessage(rendering ? "지도 마커 준비 중..." : null)
@@ -765,17 +764,18 @@ export default function MapClient({ isAdmin, email }: Props) {
           {selectedVillage && !detailModalOpen && !selectedJibun && !parcelLoading && (
             <LocationSummaryCard
               key={selectedVillage.bjdCode}
-              rows={selectedVillage.rows}
+              markerRow={selectedVillage.markerRow}
+              summary={selectedVillage.summary}
               loading={selectedVillage.loading}
               onShowDetail={() => setDetailModalOpen(true)}
               onClose={closeVillagePanel}
             />
           )}
 
-          {/* 마을 상세 모달 ("상세 보기") */}
+          {/* 마을 상세 모달 — 다음 단계에서 raw rows lazy fetch 추가 예정 */}
           {detailModalOpen && selectedVillage && (
             <LocationDetailModal
-              rows={selectedVillage.rows}
+              rows={[]}
               onClose={() => setDetailModalOpen(false)}
               onJibunPin={openParcelPanelOnJibunClick}
               initialSearch=""
