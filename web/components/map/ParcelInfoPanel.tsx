@@ -13,11 +13,27 @@
  *   - 모바일: 하단 바텀시트 (화면 하단부)
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AddrMeta, KepcoDataRow } from "@/lib/types";
 import { hasCapacity } from "@/lib/types";
 import type { JibunInfo, ParcelGeometry } from "@/lib/vworld/parcel";
 import { formatRelativeKst, formatAbsoluteKst } from "@/lib/dateFormat";
+import {
+  fetchBuildingsByPnu,
+  type BuildingTitleInfo,
+} from "@/lib/api/buildings";
+import {
+  classifyPurpose,
+  classifyRoof,
+  classifyStructure,
+  yearsSince,
+  formatBldgYearMonth,
+  toPyeong,
+  NOTEWORTHY_OLD_YEARS,
+  LAND_SOLAR_HINT_BCRAT,
+  type PurposeGrade,
+  type MaterialGrade,
+} from "@/lib/building-hub/classify";
 import AddrLine from "./AddrLine";
 import { FacilityCard } from "./FacilityCard";
 
@@ -83,9 +99,9 @@ export default function ParcelInfoPanel({
   return (
     <div
       className="absolute left-4 right-4 bottom-4 md:left-auto md:right-4 md:bottom-4
-                 md:w-[400px] max-w-[calc(100%-32px)] bg-white rounded-xl shadow-2xl
+                 md:w-[460px] max-w-[calc(100%-32px)] bg-white rounded-xl shadow-2xl
                  border border-gray-200 overflow-hidden z-10 flex flex-col
-                 h-[55dvh] md:h-[min(440px,calc(100dvh-120px))] kepco-slide-up"
+                 h-[62dvh] md:h-[min(540px,calc(100dvh-120px))] kepco-slide-up"
     >
       {/* 헤더 */}
       <div className="px-3 py-2.5 md:px-4 md:py-3 border-b bg-gray-50 flex items-start justify-between gap-2 flex-shrink-0">
@@ -167,38 +183,328 @@ function ParcelTab({
   jibun: JibunInfo;
   geometry: ParcelGeometry | null;
 }) {
+  // 탭 활성화 시점에 lazy fetch (1 atomic = 1 외부 호출).
+  // 같은 PNU 재방문은 모듈 scope 캐시로 0회.
+  const [buildings, setBuildings] = useState<BuildingTitleInfo[]>([]);
+  const [bldgLoading, setBldgLoading] = useState(false);
+  const [bldgError, setBldgError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!jibun.pnu) return;
+    const controller = new AbortController();
+    setBldgLoading(true);
+    setBldgError(null);
+    setBuildings([]);
+    fetchBuildingsByPnu(jibun.pnu, { signal: controller.signal })
+      .then((rows) => {
+        if (controller.signal.aborted) return;
+        setBuildings(rows);
+      })
+      .catch((err: unknown) => {
+        if ((err as Error)?.name === "AbortError") return;
+        setBldgError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setBldgLoading(false);
+      });
+    return () => controller.abort();
+  }, [jibun.pnu]);
+
   return (
-    <dl className="space-y-2.5 text-sm">
-      <Row label="주소">
-        <span className="text-gray-900">{jibun.addr}</span>
-      </Row>
-      <Row label="지번">
-        <span className="text-gray-900 font-mono">{jibun.jibun}</span>
-        {jibun.isSan && (
-          <span className="ml-1.5 text-[10px] text-orange-700 bg-orange-50 px-1.5 py-0.5 rounded">
-            산
+    <div className="space-y-3">
+      <dl className="space-y-2.5 text-sm">
+        <Row label="주소">
+          <span className="text-gray-900">{jibun.addr}</span>
+        </Row>
+        <Row label="지번">
+          <span className="text-gray-900 font-mono">{jibun.jibun}</span>
+          {jibun.isSan && (
+            <span className="ml-1.5 text-[10px] text-orange-700 bg-orange-50 px-1.5 py-0.5 rounded">
+              산
+            </span>
+          )}
+        </Row>
+        {geometry && (
+          <>
+            <Row label="지목">
+              <span className="text-gray-900">{geometry.jimok || "-"}</span>
+            </Row>
+            <Row label="면적">
+              <span className="text-gray-900 tabular-nums">
+                {geometry.area_m2.toLocaleString()}㎡
+              </span>
+              <span className="text-gray-400 ml-1.5 tabular-nums">
+                ({Math.round(geometry.area_m2 * M2_TO_PYEONG).toLocaleString()}평)
+              </span>
+            </Row>
+          </>
+        )}
+        <Row label="PNU">
+          <span className="text-gray-500 text-[11px] font-mono">{jibun.pnu}</span>
+        </Row>
+      </dl>
+
+      {/* 건축물대장 — 영업 결정 1차 필터 (공장/창고 vs 주택) */}
+      <div className="pt-3 border-t border-gray-100">
+        <div className="text-xs font-semibold text-gray-700 mb-2">건축물대장</div>
+        {bldgLoading ? (
+          <div className="text-xs text-gray-500 py-1">건축물 정보 불러오는 중...</div>
+        ) : bldgError ? (
+          <div className="text-xs text-red-600 py-1">조회 실패: {bldgError}</div>
+        ) : buildings.length === 0 ? (
+          <div className="text-xs text-gray-500 py-1">등록된 건축물 없음 (빈 땅)</div>
+        ) : (
+          <div className="space-y-1.5">
+            {buildings.map((b, i) => (
+              <BuildingCard key={i} info={b} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BuildingCard({ info }: { info: BuildingTitleInfo }) {
+  const purposeGrade = classifyPurpose(info.mainPurpsCdNm);
+  const roofGrade = classifyRoof(info.roofCdNm, info.etcRoof);
+  const strctGrade = classifyStructure(info.strctCdNm);
+  const years = yearsSince(info.useAprDay);
+  const roofLabel = info.etcRoof || info.roofCdNm || "-";
+  const hasExtras =
+    info.atchBldCnt > 0 ||
+    info.oudrAutoUtcnt > 0 ||
+    info.hhldCnt > 0 ||
+    info.hoCnt > 0;
+  const hasSiteInfo = info.platArea != null || info.bcRat != null;
+
+  return (
+    <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
+      {/* TL;DR 헤더 — 용도 배지 + 건물명 + 연식 */}
+      <div className="px-3 py-2 bg-gradient-to-r from-gray-50 to-white flex items-center gap-2 flex-wrap border-b border-gray-100">
+        {info.mainPurpsCdNm && (
+          <PurposeBadge grade={purposeGrade}>{info.mainPurpsCdNm}</PurposeBadge>
+        )}
+        {info.bldNm && (
+          <span className="text-xs font-semibold text-gray-800 truncate">
+            {info.bldNm}
           </span>
         )}
-      </Row>
-      {geometry && (
-        <>
-          <Row label="지목">
-            <span className="text-gray-900">{geometry.jimok || "-"}</span>
-          </Row>
-          <Row label="면적">
-            <span className="text-gray-900 tabular-nums">
-              {geometry.area_m2.toLocaleString()}㎡
+        {info.useAprDay && (
+          <span className="ml-auto text-[11px] tabular-nums whitespace-nowrap">
+            <span className="text-gray-500">
+              {formatBldgYearMonth(info.useAprDay)}
             </span>
-            <span className="text-gray-400 ml-1.5 tabular-nums">
-              ({Math.round(geometry.area_m2 * M2_TO_PYEONG).toLocaleString()}평)
-            </span>
-          </Row>
-        </>
+            {years != null && (
+              <span
+                className={`ml-1 ${
+                  years >= NOTEWORTHY_OLD_YEARS
+                    ? "text-red-600 font-semibold"
+                    : "text-gray-400"
+                }`}
+                title={
+                  years >= NOTEWORTHY_OLD_YEARS
+                    ? "노후 건물 — 옥상 구조 안전성 별도 검토 권장"
+                    : undefined
+                }
+              >
+                ({years}년차)
+              </span>
+            )}
+          </span>
+        )}
+      </div>
+
+      {/* 옥상 태양광 잠재력 — 영업 핵심 */}
+      <Section title="옥상 태양광 잠재력" tone="primary">
+        {info.archArea != null && (
+          <Metric label="건축면적">
+            <AreaValue m2={info.archArea} />
+          </Metric>
+        )}
+        <Metric label="지붕">
+          <GradedValue grade={roofGrade}>{roofLabel}</GradedValue>
+        </Metric>
+        <Metric label="구조">
+          <GradedValue grade={strctGrade}>{info.strctCdNm ?? "-"}</GradedValue>
+        </Metric>
+        <Metric label="높이·층수">
+          <span className="text-gray-900 tabular-nums">
+            {info.heit != null ? `${info.heit}m` : "-"}
+            <span className="text-gray-400 mx-1.5">·</span>
+            {info.grndFlrCnt}F
+            {info.ugrndFlrCnt > 0 && `/B${info.ugrndFlrCnt}`}
+          </span>
+        </Metric>
+      </Section>
+
+      {/* 부지 · 확장 여지 */}
+      {hasSiteInfo && (
+        <Section title="부지 · 확장 여지" tone="muted">
+          {info.platArea != null && (
+            <Metric label="대지면적">
+              <AreaValue m2={info.platArea} />
+            </Metric>
+          )}
+          {info.bcRat != null && (
+            <Metric label="건폐율">
+              <span className="text-gray-900 tabular-nums">{info.bcRat}%</span>
+              {info.bcRat < 60 && (
+                <span className="text-emerald-700 text-[10px] ml-1.5 font-medium">
+                  여유 {Math.round(100 - info.bcRat)}%
+                </span>
+              )}
+            </Metric>
+          )}
+          {info.vlRat != null && info.vlRat !== info.bcRat && (
+            <Metric label="용적률">
+              <span className="text-gray-900 tabular-nums">{info.vlRat}%</span>
+            </Metric>
+          )}
+          {info.bcRat != null && info.bcRat < LAND_SOLAR_HINT_BCRAT && (
+            <div className="text-[10px] text-emerald-700 font-medium mt-1.5 pl-[72px] leading-snug">
+              마당 여유 큼 — 노지·캐노피 추가 영업 검토 권장
+            </div>
+          )}
+        </Section>
       )}
-      <Row label="PNU">
-        <span className="text-gray-500 text-[11px] font-mono">{jibun.pnu}</span>
-      </Row>
-    </dl>
+
+      {/* 기타 (있을 때만) */}
+      {hasExtras && (
+        <Section title="기타" tone="subtle">
+          {info.atchBldCnt > 0 && (
+            <Metric label="부속건물">
+              <span className="text-gray-900 tabular-nums">
+                {info.atchBldCnt}동 ({info.atchBldArea.toLocaleString()}㎡)
+              </span>
+            </Metric>
+          )}
+          {info.oudrAutoUtcnt > 0 && (
+            <Metric label="옥외주차">
+              <span className="text-gray-900 tabular-nums">
+                {info.oudrAutoUtcnt}대
+              </span>
+            </Metric>
+          )}
+          {info.hhldCnt > 0 && (
+            <Metric label="세대수">
+              <span className="text-gray-900 tabular-nums">{info.hhldCnt}</span>
+            </Metric>
+          )}
+          {info.hoCnt > 0 && (
+            <Metric label="호수">
+              <span className="text-gray-900 tabular-nums">{info.hoCnt}</span>
+            </Metric>
+          )}
+        </Section>
+      )}
+    </div>
+  );
+}
+
+function PurposeBadge({
+  grade,
+  children,
+}: {
+  grade: PurposeGrade;
+  children: React.ReactNode;
+}) {
+  const cls =
+    grade === "go"
+      ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+      : grade === "skip"
+        ? "bg-gray-100 text-gray-600 border-gray-200"
+        : "bg-amber-100 text-amber-800 border-amber-200";
+  return (
+    <span
+      className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${cls}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function GradedValue({
+  grade,
+  children,
+}: {
+  grade: MaterialGrade;
+  children: React.ReactNode;
+}) {
+  const dot =
+    grade === "ideal"
+      ? "bg-emerald-500"
+      : grade === "ok"
+        ? "bg-amber-500"
+        : grade === "poor"
+          ? "bg-red-500"
+          : "bg-gray-300";
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={`w-1.5 h-1.5 rounded-full ${dot} shrink-0`} />
+      <span className="text-gray-900">{children}</span>
+    </span>
+  );
+}
+
+function AreaValue({ m2 }: { m2: number }) {
+  return (
+    <span>
+      <span className="text-gray-900 tabular-nums">{m2.toLocaleString()}㎡</span>
+      <span className="text-gray-400 text-[11px] ml-1 tabular-nums">
+        ({toPyeong(m2).toLocaleString()}평)
+      </span>
+    </span>
+  );
+}
+
+function Section({
+  title,
+  tone,
+  children,
+}: {
+  title: string;
+  tone: "primary" | "muted" | "subtle";
+  children: React.ReactNode;
+}) {
+  const bg =
+    tone === "primary"
+      ? "bg-blue-50/40"
+      : tone === "muted"
+        ? "bg-gray-50/60"
+        : "bg-white";
+  const titleCls =
+    tone === "primary"
+      ? "text-blue-900"
+      : tone === "muted"
+        ? "text-gray-700"
+        : "text-gray-500";
+  return (
+    <div className={`px-3 py-2 ${bg} border-t border-gray-100`}>
+      <div
+        className={`text-[10px] font-bold mb-1.5 tracking-wide ${titleCls}`}
+      >
+        {title}
+      </div>
+      <dl className="space-y-1 text-xs">{children}</dl>
+    </div>
+  );
+}
+
+function Metric({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-baseline gap-2">
+      <dt className="text-gray-500 w-16 shrink-0">{label}</dt>
+      <dd className="flex-1 min-w-0 flex items-center flex-wrap gap-x-1">
+        {children}
+      </dd>
+    </div>
   );
 }
 
@@ -403,8 +709,8 @@ function LocationTab() {
       <div className="text-[11px] text-gray-400 mb-1.5">2차 개발 예정</div>
       <ul className="text-[11px] text-gray-500 space-y-0.5 pl-3 list-disc">
         <li>취락지구 포함 여부</li>
-        <li>건축물대장 (용도/층수/건축면적)</li>
-        <li>주변 시설 분포</li>
+        <li>주변 도로 거리 (도로 SHP)</li>
+        <li>주변 태양광 허가 분포 (경쟁사)</li>
       </ul>
     </div>
   );

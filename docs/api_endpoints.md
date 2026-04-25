@@ -27,7 +27,7 @@
 
 ## 1. 전체 목차
 
-### 데이터 조회 (사용자 호출, 9개)
+### 데이터 조회 (사용자 호출, 10개)
 
 | Endpoint | Method | 출처 | 외부호출 | 캐시 | 사용처 |
 |---|---|---|---|---|---|
@@ -40,6 +40,7 @@
 | [`/api/parcel/by-pnu`](#get-apiparcelby-pnu) | GET | VWorld WFS (FILTER) | 1 | `s-maxage=86400` | 필지 + 가격 탭 + 폴리곤 |
 | [`/api/parcel/by-latlng`](#get-apiparcelby-latlng) | GET | VWorld WFS (BBOX) | 1 | `s-maxage=86400` | 지도 직접 클릭 |
 | [`/api/polygon/by-bjd`](#get-apipolygonby-bjd) | GET | VWorld lt_c_adri/ademd | 1 | `s-maxage=604800` | 마을 음영 폴리곤 |
+| [`/api/buildings/by-pnu`](#get-apibuildingsby-pnu) | GET | 건축HUB (getBrTitleInfo) | 1 | `s-maxage=86400` | 필지 탭 (lazy) |
 
 ### 운영 (관리자/시스템, 6개)
 
@@ -56,7 +57,6 @@
 
 | Endpoint | 출처 | 사용 탭 | 상태 |
 |---|---|---|---|
-| `/api/buildings/by-jibun` | 건축HUB | 입지 | 🚧 작업 예정 |
 | `/api/transactions/by-bjd` | 국토부 토지매매 | 가격 | 🚧 |
 | `/api/auctions/by-pnu` | 캠코 온비드 | 가격 | 🚧 |
 | `/api/auctions/list-by-region` | 캠코 온비드 | 지도 마커 | 🚧 |
@@ -165,7 +165,7 @@
 
 ---
 
-## 3. Spec 카드 (데이터 조회 9개)
+## 3. Spec 카드 (데이터 조회 10개)
 
 ### `GET /api/map-summary`
 
@@ -453,6 +453,81 @@
 // 매칭 실패
 { ok: true, bjd_code, level: null, full_nm: null, polygon: null, center: null }
 ```
+
+---
+
+### `GET /api/buildings/by-pnu`
+
+> PNU 19자리 → 건축물대장 표제부 (메인 건물 정보) — 영업 결정 1차 필터
+
+| 항목 | 값 |
+|---|---|
+| **출처** | 건축HUB `getBrTitleInfo` (국토부 BldRgstHubService) |
+| **외부 호출** | 1 |
+| **캐시** | `private, s-maxage=86400, max-age=3600` (건축물대장은 신축/철거 외엔 불변) |
+| **인증** | 사용자 |
+| **사용처** | ParcelInfoPanel "필지" 탭 활성화 시 lazy fetch |
+| **env** | `DATA_GO_KR_KEY` (공공데이터포털 통합 키) |
+| **route** | [route.ts](../web/app/api/buildings/by-pnu/route.ts) · 라이브러리 [title.ts](../web/lib/building-hub/title.ts) · 영업 분류 [classify.ts](../web/lib/building-hub/classify.ts) · wrapper [buildings.ts](../web/lib/api/buildings.ts) |
+
+**입력 (Query)**
+| 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| `pnu` | string(19) | ✅ | PNU 19자리. 11번째 자리(산구분)는 자동으로 건축HUB `platGbCd` (1=일반→0, 2=산→1) 로 변환 |
+
+**출력 (200)**
+```ts
+{ ok: true, pnu: string, rows: BuildingTitleInfo[] }   // 0건도 정상 (빈 땅/미등록)
+
+// BuildingTitleInfo (응답 78필드 → 영업가치 22개 발췌)
+{
+  // ── 식별 / TL;DR
+  bldNm: string | null,           // 건물명 (대부분 빈 값)
+  mainPurpsCdNm: string,          // 주용도 ("공장", "단독주택", ...)
+  regstrKindCdNm: string | null,  // 건축물 종류 ("일반건축물"/"집합건축물")
+  mainAtchGbCdNm: string | null,  // "주건축물"/"부속건축물"
+  useAprDay: string | null,       // 사용승인일 YYYYMMDD
+  pmsDay: string | null,          // 허가일 YYYYMMDD
+  stcnsDay: string | null,        // 착공일 YYYYMMDD
+
+  // ── 옥상 태양광 핵심
+  archArea: number | null,        // 건축면적 ㎡ (≈ 옥상 가용)
+  totArea: number,                // 연면적 ㎡
+  roofCdNm: string | null,        // 지붕 ("평슬래브", "기타지붕")
+  etcRoof: string | null,         // 기타지붕 시 실제자재 ("판넬", "슬레이트")
+  strctCdNm: string | null,       // 구조 ("일반철골구조" 등)
+  heit: number | null,            // 건축물 높이 m
+  grndFlrCnt: number,             // 지상층수
+  ugrndFlrCnt: number,            // 지하층수
+
+  // ── 부지 · 확장
+  platArea: number | null,        // 대지면적 ㎡
+  bcRat: number | null,           // 건폐율 %
+  vlRat: number | null,           // 용적률 %
+  atchBldCnt: number,             // 부속건물 수
+  atchBldArea: number,            // 부속건물 합계 ㎡
+
+  // ── 조건부 (있을 때만 UI 노출)
+  hhldCnt: number,                // 세대수 (주택)
+  fmlyCnt: number,                // 가구수
+  hoCnt: number,                  // 호수
+  oudrAutoUtcnt: number,          // 옥외주차 대수
+
+  // ── 주소 (헤더 중복이지만 대장 권위 출처)
+  newPlatPlc: string | null,
+  platPlc: string | null
+}
+```
+
+**구현 노트**:
+- 한 지번에 여러 동(부속건축물 등) 가능 → `rows` 는 배열
+- 산지 처리는 PNU 11번째 자리만 split → 별도 jibun 문자열 파싱 X
+- 표제부 응답은 한 번에 78필드 옴. 영업가치 22개만 정규화 (추가 호출 0)
+- 영업 분류는 [classify.ts](../web/lib/building-hub/classify.ts) 1곳에서 관리:
+  - `classifyPurpose()` — 용도 → go/review/skip (공장·창고·축사 = go, 주택 = skip)
+  - `classifyRoof()` — 지붕 → ideal/ok/poor (슬래브 = ideal, 슬레이트 = poor)
+  - `classifyStructure()` — 구조 → ideal/ok/poor (RC = ideal, 목조 = poor)
+- 7개 operation 중 표제부만 우선 도입. 총괄/층별/전유부 등은 미래 별도 atomic
 
 ---
 
