@@ -39,6 +39,7 @@ import {
 import {
   fetchVworldParcelByPnu,
   fetchVworldParcelByLatLng,
+  fetchVworldAdminPolygonByBjdCode,
 } from "@/lib/api/vworld";
 import { enrichKepcoCapaRowsWithVillageInfo } from "@/lib/api/enrich";
 import {
@@ -216,6 +217,7 @@ export default function MapClient({ isAdmin, email }: Props) {
   const [selectedVillage, setSelectedVillage] = useState<SelectedVillage | null>(
     null,
   );
+  const [villagePolygon, setVillagePolygon] = useState<number[][][] | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const villageReqSeqRef = useRef(0);
   const villageAbortRef = useRef<AbortController | null>(null);
@@ -234,12 +236,20 @@ export default function MapClient({ isAdmin, email }: Props) {
         loading: true,
         error: null,
       });
-      try {
-        const rawRows = await fetchKepcoCapaByBjdCode(row.bjd_code, {
+      // KEPCO 용량 + VWorld 행정구역 폴리곤 병렬. allSettled — 폴리곤 실패해도 용량은 표시.
+      const [capaResult, polygonResult] = await Promise.allSettled([
+        fetchKepcoCapaByBjdCode(row.bjd_code, { signal: controller.signal }),
+        fetchVworldAdminPolygonByBjdCode(row.bjd_code, {
           signal: controller.signal,
-        });
-        if (seq !== villageReqSeqRef.current) return;
-        const enriched = enrichKepcoCapaRowsWithVillageInfo(rawRows, [row]);
+        }),
+      ]);
+      if (seq !== villageReqSeqRef.current) return;
+
+      // capa 처리
+      if (capaResult.status === "fulfilled") {
+        const enriched = enrichKepcoCapaRowsWithVillageInfo(capaResult.value, [
+          row,
+        ]);
         setSelectedVillage({
           bjdCode: row.bjd_code,
           addr: row.geocode_address,
@@ -247,16 +257,25 @@ export default function MapClient({ isAdmin, email }: Props) {
           loading: false,
           error: null,
         });
-      } catch (err) {
-        if ((err as Error).name === "AbortError") return; // 새 클릭으로 취소됨 — 조용히 무시
-        if (seq !== villageReqSeqRef.current) return;
+      } else {
+        const err = capaResult.reason as Error;
+        if (err.name === "AbortError") return; // 새 클릭으로 취소
         setSelectedVillage({
           bjdCode: row.bjd_code,
           addr: row.geocode_address,
           rows: [],
           loading: false,
-          error: String((err as Error).message ?? err),
+          error: String(err.message ?? err),
         });
+      }
+
+      // polygon 처리 — 실패는 시각 보조라 조용히 (음영만 안 그려짐)
+      if (polygonResult.status === "fulfilled") {
+        setVillagePolygon(
+          (polygonResult.value?.polygon as number[][][] | undefined) ?? null,
+        );
+      } else {
+        setVillagePolygon(null);
       }
     },
     [],
@@ -264,7 +283,9 @@ export default function MapClient({ isAdmin, email }: Props) {
 
   const closeVillagePanel = useCallback(() => {
     villageReqSeqRef.current++;
+    villageAbortRef.current?.abort();
     setSelectedVillage(null);
+    setVillagePolygon(null);
     setDetailModalOpen(false);
   }, []);
 
@@ -576,6 +597,7 @@ export default function MapClient({ isAdmin, email }: Props) {
             cadastralActive={cadastralActive}
             onParcelClick={openParcelPanelOnMapClick}
             highlightedParcel={selectedGeometry?.polygon ?? null}
+            villagePolygon={villagePolygon}
           />
 
           {/* 지도 상태 바 */}

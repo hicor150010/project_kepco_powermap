@@ -28,3 +28,4 @@
 - [전기용량 데이터 신선도 표시](project_data_freshness.md) ⏰ — 용량 정보에 "언제 수집됐는지" 타임스탬프 배지 추가 (한전온 실값 불일치 대응)
 - 🧭 [함수 네이밍 컨벤션](feedback_naming_convention.md) — `[verb][Source][Entity][By+Input]`. 30+ 함수 추가 대비 충돌 0
 - ⚛️ [Atomic API + 클라이언트 enrichment](project_atomic_api_pattern.md) ⭐ — 5종 endpoint + lib/api source별 분리 + KepcoCapaRow enrichment (2026-04-24)
+- 🏷 [표준코드 번들 — 보류](project_stdcode_bundle.md) — xlsx 7종 보유. DB X / 정적 JSON O 결정. UI 개발 시점에 구현

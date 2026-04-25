@@ -71,6 +71,11 @@ interface Props {
    * null 이면 폴리곤 제거.
    */
   highlightedParcel?: number[][][] | null;
+  /**
+   * 마을(리/읍면동) 행정구역 폴리곤 좌표. 같은 형식.
+   * 마을 마커 클릭 시 해당 행정구역 영역에 옅은 음영 표시.
+   */
+  villagePolygon?: number[][][] | null;
 }
 
 /**
@@ -294,6 +299,7 @@ export default function KakaoMap({
   cadastralActive = false,
   onParcelClick,
   highlightedParcel = null,
+  villagePolygon = null,
 }: Props) {
   // 지적편집도/필지 콜백 — 클로저 stale 방지
   const onParcelClickRef = useRef(onParcelClick);
@@ -808,11 +814,45 @@ export default function KakaoMap({
         strokeStyle: "solid",
         fillColor: "#f97316",
         fillOpacity: 0.22,
+        zIndex: 5, // 마을 음영(1) 위에 그려짐
       });
       polygon.setMap(map);
       highlightPolygonsRef.current.push(polygon);
     });
   }, [loaded, highlightedParcel]);
+
+  // ─────────────────────────────────────────────
+  // 마을(리/읍면동) 행정구역 음영 — 옅은 파란 채움
+  // 같은 패턴이지만 ref 분리: 필지 폴리곤(주황)과 독립 표시
+  // ─────────────────────────────────────────────
+  const villagePolygonsRef = useRef<any[]>([]);
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!loaded || !map) return;
+
+    villagePolygonsRef.current.forEach((p) => p.setMap(null));
+    villagePolygonsRef.current = [];
+
+    if (!villagePolygon || villagePolygon.length === 0) return;
+
+    villagePolygon.forEach((ring) => {
+      const path = ring.map(
+        ([lng, lat]) => new window.kakao.maps.LatLng(lat, lng),
+      );
+      const polygon = new window.kakao.maps.Polygon({
+        path,
+        strokeWeight: 2,
+        strokeColor: "#2563eb", // blue-600
+        strokeOpacity: 0.85,
+        strokeStyle: "solid",
+        fillColor: "#2563eb",
+        fillOpacity: 0.08,
+        zIndex: 1, // 필지 폴리곤(5) 아래 — 가려지지 않게
+      });
+      polygon.setMap(map);
+      villagePolygonsRef.current.push(polygon);
+    });
+  }, [loaded, villagePolygon]);
 
   return <div ref={mapRef} className="w-full h-full" />;
 }
