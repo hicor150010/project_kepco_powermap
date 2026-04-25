@@ -353,15 +353,18 @@ export default function KakaoMap({
 
     const map = new window.kakao.maps.Map(mapRef.current, {
       center: new window.kakao.maps.LatLng(36.5, 127.8),
-      level: 13,
+      level: 12,
     });
     mapInstanceRef.current = map;
     (window as any).__kepcoMap = map;
 
-    // 줌 컨트롤은 MapToolbar에서 커스텀으로 제공 — SDK 내장 컨트롤 제거
+    // 사이드바 토글 / 윈도우 리사이즈 시 타일 재계산
+    const ro = new ResizeObserver(() => map.relayout());
+    ro.observe(mapRef.current);
 
-    // 상위(MapClient)에 인스턴스 전달 → 거리재기 등 도구가 직접 제어
     onMapReady?.(map);
+
+    return () => ro.disconnect();
   }, [loaded, onMapReady]);
 
   // 지도 타입 변경
