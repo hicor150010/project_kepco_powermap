@@ -1,14 +1,18 @@
 /**
- * 토지 실거래가 통계 헬퍼 — 영업담당자 시점의 의사결정 지표.
+ * 토지·상업업무용 실거래가 통계 헬퍼 — 영업담당자 시점의 의사결정 지표.
  *
  * UI(PriceTab) 가 직접 계산하지 않고 이 모듈만 import.
  * 통계 정의 변경(중앙값 vs 평균, 추세 산정 기간 등) 시 이 파일만 수정.
  *
  * 모든 함수는 0건/부분 데이터에서도 안전 (null 또는 0 반환).
+ *
+ * 토지(`computeLandStats`) — 카테고리 = 지목(전/답/임/대)
+ * 건물(`computeNrgStats`) — 카테고리 = buildingUse(업무/근린생활/판매/숙박)
  */
 
 import type { LandTransaction } from "./land-trade";
 import { recentYearMonths } from "./land-trade";
+import type { NrgTransaction } from "./nrg-trade";
 
 export type TrendDirection = "up" | "down" | "flat";
 
@@ -22,14 +26,14 @@ export interface TradeStats {
    * 양쪽 모두 거래 있을 때만 계산. 부족하면 null.
    */
   trend: { pct: number; direction: TrendDirection } | null;
-  /** 지목별 집계 (count 내림차순) */
-  byJimok: JimokStats[];
+  /** 카테고리별 집계 (count 내림차순) — 토지=지목 / 건물=용도 */
+  byCategory: CategoryStats[];
   /** 월별 거래 건수 (sparkline 용, 과거 → 최신 정렬) */
   monthly: MonthlyCount[];
 }
 
-export interface JimokStats {
-  jimok: string;
+export interface CategoryStats {
+  category: string;
   count: number;
   medianPricePerPyeong: number;
 }
@@ -40,13 +44,31 @@ export interface MonthlyCount {
   count: number;
 }
 
-/**
- * rows + months → 영업담당자가 한눈에 볼 수 있는 통계 묶음.
- * months 는 sparkline 0 채우기 + 추세 분할 기준에 사용.
- */
-export function computeStats(
+interface BaseTradeRow {
+  dealYmd: string;
+  pricePerPyeong: number;
+}
+
+/** 토지 거래 → 영업담당자 통계 (지목별) */
+export function computeLandStats(
   rows: LandTransaction[],
   months: number,
+): TradeStats {
+  return computeStatsImpl(rows, months, (r) => r.jimok || "(미상)");
+}
+
+/** 상업·업무용 거래 → 영업담당자 통계 (buildingUse 별) */
+export function computeNrgStats(
+  rows: NrgTransaction[],
+  months: number,
+): TradeStats {
+  return computeStatsImpl(rows, months, (r) => r.buildingUse || "(미상)");
+}
+
+function computeStatsImpl<T extends BaseTradeRow>(
+  rows: T[],
+  months: number,
+  categoryOf: (row: T) => string,
 ): TradeStats {
   const total = rows.length;
 
@@ -55,17 +77,17 @@ export function computeStats(
       total: 0,
       medianPricePerPyeong: null,
       trend: null,
-      byJimok: [],
+      byCategory: [],
       monthly: emptyMonthly(months),
     };
   }
 
   const medianPricePerPyeong = median(rows.map((r) => r.pricePerPyeong));
   const trend = computeTrend(rows, months);
-  const byJimok = computeByJimok(rows);
+  const byCategory = computeByCategory(rows, categoryOf);
   const monthly = computeMonthly(rows, months);
 
-  return { total, medianPricePerPyeong, trend, byJimok, monthly };
+  return { total, medianPricePerPyeong, trend, byCategory, monthly };
 }
 
 /**
@@ -73,8 +95,8 @@ export function computeStats(
  * - 양쪽 모두 거래 1건 이상 필요
  * - ±1% 미만 = flat (의미 있는 변화로 보지 않음)
  */
-function computeTrend(
-  rows: LandTransaction[],
+function computeTrend<T extends BaseTradeRow>(
+  rows: T[],
   months: number,
 ): TradeStats["trend"] {
   const half = Math.max(1, Math.floor(months / 2));
@@ -98,25 +120,28 @@ function computeTrend(
   return { pct: rounded, direction };
 }
 
-function computeByJimok(rows: LandTransaction[]): JimokStats[] {
+function computeByCategory<T extends BaseTradeRow>(
+  rows: T[],
+  categoryOf: (row: T) => string,
+): CategoryStats[] {
   const map = new Map<string, number[]>();
   for (const r of rows) {
-    const key = r.jimok || "(미상)";
+    const key = categoryOf(r);
     const list = map.get(key);
     if (list) list.push(r.pricePerPyeong);
     else map.set(key, [r.pricePerPyeong]);
   }
   return Array.from(map.entries())
-    .map(([jimok, prices]) => ({
-      jimok,
+    .map(([category, prices]) => ({
+      category,
       count: prices.length,
       medianPricePerPyeong: median(prices),
     }))
     .sort((a, b) => b.count - a.count);
 }
 
-function computeMonthly(
-  rows: LandTransaction[],
+function computeMonthly<T extends BaseTradeRow>(
+  rows: T[],
   months: number,
 ): MonthlyCount[] {
   const yms = recentYearMonths(months);

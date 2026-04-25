@@ -41,16 +41,26 @@ export interface LandTransaction {
   price_won: number;
   /** 평당가 원/평 (계산값) */
   pricePerPyeong: number;
-  /** 용도지역 ("계획관리지역" 등). RTMS 응답 필드명 = landUse */
+  /** 용도지역 ("계획관리지역" 등). raw 필드명 = landUse */
   zoning: string | null;
-  /** 거래유형 ("직거래"/"중개"). raw 보존, UI 미노출 */
+  /** 거래유형 ("직거래"/"중개거래") */
   dealType: string | null;
   /** 읍면동명 ("개진면" 등) */
   umdNm: string;
+  /** 시군구명 ("강남구" 등) — 헤더에 있지만 raw 보존 */
+  sggNm: string;
+  /** 중개업소 시군구 ("서울 강남구" 등). 토지는 대부분 비어있음 */
+  estateAgentSggNm: string | null;
+  /** 정정 거래일 ("2025-08-12"). 정정/해제된 경우만 채워짐 — 가격 무효 가능 */
+  cdealDay: string | null;
+  /** 정정 유형 ("해제" 등). cdealDay 와 함께 등장 */
+  cdealType: string | null;
+  /** 공유 거래 유형 ("공유" 등). 채워지면 단독 거래 X = 평당가 왜곡 가능 */
+  shareDealingType: string | null;
 }
 
 /**
- * RTMS 응답 item — 2026-04-25 강남구 라이브 호출로 검증한 실측 필드명.
+ * RTMS 응답 item — 2026-04-25 강남구 라이브 호출로 검증한 실측 필드.
  * 새 필드 발견 시 normalize() 만 보정.
  */
 interface RtmsItem {
@@ -63,9 +73,13 @@ interface RtmsItem {
   jimok?: string; // "대"
   landUse?: string; // "용도미지정"
   umdNm?: string; // "자곡동"
+  sggNm?: string; // "강남구"
   dealingGbn?: string; // "직거래"
-  // 기타 응답에 포함되지만 미사용: cdealDay, cdealType, sggCd, sggNm,
-  // estateAgentSggNm, shareDealingType
+  estateAgentSggNm?: string; // 보통 빈 값
+  cdealDay?: string; // 정정거래 ISO ("2025-08-12") — 거의 빈 값
+  cdealType?: string; // 정정유형 — 거의 빈 값
+  shareDealingType?: string; // 공유거래 유형 — 거의 빈 값
+  // 미사용: sggCd (코드, sggNm 으로 충분)
   [key: string]: unknown;
 }
 
@@ -205,6 +219,11 @@ function normalize(it: RtmsItem): LandTransaction | null {
     zoning: clean(it.landUse),
     dealType: clean(it.dealingGbn),
     umdNm: clean(it.umdNm) ?? "",
+    sggNm: clean(it.sggNm) ?? "",
+    estateAgentSggNm: clean(it.estateAgentSggNm),
+    cdealDay: clean(it.cdealDay),
+    cdealType: clean(it.cdealType),
+    shareDealingType: clean(it.shareDealingType),
   };
 }
 

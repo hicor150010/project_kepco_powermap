@@ -41,7 +41,7 @@
 | [`/api/parcel/by-latlng`](#get-apiparcelby-latlng) | GET | VWorld WFS (BBOX) | 1 | `s-maxage=86400` | 지도 직접 클릭 |
 | [`/api/polygon/by-bjd`](#get-apipolygonby-bjd) | GET | VWorld lt_c_adri/ademd | 1 | `s-maxage=604800` | 마을 음영 폴리곤 |
 | [`/api/buildings/by-pnu`](#get-apibuildingsby-pnu) | GET | 건축HUB (getBrTitleInfo) | 1 | `s-maxage=86400` | 필지 탭 (lazy) |
-| [`/api/transactions/by-bjd`](#get-apitransactionsby-bjd) | GET | 국토부 RTMS 토지매매 | N (월별 fan-out) | `s-maxage=21600` | 가격 탭 (lazy) |
+| [`/api/transactions/by-bjd`](#get-apitransactionsby-bjd) | GET | 국토부 RTMS 토지/상업업무용 | N (월별 fan-out) | `s-maxage=21600` | 가격 탭 (lazy, kind 분기) |
 
 ### 운영 (관리자/시스템, 6개)
 
@@ -535,52 +535,66 @@
 
 ### `GET /api/transactions/by-bjd`
 
-> 시군구 단위 토지 실거래가 + 영업담당자용 통계 (중앙값/추세/지목별/sparkline)
+> 시군구 단위 실거래가 + 영업담당자용 통계 (kind 로 토지/상업업무용 분기)
 
 | 항목 | 값 |
 |---|---|
-| **출처** | 국토부 RTMS `getRTMSDataSvcLandTrade` |
+| **출처** | RTMS `getRTMSDataSvcLandTrade` (kind=land) / `getRTMSDataSvcNrgTrade` (kind=nrg) |
 | **외부 호출** | N회 (월별 fan-out, 기본 12회 — `Promise.all`, 부분 실패 catch) |
+| **트래픽 한도** | land 1,000/일 · nrg 10,000/일 (각각 별도 활용신청) |
 | **캐시** | `private, s-maxage=21600, max-age=3600` (6h CDN — 이번 달 분 매일 갱신) |
 | **인증** | 사용자 |
-| **사용처** | ParcelInfoPanel "가격" 탭 활성화 시 lazy fetch |
+| **사용처** | ParcelInfoPanel "가격" 탭 → 토지/건물 sub-tab (각각 lazy fetch) |
 | **env** | `DATA_GO_KR_KEY` (공공데이터포털 통합 키, 건축HUB 와 동일) |
-| **route** | [route.ts](../web/app/api/transactions/by-bjd/route.ts) · 라이브러리 [land-trade.ts](../web/lib/rtms/land-trade.ts) · 통계 [trade-stats.ts](../web/lib/rtms/trade-stats.ts) · wrapper [transactions.ts](../web/lib/api/transactions.ts) |
+| **route** | [route.ts](../web/app/api/transactions/by-bjd/route.ts) · 라이브러리 [land-trade.ts](../web/lib/rtms/land-trade.ts) · [nrg-trade.ts](../web/lib/rtms/nrg-trade.ts) · 통계 [trade-stats.ts](../web/lib/rtms/trade-stats.ts) · wrapper [transactions.ts](../web/lib/api/transactions.ts) |
 
 **입력 (Query)**
 | 이름 | 타입 | 필수 | 기본값 | 설명 |
 |---|---|---|---|---|
 | `bjd_code` | string(10) | ✅ | — | 행안부 법정동 코드. 앞 5자리 = `LAWD_CD` 변환 |
 | `months` | number | - | 12 | 1~24 (UI 0건 시 24로 확장 토글) |
+| `kind` | `"land"\|"nrg"` | - | `"land"` | 토지매매 / 상업·업무용 부동산매매 |
 
-**출력 (200)**
+**출력 (200)** — 공통 envelope, `rows` 타입은 `kind` 별 다름
 ```ts
 {
   ok: true,
   bjd_code: string,
+  kind: "land" | "nrg",
   months: number,
-  rows: LandTransaction[],   // 날짜 내림차순. 0건 정상.
+  rows: LandTransaction[] | NrgTransaction[],
   stats: {
     total: number,
-    medianPricePerPyeong: number | null,        // 0건 시 null
+    medianPricePerPyeong: number | null,
     trend: { pct: number; direction: 'up'|'down'|'flat' } | null,
-    byJimok: Array<{ jimok, count, medianPricePerPyeong }>,
-    monthly: Array<{ ym: string; count: number }>,  // sparkline (0 채움 보장)
+    byCategory: Array<{ category, count, medianPricePerPyeong }>,
+    monthly: Array<{ ym: string; count: number }>,
   }
 }
 
-// LandTransaction (RTMS raw → 영업가치 정규화)
+// LandTransaction (raw 12필드 → 발췌 15필드 정규화)
 {
-  dealYmd: string,         // "2025-10"
-  dealDate: string | null, // "2025-10-15"
-  jibun: string,           // "178-3"
-  jimok: string,           // "답"
-  area_m2: number,         // 980
-  price_won: number,       // 14_200_000 (raw 만원 → 원 변환)
-  pricePerPyeong: number,  // 145_000 (계산값)
-  zoning: string | null,   // "계획관리지역"
-  dealType: string | null, // "직거래"/"중개" (UI 미노출)
-  umdNm: string,           // "개진면"
+  dealYmd, dealDate, jibun, jimok,
+  area_m2, price_won, pricePerPyeong,
+  zoning, dealType, umdNm, sggNm,
+  estateAgentSggNm, cdealDay, cdealType, shareDealingType,
+}
+
+// NrgTransaction (raw 22필드 → 발췌 19필드 정규화)
+{
+  dealYmd, dealDate, jibun,
+  buildingType,        // "일반" / "집합"
+  buildingUse,         // "업무"/"제2종근린생활"/"판매"/"숙박" 등
+  buildingAr,          // 건물면적 ㎡
+  price_won,
+  pricePerPyeong,      // 건물면적 기준 (옥상 임대 가치 비교)
+  buildYear,           // 준공년도
+  floor,               // 층 (집합건축물만)
+  plottageAr,          // 대지면적 (일반건축물만)
+  zoning, dealType,
+  buyerGbn, slerGbn,   // 매수자/매도자 (법인/개인)
+  estateAgentSggNm, sggNm, umdNm,
+  cdealDay, cdealType, shareDealingType,
 }
 ```
 
@@ -588,10 +602,15 @@
 
 **구현 노트**:
 - "1 atomic = 1 외부 호출" 원칙 예외 (§2-6) — RTMS 가 시군구+월 단위만 지원
+- 응답 = XML (JSON 미지원) → `fast-xml-parser`. `User-Agent` 헤더 필수 (없으면 400 Request Blocked)
 - 부분 실패 허용: 12회 중 일부 월 실패 시 해당 월만 빈 배열 (전체 실패 X)
-- `resultCode "03"` (NO_DATA) = 거래 0건 정상 처리
-- 추세는 후반 6개월 vs 전반 6개월 평당가 중앙값 비교 (양쪽 모두 ≥1건일 때만)
-- 통계 계산은 [trade-stats.ts](../web/lib/rtms/trade-stats.ts) 1곳에서 관리
+- `resultCode "03"` (NO_DATA) = 거래 0건 정상
+- 추세는 후반 6개월 vs 전반 6개월 평당가 중앙값 비교 (양쪽 모두 ≥1건)
+- **마스킹 정책 (실측)**:
+  - 토지 — 모든 지번 끝자리 마스킹 (예: `3*`, `10*`)
+  - 건물(nrg) — `buildingType="집합"` 정확 / `="일반"` 마스킹
+- **공장/창고 매매는 nrg 에 미포함** — 토지매매의 "공장용지" 지목 참조
+- 통계 계산은 [trade-stats.ts](../web/lib/rtms/trade-stats.ts) 1곳에서 관리 (Land/Nrg 공통 로직)
 
 ---
 
@@ -681,6 +700,7 @@
 |---|---|
 | 2026-04-25 | 초기 작성 — 기존 15개 endpoint 정리 + 컨벤션 명문화 |
 | 2026-04-25 | `transactions/by-bjd` 추가 (국토부 토지 실거래가, 월별 fan-out). §2-6 fan-out 예외 단서 추가 |
+| 2026-04-25 | `transactions/by-bjd` 에 `kind=nrg` 추가 (상업·업무용 부동산매매). XML 파서 + User-Agent 헤더. 마스킹 정책 명시 |
 
 ---
 

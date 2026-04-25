@@ -23,12 +23,15 @@ import {
   type BuildingTitleInfo,
 } from "@/lib/api/buildings";
 import {
-  fetchTransactionsByBjd,
+  fetchLandTransactionsByBjd,
+  fetchNrgTransactionsByBjd,
   type LandTransaction,
+  type NrgTransaction,
   type TradeStats,
-  type TransactionsResult,
+  type LandTransactionsResult,
+  type NrgTransactionsResult,
 } from "@/lib/api/transactions";
-import type { JimokStats, MonthlyCount } from "@/lib/rtms/trade-stats";
+import type { CategoryStats, MonthlyCount } from "@/lib/rtms/trade-stats";
 import {
   classifyPurpose,
   classifyRoof,
@@ -153,7 +156,7 @@ export default function ParcelInfoPanel({
               <div className="text-sm text-gray-600 py-1">이 위치에 필지 없음</div>
             )
           ) : (
-            <div className="font-semibold text-xs md:text-sm text-gray-900 truncate">
+            <div className="font-bold text-sm md:text-base text-gray-900 truncate">
               <AddrLine parts={headerParts} />
             </div>
           )}
@@ -311,7 +314,7 @@ function ParcelHero({
               <span className="text-sm font-semibold text-gray-500 ml-0.5">평</span>
             </span>
             <span className="text-[11px] text-gray-500 tabular-nums">
-              {Math.round(geometry.area_m2).toLocaleString()}㎡
+              ({Math.round(geometry.area_m2).toLocaleString()}㎡)
             </span>
           </>
         )}
@@ -574,7 +577,7 @@ function AreaLine({
             <span className="text-xs font-semibold text-gray-500 ml-0.5">평</span>
           </span>
           <span className="text-[11px] text-gray-500 tabular-nums">
-            {Math.round(arch).toLocaleString()}㎡
+            ({Math.round(arch).toLocaleString()}㎡)
           </span>
         </div>
       )}
@@ -804,6 +807,12 @@ function ElectricTab({
  *   - 서버는 12회 fan-out (월별), 부분 실패 허용 (월별 catch)
  *   - 0건/일부 월 0건 모두 안전 (UI 폴백)
  */
+/**
+ * 가격탭 — 토지/건물 sub-tab 분리 (영업담당자 시점).
+ *
+ * 토지(land)  default 자동 fetch — 시군구 평당가 시세 (부지 매수 영업)
+ * 건물(nrg)   사용자 클릭 시 lazy fetch — 빌딩/오피스 (집합건축물 = 정확 지번)
+ */
 function PriceTab({
   jibun,
   geometry,
@@ -814,11 +823,80 @@ function PriceTab({
   clickedJibun: string;
 }) {
   const bjdCode = jibun.pnu.slice(0, 10);
-  const [data, setData] = useState<TransactionsResult | null>(null);
+  const [kind, setKind] = useState<"land" | "nrg">("land");
+
+  return (
+    <div className="space-y-3">
+      {geometry && <JigaSection geometry={geometry} />}
+
+      <div className="border-t border-gray-200 pt-3 space-y-3">
+        <KindTabs kind={kind} onChange={setKind} />
+
+        {kind === "land" ? (
+          <LandSection
+            bjdCode={bjdCode}
+            jibun={jibun}
+            geometry={geometry}
+            clickedJibun={clickedJibun}
+          />
+        ) : (
+          <NrgSection
+            bjdCode={bjdCode}
+            jibun={jibun}
+            clickedJibun={clickedJibun}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function KindTabs({
+  kind,
+  onChange,
+}: {
+  kind: "land" | "nrg";
+  onChange: (k: "land" | "nrg") => void;
+}) {
+  const tabs = [
+    { k: "land" as const, label: "토지" },
+    { k: "nrg" as const, label: "건물(상업·업무)" },
+  ];
+  return (
+    <div className="flex gap-1 p-0.5 bg-gray-100 rounded-lg">
+      {tabs.map((t) => (
+        <button
+          key={t.k}
+          onClick={() => onChange(t.k)}
+          className={`flex-1 py-1.5 text-[11px] font-semibold rounded-md transition-colors ${
+            kind === t.k
+              ? "bg-white text-blue-700 shadow-sm"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function LandSection({
+  bjdCode,
+  jibun,
+  geometry,
+  clickedJibun,
+}: {
+  bjdCode: string;
+  jibun: JibunInfo;
+  geometry: ParcelGeometry | null;
+  clickedJibun: string;
+}) {
+  const [data, setData] = useState<LandTransactionsResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [months, setMonths] = useState(12);
-  const [selectedJimok, setSelectedJimok] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(5);
 
   useEffect(() => {
@@ -828,7 +906,7 @@ function PriceTab({
     setError(null);
     setData(null);
     setVisibleCount(5);
-    fetchTransactionsByBjd(bjdCode, months, { signal: controller.signal })
+    fetchLandTransactionsByBjd(bjdCode, months, { signal: controller.signal })
       .then((result) => {
         if (controller.signal.aborted) return;
         setData(result);
@@ -843,11 +921,12 @@ function PriceTab({
     return () => controller.abort();
   }, [bjdCode, months]);
 
-  // 클릭한 지번의 지목이 거래 데이터에 있으면 자동 선택 (영업담당자가 보고 싶은 비교 대상)
   useEffect(() => {
     if (!data || !geometry?.jimok) return;
-    const found = data.stats.byJimok.find((j) => j.jimok === geometry.jimok);
-    setSelectedJimok(found ? geometry.jimok : null);
+    const found = data.stats.byCategory.find(
+      (c) => c.category === geometry.jimok,
+    );
+    setSelectedCategory(found ? geometry.jimok : null);
   }, [data, geometry?.jimok]);
 
   const myJibun = clickedJibun || jibun.jibun;
@@ -857,124 +936,270 @@ function PriceTab({
 
   if (loading && !data) {
     return (
-      <div className="space-y-3">
-        {geometry && <JigaSection geometry={geometry} />}
-        <div className="text-xs text-gray-500 py-4 text-center">
-          실거래가 불러오는 중... (최근 {months}개월)
-        </div>
+      <div className="text-xs text-gray-500 py-4 text-center">
+        토지 실거래가 불러오는 중... (최근 {months}개월)
       </div>
     );
   }
-
   if (error) {
-    return (
-      <div className="space-y-3">
-        {geometry && <JigaSection geometry={geometry} />}
-        <div className="text-xs text-red-600 py-2">조회 실패: {error}</div>
-      </div>
-    );
+    return <div className="text-xs text-red-600 py-2">조회 실패: {error}</div>;
   }
-
-  if (!data) {
-    return geometry ? <JigaSection geometry={geometry} /> : <ComingSoon />;
-  }
+  if (!data) return null;
 
   const { rows, stats } = data;
   const directMatches = rows.filter((r) => r.jibun === myJibun);
-  const filtered = selectedJimok
-    ? rows.filter((r) => (r.jimok || "(미상)") === selectedJimok)
+  const filtered = selectedCategory
+    ? rows.filter((r) => (r.jimok || "(미상)") === selectedCategory)
     : rows;
   const visible = filtered.slice(0, visibleCount);
 
   return (
-    <div className="space-y-3 text-sm">
-      {geometry && <JigaSection geometry={geometry} />}
-
-      <div className="border-t border-gray-200 pt-3 space-y-3">
-        <PriceTLDR
-          region={jibun.sig_nm}
+    <div className="space-y-3">
+      <PriceTLDR
+        region={jibun.sig_nm}
+        months={months}
+        stats={stats}
+        kindLabel="토지 거래"
+      />
+      {stats.total === 0 ? (
+        <EmptyTrades
           months={months}
-          stats={stats}
+          kindLabel="토지"
+          canExpand={months < 24}
+          onExpand={() => setMonths(24)}
         />
-
-        {stats.total === 0 ? (
-          <EmptyTrades
-            months={months}
-            canExpand={months < 24}
-            onExpand={() => setMonths(24)}
+      ) : (
+        <>
+          <Sparkline data={stats.monthly} />
+          {directMatches.length > 0 && (
+            <DirectMatchCardLand rows={directMatches} />
+          )}
+          {stats.byCategory.length > 1 && (
+            <CategoryChips
+              items={stats.byCategory}
+              selected={selectedCategory}
+              mine={geometry?.jimok ?? ""}
+              onSelect={setSelectedCategory}
+            />
+          )}
+          <TradeListHeader
+            label="최근 거래"
+            filterLabel={selectedCategory}
+            visibleCount={visible.length}
+            totalCount={filtered.length}
           />
-        ) : (
-          <>
-            <Sparkline data={stats.monthly} />
-
-            {directMatches.length > 0 && (
-              <DirectMatchCard rows={directMatches} />
-            )}
-
-            {stats.byJimok.length > 1 && (
-              <JimokChips
-                items={stats.byJimok}
-                selected={selectedJimok}
-                myJimok={geometry?.jimok ?? ""}
-                onSelect={setSelectedJimok}
-              />
-            )}
-
-            <div className="space-y-1.5">
-              <div className="flex items-baseline justify-between">
-                <div className="text-[11px] font-semibold text-gray-700">
-                  최근 거래
-                  {selectedJimok && (
-                    <span className="text-gray-500 font-normal ml-1">
-                      ({selectedJimok}만)
-                    </span>
-                  )}
-                </div>
-                <div className="text-[10px] text-gray-400 tabular-nums">
-                  {visible.length} / {filtered.length}
-                </div>
-              </div>
-              {filtered.length === 0 ? (
-                <div className="text-[11px] text-gray-500 py-2 text-center">
-                  선택한 지목에 해당하는 거래 없음
-                </div>
-              ) : (
-                visible.map((row, i) => (
-                  <TradeRow
-                    key={`${row.dealYmd}-${row.jibun}-${i}`}
-                    row={row}
-                    isMyJibun={row.jibun === myJibun}
-                    isSimilarArea={isSimilarArea(row.area_m2)}
-                  />
-                ))
-              )}
-              {filtered.length > visibleCount && (
-                <button
-                  onClick={() => setVisibleCount((v) => v + 5)}
-                  className="w-full py-1.5 text-[11px] text-blue-600 hover:bg-blue-50 rounded border border-blue-200"
-                >
-                  더보기 (+
-                  {Math.min(5, filtered.length - visibleCount)}건)
-                </button>
-              )}
+          {filtered.length === 0 ? (
+            <div className="text-[11px] text-gray-500 py-2 text-center">
+              선택한 지목에 해당하는 거래 없음
             </div>
+          ) : (
+            <div className="space-y-1.5">
+              {visible.map((row, i) => (
+                <LandTradeRow
+                  key={`${row.dealYmd}-${row.jibun}-${i}`}
+                  row={row}
+                  isMyJibun={row.jibun === myJibun}
+                  isSimilarArea={isSimilarArea(row.area_m2)}
+                />
+              ))}
+            </div>
+          )}
+          {filtered.length > visibleCount && (
+            <button
+              onClick={() => setVisibleCount((v) => v + 5)}
+              className="w-full py-1.5 text-[11px] text-blue-600 hover:bg-blue-50 rounded border border-blue-200"
+            >
+              더보기 (+
+              {Math.min(5, filtered.length - visibleCount)}건)
+            </button>
+          )}
+          {months < 24 && (
+            <button
+              onClick={() => setMonths(24)}
+              className="w-full py-1 text-[10px] text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded"
+            >
+              24개월로 확장 조회
+            </button>
+          )}
+        </>
+      )}
+      <div className="text-[10px] text-gray-400 leading-snug">
+        출처: 국토부 토지 매매 실거래가 · 시군구 단위 집계 · 평당가 = 거래금액
+        ÷ (면적×0.3025)
+        <br />※ 지번 끝자리는 개인정보 보호로 마스킹(예: <code>3*</code>) —
+        시군구 시세 비교 용도
+      </div>
+    </div>
+  );
+}
 
-            {months < 24 && (
-              <button
-                onClick={() => setMonths(24)}
-                className="w-full py-1 text-[10px] text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded"
-              >
-                24개월로 확장 조회
-              </button>
-            )}
-          </>
+function NrgSection({
+  bjdCode,
+  jibun,
+  clickedJibun,
+}: {
+  bjdCode: string;
+  jibun: JibunInfo;
+  clickedJibun: string;
+}) {
+  const [data, setData] = useState<NrgTransactionsResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [months, setMonths] = useState(12);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(5);
+
+  useEffect(() => {
+    if (!/^\d{10}$/.test(bjdCode)) return;
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    setData(null);
+    setVisibleCount(5);
+    fetchNrgTransactionsByBjd(bjdCode, months, { signal: controller.signal })
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        setData(result);
+      })
+      .catch((err: unknown) => {
+        if ((err as Error)?.name === "AbortError") return;
+        setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [bjdCode, months]);
+
+  const myJibun = clickedJibun || jibun.jibun;
+
+  if (loading && !data) {
+    return (
+      <div className="text-xs text-gray-500 py-4 text-center">
+        상업·업무용 실거래가 불러오는 중... (최근 {months}개월)
+      </div>
+    );
+  }
+  if (error) {
+    return <div className="text-xs text-red-600 py-2">조회 실패: {error}</div>;
+  }
+  if (!data) return null;
+
+  const { rows, stats } = data;
+  // 집합건축물만 정확 매칭 (일반은 마스킹)
+  const directMatches = rows.filter(
+    (r) => r.buildingType === "집합" && r.jibun === myJibun,
+  );
+  const filtered = selectedCategory
+    ? rows.filter((r) => (r.buildingUse || "(미상)") === selectedCategory)
+    : rows;
+  const visible = filtered.slice(0, visibleCount);
+
+  return (
+    <div className="space-y-3">
+      <PriceTLDR
+        region={jibun.sig_nm}
+        months={months}
+        stats={stats}
+        kindLabel="건물 거래"
+      />
+      {stats.total === 0 ? (
+        <EmptyTrades
+          months={months}
+          kindLabel="건물"
+          canExpand={months < 24}
+          onExpand={() => setMonths(24)}
+        />
+      ) : (
+        <>
+          <Sparkline data={stats.monthly} />
+          {directMatches.length > 0 && (
+            <DirectMatchCardNrg rows={directMatches} />
+          )}
+          {stats.byCategory.length > 1 && (
+            <CategoryChips
+              items={stats.byCategory}
+              selected={selectedCategory}
+              mine=""
+              onSelect={setSelectedCategory}
+            />
+          )}
+          <TradeListHeader
+            label="최근 거래"
+            filterLabel={selectedCategory}
+            visibleCount={visible.length}
+            totalCount={filtered.length}
+          />
+          {filtered.length === 0 ? (
+            <div className="text-[11px] text-gray-500 py-2 text-center">
+              선택한 용도에 해당하는 거래 없음
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {visible.map((row, i) => (
+                <NrgTradeRow
+                  key={`${row.dealYmd}-${row.jibun}-${i}`}
+                  row={row}
+                  isMyJibun={
+                    row.buildingType === "집합" && row.jibun === myJibun
+                  }
+                />
+              ))}
+            </div>
+          )}
+          {filtered.length > visibleCount && (
+            <button
+              onClick={() => setVisibleCount((v) => v + 5)}
+              className="w-full py-1.5 text-[11px] text-blue-600 hover:bg-blue-50 rounded border border-blue-200"
+            >
+              더보기 (+
+              {Math.min(5, filtered.length - visibleCount)}건)
+            </button>
+          )}
+          {months < 24 && (
+            <button
+              onClick={() => setMonths(24)}
+              className="w-full py-1 text-[10px] text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded"
+            >
+              24개월로 확장 조회
+            </button>
+          )}
+        </>
+      )}
+      <div className="text-[10px] text-gray-400 leading-snug">
+        출처: 국토부 상업·업무용 부동산 매매 · 시군구 단위 · 평당가 = 거래금액
+        ÷ (건물면적×0.3025)
+        <br />※ <b>집합건축물</b>(빌딩/오피스) = 지번 정확 ·{" "}
+        <b>일반건축물</b>(단독상가) = 끝자리 마스킹
+        <br />※ 공장/창고는 이 데이터에 미포함 — 토지매매 "공장용지" 지목 참조
+      </div>
+    </div>
+  );
+}
+
+function TradeListHeader({
+  label,
+  filterLabel,
+  visibleCount,
+  totalCount,
+}: {
+  label: string;
+  filterLabel: string | null;
+  visibleCount: number;
+  totalCount: number;
+}) {
+  return (
+    <div className="flex items-baseline justify-between">
+      <div className="text-[11px] font-semibold text-gray-700">
+        {label}
+        {filterLabel && (
+          <span className="text-gray-500 font-normal ml-1">
+            ({filterLabel}만)
+          </span>
         )}
-
-        <div className="text-[10px] text-gray-400 leading-snug">
-          출처: 국토부 토지 매매 실거래가 · 시군구 단위 집계 · 평당가 = 거래금액 ÷ (면적×0.3025)
-          <br />
-          ※ 지번 끝자리는 국토부 개인정보 보호로 마스킹(예: <code>3*</code>) — 시군구 평당가 시세 비교 용도
-        </div>
+      </div>
+      <div className="text-[10px] text-gray-400 tabular-nums">
+        {visibleCount} / {totalCount}
       </div>
     </div>
   );
@@ -1013,10 +1238,12 @@ function PriceTLDR({
   region,
   months,
   stats,
+  kindLabel,
 }: {
   region: string;
   months: number;
   stats: TradeStats;
+  kindLabel: string;
 }) {
   return (
     <div>
@@ -1036,7 +1263,7 @@ function PriceTLDR({
           <span className="text-base font-bold text-gray-900 tabular-nums">
             ₩{Math.round(stats.medianPricePerPyeong / 10000).toLocaleString()}만/평
           </span>
-          <span className="text-[10px] text-gray-500">중앙값</span>
+          <span className="text-[10px] text-gray-500">{kindLabel} 중앙값</span>
           {stats.trend && <TrendBadge trend={stats.trend} />}
         </div>
       ) : null}
@@ -1079,17 +1306,19 @@ function TrendBadge({
 
 function EmptyTrades({
   months,
+  kindLabel,
   canExpand,
   onExpand,
 }: {
   months: number;
+  kindLabel: string;
   canExpand: boolean;
   onExpand: () => void;
 }) {
   return (
     <div className="py-4 text-center space-y-2">
       <div className="text-xs text-gray-500">
-        최근 {months}개월 토지 거래 없음
+        최근 {months}개월 {kindLabel} 거래 없음
       </div>
       {canExpand && (
         <button
@@ -1146,7 +1375,7 @@ function Sparkline({ data }: { data: MonthlyCount[] }) {
   );
 }
 
-function DirectMatchCard({ rows }: { rows: LandTransaction[] }) {
+function DirectMatchCardLand({ rows }: { rows: LandTransaction[] }) {
   return (
     <div className="border border-red-200 bg-red-50/50 rounded-lg p-2.5">
       <div className="text-[10px] font-bold text-red-700 mb-1.5 flex items-center gap-1 flex-wrap">
@@ -1181,16 +1410,57 @@ function DirectMatchCard({ rows }: { rows: LandTransaction[] }) {
   );
 }
 
-function JimokChips({
+function DirectMatchCardNrg({ rows }: { rows: NrgTransaction[] }) {
+  return (
+    <div className="border border-red-200 bg-red-50/50 rounded-lg p-2.5">
+      <div className="text-[10px] font-bold text-red-700 mb-1.5 flex items-center gap-1 flex-wrap">
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500" />
+        이 지번 직접 거래 {rows.length}건 (집합건축물)
+        <span className="text-red-500 font-normal text-[10px] ml-0.5">
+          (협상 근거)
+        </span>
+      </div>
+      <div className="space-y-1">
+        {rows.map((r, i) => (
+          <div key={i} className="text-[11px] tabular-nums">
+            <div className="flex items-baseline gap-1.5 flex-wrap">
+              <span className="text-gray-700 font-semibold">
+                {formatYmShort(r.dealYmd)}
+              </span>
+              {r.buildingUse && (
+                <span className="text-[9px] px-1 py-0.5 bg-white border border-red-200 text-red-700 rounded">
+                  {r.buildingUse}
+                </span>
+              )}
+              {r.floor && <span className="text-gray-500">{r.floor}층</span>}
+              <span className="ml-auto text-gray-900 font-semibold">
+                ₩{(r.price_won / 10000).toLocaleString()}만
+              </span>
+              <span className="text-red-700 font-bold">
+                ₩{Math.round(r.pricePerPyeong / 10000).toLocaleString()}/평
+              </span>
+            </div>
+            <div className="text-[10px] text-gray-500">
+              건물 {r.buildingAr.toLocaleString()}㎡
+              {r.buildYear && ` · ${r.buildYear}년 준공`}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CategoryChips({
   items,
   selected,
-  myJimok,
+  mine,
   onSelect,
 }: {
-  items: JimokStats[];
+  items: CategoryStats[];
   selected: string | null;
-  myJimok: string;
-  onSelect: (jimok: string | null) => void;
+  mine: string;
+  onSelect: (category: string | null) => void;
 }) {
   return (
     <div className="overflow-x-auto -mx-1 px-1 -my-1 py-1">
@@ -1206,14 +1476,12 @@ function JimokChips({
           전체
         </button>
         {items.map((it) => {
-          const isSelected = it.jimok === selected;
-          const isMine = it.jimok === myJimok;
+          const isSelected = it.category === selected;
+          const isMine = mine !== "" && it.category === mine;
           return (
             <button
-              key={it.jimok}
-              onClick={() =>
-                onSelect(isSelected ? null : it.jimok)
-              }
+              key={it.category}
+              onClick={() => onSelect(isSelected ? null : it.category)}
               className={`text-[10px] px-2 py-1 rounded-full border whitespace-nowrap shrink-0 tabular-nums ${
                 isSelected
                   ? "bg-blue-600 text-white border-blue-600"
@@ -1221,12 +1489,12 @@ function JimokChips({
                     ? "bg-amber-50 text-amber-800 border-amber-300 font-semibold"
                     : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
               }`}
-              title={isMine ? "클릭한 지번과 같은 지목" : undefined}
+              title={isMine ? "클릭한 지번과 같은 분류" : undefined}
             >
               {isMine && "⭐"}
-              {it.jimok} ₩
-              {Math.round(it.medianPricePerPyeong / 10000).toLocaleString()}/평 (
-              {it.count})
+              {it.category} ₩
+              {Math.round(it.medianPricePerPyeong / 10000).toLocaleString()}/평
+              ({it.count})
             </button>
           );
         })}
@@ -1235,7 +1503,7 @@ function JimokChips({
   );
 }
 
-function TradeRow({
+function LandTradeRow({
   row,
   isMyJibun,
   isSimilarArea,
@@ -1244,18 +1512,26 @@ function TradeRow({
   isMyJibun: boolean;
   isSimilarArea: boolean;
 }) {
+  const isCancelled = !!row.cdealDay;
   return (
     <div
       className={`p-2 rounded border ${
         isMyJibun
           ? "border-red-300 bg-red-50/30"
-          : "border-gray-200 bg-white"
+          : isCancelled
+            ? "border-gray-200 bg-gray-50 opacity-70"
+            : "border-gray-200 bg-white"
       }`}
     >
       <div className="flex items-baseline gap-1.5 flex-wrap">
         <span className="text-[11px] font-semibold text-gray-800 tabular-nums">
           {formatYmShort(row.dealYmd)}
         </span>
+        {row.dealDate && (
+          <span className="text-[9px] text-gray-400 tabular-nums">
+            {row.dealDate.slice(8)}일
+          </span>
+        )}
         <span className="text-[11px] text-gray-700 font-mono">
           {row.jibun || "-"}
         </span>
@@ -1272,6 +1548,22 @@ function TradeRow({
             ⭐
           </span>
         )}
+        {isCancelled && (
+          <span
+            className="text-[9px] px-1 py-0.5 bg-red-100 text-red-700 rounded font-semibold"
+            title={`${row.cdealType ?? "정정"} ${row.cdealDay}`}
+          >
+            정정
+          </span>
+        )}
+        {row.shareDealingType && (
+          <span
+            className="text-[9px] px-1 py-0.5 bg-amber-100 text-amber-700 rounded font-semibold"
+            title="공유 지분 거래 — 평당가 왜곡 가능"
+          >
+            공유
+          </span>
+        )}
         <span className="ml-auto text-[11px] text-gray-900 font-semibold tabular-nums">
           ₩{(row.price_won / 10000).toLocaleString()}만
         </span>
@@ -1285,8 +1577,135 @@ function TradeRow({
           ₩{Math.round(row.pricePerPyeong / 10000).toLocaleString()}만/평
         </span>
       </div>
-      {row.zoning && (
-        <div className="mt-0.5 text-[10px] text-gray-400">{row.zoning}</div>
+      {(row.zoning || row.dealType || row.estateAgentSggNm) && (
+        <div className="mt-0.5 text-[10px] text-gray-400 flex flex-wrap gap-x-2">
+          {row.zoning && <span>{row.zoning}</span>}
+          {row.dealType && <span>{row.dealType}</span>}
+          {row.estateAgentSggNm && <span>중개: {row.estateAgentSggNm}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NrgTradeRow({
+  row,
+  isMyJibun,
+}: {
+  row: NrgTransaction;
+  isMyJibun: boolean;
+}) {
+  const isCancelled = !!row.cdealDay;
+  const ageYears = row.buildYear
+    ? new Date().getFullYear() - row.buildYear
+    : null;
+  return (
+    <div
+      className={`p-2 rounded border ${
+        isMyJibun
+          ? "border-red-300 bg-red-50/30"
+          : isCancelled
+            ? "border-gray-200 bg-gray-50 opacity-70"
+            : "border-gray-200 bg-white"
+      }`}
+    >
+      <div className="flex items-baseline gap-1.5 flex-wrap">
+        <span className="text-[11px] font-semibold text-gray-800 tabular-nums">
+          {formatYmShort(row.dealYmd)}
+        </span>
+        {row.dealDate && (
+          <span className="text-[9px] text-gray-400 tabular-nums">
+            {row.dealDate.slice(8)}일
+          </span>
+        )}
+        <span className="text-[11px] text-gray-700 font-mono">
+          {row.jibun || "-"}
+        </span>
+        {row.buildingType === "집합" ? (
+          <span
+            className="text-[9px] px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded font-semibold"
+            title="집합건축물 — 지번 정확"
+          >
+            집합
+          </span>
+        ) : (
+          <span
+            className="text-[9px] px-1 py-0.5 bg-gray-100 text-gray-600 rounded"
+            title="일반건축물 — 지번 마스킹"
+          >
+            일반
+          </span>
+        )}
+        {row.buildingUse && (
+          <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded">
+            {row.buildingUse}
+          </span>
+        )}
+        {isCancelled && (
+          <span
+            className="text-[9px] px-1 py-0.5 bg-red-100 text-red-700 rounded font-semibold"
+            title={`${row.cdealType ?? "정정"} ${row.cdealDay}`}
+          >
+            정정
+          </span>
+        )}
+        {row.shareDealingType && (
+          <span
+            className="text-[9px] px-1 py-0.5 bg-amber-100 text-amber-700 rounded font-semibold"
+            title="공유 지분 거래 — 평당가 왜곡 가능"
+          >
+            공유
+          </span>
+        )}
+        <span className="ml-auto text-[11px] text-gray-900 font-semibold tabular-nums">
+          ₩{(row.price_won / 10000).toLocaleString()}만
+        </span>
+      </div>
+      <div className="flex items-baseline gap-2 mt-0.5 text-[10px] text-gray-500 tabular-nums">
+        <span>
+          건물 {row.buildingAr.toLocaleString()}㎡ (
+          {Math.round(row.buildingAr * M2_TO_PYEONG).toLocaleString()}평)
+          {row.floor && ` · ${row.floor}층`}
+        </span>
+        <span className="ml-auto text-gray-700 font-semibold">
+          ₩{Math.round(row.pricePerPyeong / 10000).toLocaleString()}만/평
+        </span>
+      </div>
+      <div className="mt-0.5 text-[10px] text-gray-400 flex flex-wrap gap-x-2">
+        {row.buildYear && (
+          <span
+            className={
+              ageYears != null && ageYears >= NOTEWORTHY_OLD_YEARS
+                ? "text-red-600 font-medium"
+                : ""
+            }
+            title={
+              ageYears != null && ageYears >= NOTEWORTHY_OLD_YEARS
+                ? "노후 — 옥상 구조 안전성 별도 검토"
+                : undefined
+            }
+          >
+            {row.buildYear}년 준공{ageYears != null && ` (${ageYears}년차)`}
+          </span>
+        )}
+        {row.plottageAr && (
+          <span>대지 {row.plottageAr.toLocaleString()}㎡</span>
+        )}
+        {row.zoning && <span>{row.zoning}</span>}
+      </div>
+      {(row.dealType ||
+        row.buyerGbn ||
+        row.slerGbn ||
+        row.estateAgentSggNm) && (
+        <div className="mt-0.5 text-[10px] text-gray-400 flex flex-wrap gap-x-2">
+          {row.dealType && <span>{row.dealType}</span>}
+          {(row.buyerGbn || row.slerGbn) && (
+            <span>
+              매수 {row.buyerGbn ?? "-"} ← 매도 {row.slerGbn ?? "-"}
+            </span>
+          )}
+          {row.estateAgentSggNm && <span>중개: {row.estateAgentSggNm}</span>}
+        </div>
       )}
     </div>
   );

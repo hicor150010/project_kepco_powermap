@@ -15,7 +15,7 @@
 export {};
 
 import { getLandTradesByBjd } from "../../lib/rtms/land-trade";
-import { computeStats } from "../../lib/rtms/trade-stats";
+import { computeLandStats } from "../../lib/rtms/trade-stats";
 
 interface TestCase {
   name: string;
@@ -37,7 +37,7 @@ async function main() {
     try {
       const rows = await getLandTradesByBjd(tc.bjdCode, 3); // 3개월만 테스트 (빠름)
       const elapsed = Date.now() - start;
-      const stats = computeStats(rows, 3);
+      const stats = computeLandStats(rows, 3);
 
       console.log(`  ✅ ${rows.length}건 (${elapsed}ms)`);
       if (rows.length < tc.expectMin) {
@@ -60,7 +60,7 @@ async function main() {
         console.log("  통계:", {
           total: stats.total,
           medianPricePerPyeong: stats.medianPricePerPyeong,
-          byJimok: stats.byJimok.slice(0, 3),
+          byCategory: stats.byCategory.slice(0, 3),
         });
 
         // 정규화 sanity check
