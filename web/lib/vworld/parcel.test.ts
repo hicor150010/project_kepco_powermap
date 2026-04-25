@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildJibunNumber,
   parseJimok,
+  pickBestParcelMatch,
   splitParcelFeature,
   normalizeJibun,
 } from "./parcel";
@@ -226,5 +227,113 @@ describe("splitParcelFeature", () => {
       }),
     );
     expect(r.geometry.jiga).toBeNull();
+  });
+});
+
+// ───────────────────────────────────────────
+// pickBestParcelMatch — BBOX 응답 후보 중 1개 선택
+// 핵심: 점이 여러 폴리곤에 동시 포함될 때 면적 작은 것 우선
+// (직리 116-2 깔때기 케이스 회귀 방지)
+// ───────────────────────────────────────────
+describe("pickBestParcelMatch", () => {
+  type WfsFeature = Parameters<typeof splitParcelFeature>[0];
+
+  function mockFeatureWithPolygon(
+    bonbun: string,
+    polygon: number[][][],
+  ): WfsFeature {
+    return {
+      type: "Feature",
+      geometry: { type: "Polygon", coordinates: polygon },
+      properties: {
+        pnu: `123456789012345${bonbun.padStart(4, "0")}`,
+        jibun: "",
+        bonbun,
+        bubun: "0",
+        bchk: "1",
+        addr: "",
+        ctp_nm: "",
+        sig_nm: "",
+        emd_nm: "",
+        li_nm: "",
+        jiga: "0",
+      },
+    } as WfsFeature;
+  }
+
+  // 작은 폴리곤 (약 22m × 22m), 클릭 점 (37.5, 127.0) 포함
+  const polygonSmall: number[][][] = [
+    [
+      [126.9999, 37.4999],
+      [127.0001, 37.4999],
+      [127.0001, 37.5001],
+      [126.9999, 37.5001],
+      [126.9999, 37.4999],
+    ],
+  ];
+
+  // 큰 폴리곤 (약 1.1km × 1.1km), 같은 클릭 점 포함
+  const polygonBig: number[][][] = [
+    [
+      [126.995, 37.495],
+      [127.005, 37.495],
+      [127.005, 37.505],
+      [126.995, 37.505],
+      [126.995, 37.495],
+    ],
+  ];
+
+  // 다른 위치 폴리곤 (클릭 점 미포함)
+  const polygonOffset: number[][][] = [
+    [
+      [127.01, 37.51],
+      [127.012, 37.51],
+      [127.012, 37.512],
+      [127.01, 37.512],
+      [127.01, 37.51],
+    ],
+  ];
+
+  it("빈 배열 → null", () => {
+    expect(pickBestParcelMatch([], 37.5, 127.0)).toBeNull();
+  });
+
+  it("1개 + 점이 폴리곤 안 → 그것 반환", () => {
+    const f = mockFeatureWithPolygon("100", polygonSmall);
+    const r = pickBestParcelMatch([f], 37.5, 127.0);
+    expect(r?.properties.bonbun).toBe("100");
+  });
+
+  it("1개 + 점이 폴리곤 밖 → null", () => {
+    const f = mockFeatureWithPolygon("100", polygonOffset);
+    expect(pickBestParcelMatch([f], 37.5, 127.0)).toBeNull();
+  });
+
+  it("2개 + 점이 한쪽에만 → 그쪽 반환 (위치 정확 매칭)", () => {
+    const small = mockFeatureWithPolygon("100", polygonSmall);
+    const offset = mockFeatureWithPolygon("200", polygonOffset);
+    const r = pickBestParcelMatch([offset, small], 37.5, 127.0);
+    expect(r?.properties.bonbun).toBe("100");
+  });
+
+  it("핵심: 둘 다 점 포함 (큰 깔때기 + 작은 일반 필지) → 작은 것 우선", () => {
+    const big = mockFeatureWithPolygon("116", polygonBig);
+    const small = mockFeatureWithPolygon("63", polygonSmall);
+    const r = pickBestParcelMatch([big, small], 37.5, 127.0);
+    expect(r?.properties.bonbun).toBe("63");
+  });
+
+  it("응답 순서 무관: 작은 것이 먼저여도 동일 결과", () => {
+    const big = mockFeatureWithPolygon("116", polygonBig);
+    const small = mockFeatureWithPolygon("63", polygonSmall);
+    const r = pickBestParcelMatch([small, big], 37.5, 127.0);
+    expect(r?.properties.bonbun).toBe("63");
+  });
+
+  it("점이 큰 폴리곤만 안 (작은 후보가 점 미포함) → 큰 것 반환", () => {
+    const big = mockFeatureWithPolygon("200", polygonBig);
+    const offsetSmall = mockFeatureWithPolygon("100", polygonOffset);
+    const r = pickBestParcelMatch([offsetSmall, big], 37.5, 127.0);
+    expect(r?.properties.bonbun).toBe("200");
   });
 });

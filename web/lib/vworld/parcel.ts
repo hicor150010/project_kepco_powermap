@@ -26,8 +26,14 @@ const WFS_URL = "https://api.vworld.kr/req/wfs";
 const SEARCH_URL = "https://api.vworld.kr/req/search";
 const LAYER = "lp_pa_cbnd_bubun";
 
-/** BBOX 반경 (도 단위). 5m ≈ 0.00005° @ 한국 위도 */
-const BBOX_DELTA = 0.00005;
+/**
+ * BBOX 반경 (도 단위). 10m ≈ 0.0001° @ 한국 위도.
+ *
+ * 5m → 10m 확대 (2026-04-25): 후보 폴리곤 더 받아서 `pickBestParcelMatch` 가
+ * 면적 작은 것 우선 선택. 깔때기형 큰 부지가 좁은 끝부분으로 라벨 위까지 뻗어
+ * 사용자 의도와 다른 필지 잡히는 케이스(직리 116-2 등) 완화.
+ */
+const BBOX_DELTA = 0.0001;
 
 /** WFS fetch timeout (ms) */
 const TIMEOUT_MS = 3000;
@@ -180,6 +186,52 @@ function isSanJibun(bchk: string): boolean {
   return bchk === "2";
 }
 
+/**
+ * BBOX 응답의 여러 후보 중 클릭 점에 맞는 1개 선택 (테스트 가능 헬퍼).
+ *
+ * 룰:
+ *   1. point-in-polygon 으로 클릭 점이 진짜 들어가는 후보만 필터
+ *   2. 통과한 게 여러 개면 면적 작은 것 우선
+ *
+ * 면적 우선 이유: 큰 깔때기/도로 부지가 좁은 끝부분으로 라벨 위까지 뻗어
+ * 사용자 의도와 다른 필지 잡히는 케이스(직리 116-2 등) 완화. 일반 필지가
+ * 보통 더 작아서 사용자 의도와 일치.
+ */
+export function pickBestParcelMatch(
+  features: WfsFeature[],
+  lat: number,
+  lng: number,
+): WfsFeature | null {
+  if (!features.length) return null;
+
+  const clickPoint: Feature<Point> = {
+    type: "Feature",
+    properties: {},
+    geometry: { type: "Point", coordinates: [lng, lat] },
+  };
+
+  const containing = features.filter((f) => {
+    try {
+      return booleanPointInPolygon(
+        clickPoint,
+        f as unknown as Feature<Polygon | MultiPolygon>,
+      );
+    } catch {
+      return false;
+    }
+  });
+
+  if (containing.length === 0) return null;
+  if (containing.length === 1) return containing[0];
+
+  return containing
+    .map((f) => ({
+      feature: f,
+      area: area(f as unknown as Feature<Polygon | MultiPolygon>),
+    }))
+    .sort((a, b) => a.area - b.area)[0].feature;
+}
+
 // ───────────────────────────────────────────
 // 메인: 좌표 → 필지 정보
 // ───────────────────────────────────────────
@@ -238,23 +290,7 @@ export async function getParcelByPoint(
     const data = (await res.json()) as WfsResponse;
     if (!data.features?.length) return null;
 
-    // 해당 좌표가 실제로 포함되는 필지 선별 (BBOX 는 느슨, 정확 매칭은 클라이언트)
-    const clickPoint: Feature<Point> = {
-      type: "Feature",
-      properties: {},
-      geometry: { type: "Point", coordinates: [lng, lat] },
-    };
-    const match = data.features.find((f) => {
-      try {
-        return booleanPointInPolygon(
-          clickPoint,
-          f as unknown as Feature<Polygon | MultiPolygon>,
-        );
-      } catch {
-        return false;
-      }
-    });
-
+    const match = pickBestParcelMatch(data.features, lat, lng);
     if (!match) return null;
 
     return splitParcelFeature(match);
