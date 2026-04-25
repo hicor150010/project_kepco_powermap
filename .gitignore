@@ -39,6 +39,10 @@ crawler/test_pnu_failures_*.jsonl
 # 로컬 전용 런처 (시크릿 하드코딩 포함)
 crawler/run_*_local.py
 
+# 테스트/검증 스크립트 (로컬 전용, 시크릿 하드코딩 가능성 있음)
+scripts/test_*
+crawler/test_*.py
+
 # Cache 파일 (Actions 또는 로컬 fallback 으로 생성)
 .cache/
 
